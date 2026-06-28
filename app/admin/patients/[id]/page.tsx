@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { Patient } from "@/types/patient";
-import { getPatientById } from "@/services/patients";
+import {
+  getPatientById,
+  deletePatient,
+} from "@/services/patients";
 
 import EditPatientModal from "@/components/patients/EditPatientModal";
 
 export default function PatientProfile() {
   const params = useParams();
+
+  const router = useRouter();
 
   const patientId = String(params.id ?? "");
 
@@ -56,6 +61,29 @@ export default function PatientProfile() {
     );
   }
 
+  async function handleDelete() {
+  if (!patient) return;
+
+  const confirmed = window.confirm(
+    `Delete ${patient.first_name} ${patient.last_name}?\n\nThis action cannot be undone.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await deletePatient(patient.id);
+
+    alert("Patient deleted successfully.");
+
+    router.push("/admin/patients");
+
+  } catch (error) {
+    console.error(error);
+
+    alert("Failed to delete patient.");
+  }
+}
+
   return (
     <div className="space-y-8">
 
@@ -83,10 +111,11 @@ export default function PatientProfile() {
           </button>
 
           <button
-            className="rounded-xl bg-red-600 px-6 py-3 font-semibold text-white transition hover:bg-red-700"
-          >
-            Delete Patient
-          </button>
+  onClick={handleDelete}
+  className="rounded-xl bg-red-600 px-6 py-3 font-semibold text-white transition hover:bg-red-700"
+>
+  Delete Patient
+</button>
 
         </div>
 
