@@ -4,11 +4,21 @@ import { Appointment } from "@/types/appointment";
 export async function getAppointments(): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from("appointments")
-    .select("*")
-    .order("appointment_date", { ascending: true });
+    .select(`
+      *,
+      patients (
+        first_name,
+        last_name
+      ),
+      dentists (
+        full_name
+      )
+    `)
+    .order("appointment_date", { ascending: true })
+    .order("appointment_time", { ascending: true });
 
   if (error) {
-    console.error(error);
+    console.error("Failed to fetch appointments:", error);
     return [];
   }
 
@@ -24,7 +34,7 @@ export async function getAppointmentCount(): Promise<number> {
     });
 
   if (error) {
-    console.error(error);
+    console.error("Failed to count appointments:", error);
     return 0;
   }
 
@@ -36,28 +46,63 @@ export async function getTodaysAppointments(): Promise<Appointment[]> {
 
   const { data, error } = await supabase
     .from("appointments")
-    .select("*")
+    .select(`
+      *,
+      patients (
+        first_name,
+        last_name
+      ),
+      dentists (
+        full_name
+      )
+    `)
     .eq("appointment_date", today)
     .order("appointment_time", { ascending: true });
 
   if (error) {
-    console.error(error);
+    console.error("Failed to fetch today's appointments:", error);
     return [];
   }
 
   return (data as Appointment[]) ?? [];
 }
 
+interface CreateAppointmentData {
+  patient_id: string;
+  dentist_id: string;
+  appointment_date: string;
+  appointment_time: string;
+  treatment: string;
+  notes?: string;
+  status?: string;
+}
+
 export async function createAppointment(
-  appointment: Omit<Appointment, "id" | "created_at">
+  appointment: CreateAppointmentData
 ) {
-  const { error } = await supabase
+  const payload = {
+    patient_id: appointment.patient_id,
+    dentist_id: appointment.dentist_id,
+    appointment_date: appointment.appointment_date,
+    appointment_time: appointment.appointment_time,
+    duration: 30,
+    treatment: appointment.treatment,
+    notes: appointment.notes ?? "",
+    status: appointment.status ?? "Scheduled",
+  };
+
+  const { data, error } = await supabase
     .from("appointments")
-    .insert(appointment);
+    .insert(payload)
+    .select()
+    .single();
 
   if (error) {
+    console.error("Supabase insert error:", error);
     throw error;
   }
+
+  return data;
 }
 
 export async function updateAppointment(
@@ -70,6 +115,7 @@ export async function updateAppointment(
     .eq("id", id);
 
   if (error) {
+    console.error("Failed to update appointment:", error);
     throw error;
   }
 }
@@ -81,6 +127,7 @@ export async function deleteAppointment(id: string) {
     .eq("id", id);
 
   if (error) {
+    console.error("Failed to delete appointment:", error);
     throw error;
   }
 }

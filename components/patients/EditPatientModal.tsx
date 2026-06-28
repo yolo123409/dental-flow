@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import PatientForm from "@/components/patients/PatientForm";
 import { Patient } from "@/types/patient";
 import { updatePatient } from "@/services/patients";
+import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
 
 interface Props {
   open: boolean;
@@ -77,45 +79,35 @@ export default function EditPatientModal({
     }
   }
 
-  if (!open || !patient) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+  <Modal
+    open={open}
+    title="Edit Patient"
+    onClose={onClose}
+    footer={
+      <>
+        <Button
+          variant="secondary"
+          onClick={onClose}
+        >
+          Cancel
+        </Button>
 
-      <div className="w-full max-w-2xl rounded-2xl bg-white p-8 shadow-xl">
+        <Button
+          onClick={saveChanges}
+          disabled={loading}
+        >
+          {loading ? "Saving..." : "Save Changes"}
+        </Button>
+      </>
+    }
+  >
 
-        <h2 className="text-3xl font-bold">
-          Edit Patient
-        </h2>
+    <PatientForm
+      form={form}
+      onChange={update}
+    />
 
-        <div className="mt-6">
-          <PatientForm
-            form={form}
-            onChange={update}
-          />
-        </div>
-
-        <div className="mt-8 flex justify-end gap-4">
-
-          <button
-            onClick={onClose}
-            className="rounded-lg border px-6 py-3"
-          >
-            Cancel
-          </button>
-
-          <button
-            onClick={saveChanges}
-            disabled={loading}
-            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
-          >
-            {loading ? "Saving..." : "Save Changes"}
-          </button>
-
-        </div>
-
-      </div>
-
-    </div>
-  );
+  </Modal>
+);
 }

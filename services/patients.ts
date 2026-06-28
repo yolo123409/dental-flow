@@ -15,6 +15,20 @@ export async function getPatients(): Promise<Patient[]> {
   return (data as Patient[]) ?? [];
 }
 
+export async function getPatientOptions() {
+  const { data, error } = await supabase
+    .from("patients")
+    .select("id, first_name, last_name")
+    .order("first_name");
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return data ?? [];
+}
+
 export async function getPatientCount() {
   const { count, error } = await supabase
     .from("patients")
@@ -50,7 +64,9 @@ export async function getPatientById(id: string) {
     .eq("id", id)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
   return data as Patient;
 }
@@ -64,7 +80,9 @@ export async function updatePatient(
     .update(patient)
     .eq("id", id);
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 }
 
 export async function deletePatient(id: string) {
@@ -73,5 +91,7 @@ export async function deletePatient(id: string) {
     .delete()
     .eq("id", id);
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 }

@@ -3,18 +3,18 @@
 import {
   Users,
   CalendarDays,
-  Stethoscope,
-  ShoppingCart,
+  UserRound,
+  Package,
 } from "lucide-react";
 
-import StatCard from "@/components/admin/StatCard";
+import StatCard from "@/components/ui/StatCard";
 
-type Props = {
+interface Props {
   patients: number;
   appointments: number;
   dentists: number;
   orders: number;
-};
+}
 
 export default function DashboardStats({
   patients,
@@ -28,25 +28,25 @@ export default function DashboardStats({
       <StatCard
         title="Patients"
         value={patients}
-        icon={Users}
+        icon={<Users size={24} />}
       />
 
       <StatCard
         title="Appointments"
         value={appointments}
-        icon={CalendarDays}
+        icon={<CalendarDays size={24} />}
       />
 
       <StatCard
         title="Dentists"
         value={dentists}
-        icon={Stethoscope}
+        icon={<UserRound size={24} />}
       />
 
       <StatCard
         title="Orders"
         value={orders}
-        icon={ShoppingCart}
+        icon={<Package size={24} />}
       />
 
     </div>
