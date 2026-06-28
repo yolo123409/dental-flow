@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import ProductForm from "@/app/components/admin/ProductForm";
-import ProductTable from "@/app/components/admin/ProductTable";
+import ProductForm from "@/components/admin/ProductForm";
+import ProductTable from "@/components/admin/ProductTable";
 
 type Product = {
   id: string;
