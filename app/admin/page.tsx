@@ -1,56 +1,80 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { getPatientCount } from "@/services/patients";
+import { getAppointmentCount } from "@/services/appointments";
+import { getDentistCount } from "@/services/dentists";
+import { getOrderCount } from "@/services/orders";
+
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import DashboardStats from "@/components/dashboard/DashboardStats";
+import Card from "@/components/ui/Card";
+import QuickActions from "@/components/dashboard/QuickActions";
+import RevenueChart from "@/components/dashboard/RevenueChart";
+import TodaysSchedule from "@/components/dashboard/TodaysSchedule";
+import RecentActivity from "@/components/dashboard/RecentActivity";
+import KPISection from "@/components/dashboard/KPISection";
+import PatientHeader from "@/components/patients/PatientHeader";
+import PatientStats from "@/components/patients/PatientStats";
+
 export default function AdminDashboard() {
+  const [stats, setStats] = useState({
+    patients: 0,
+    appointments: 0,
+    dentists: 0,
+    orders: 0,
+  });
+
+  async function loadStats() {
+  const [
+    patients,
+    appointments,
+    dentists,
+    orders,
+  ] = await Promise.all([
+    getPatientCount(),
+    getAppointmentCount(),
+    getDentistCount(),
+    getOrderCount(),
+  ]);
+
+  setStats({
+    patients,
+    appointments,
+    dentists,
+    orders,
+  });
+}
+
   return (
-    <div>
+    <div className="space-y-8">
 
-      <h1 className="text-4xl font-bold">
-        Welcome to Dental Flow
-      </h1>
+      <DashboardHeader />
 
-      <p className="mt-3 text-slate-600">
-        Your admin dashboard is ready.
-      </p>
+      <KPISection />
 
-      <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <QuickActions />
 
-        <div className="rounded-2xl bg-white p-6 shadow">
-          <h2 className="text-slate-500">
-            Patients
-          </h2>
+      <DashboardStats
+        patients={stats.patients}
+        appointments={stats.appointments}
+        dentists={stats.dentists}
+        orders={stats.orders}
+      />
 
-          <p className="mt-3 text-4xl font-bold">
-            --
-          </p>
-        </div>
+      <div className="grid gap-6 lg:grid-cols-2">
 
-        <div className="rounded-2xl bg-white p-6 shadow">
-          <h2 className="text-slate-500">
-            Appointments
-          </h2>
+        <Card title="Revenue">
+            <RevenueChart />
+        </Card>
 
-          <p className="mt-3 text-4xl font-bold">
-            --
-          </p>
-        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
 
-        <div className="rounded-2xl bg-white p-6 shadow">
-          <h2 className="text-slate-500">
-            Orders
-          </h2>
+  <TodaysSchedule />
 
-          <p className="mt-3 text-4xl font-bold">
-            --
-          </p>
-        </div>
+  <RecentActivity />
 
-        <div className="rounded-2xl bg-white p-6 shadow">
-          <h2 className="text-slate-500">
-            Revenue
-          </h2>
-
-          <p className="mt-3 text-4xl font-bold">
-            KES --
-          </p>
-        </div>
+</div>
 
       </div>
 
