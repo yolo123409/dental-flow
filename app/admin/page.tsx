@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getDashboardStats } from "@/services/dashboard";
+import useRealtimeDashboard from "@/hooks/useRealtimeDashboard";
 
 import PageContainer from "@/components/ui/PageContainer";
 
@@ -27,11 +28,7 @@ export default function AdminDashboard() {
 
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
-
-  async function loadDashboard() {
+  const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -43,27 +40,29 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  // Automatically refresh when dashboard data changes
+  useRealtimeDashboard(loadDashboard);
 
   if (loading) {
     return (
       <PageContainer>
-
         <div className="flex h-[70vh] items-center justify-center">
-
           <p className="text-lg text-slate-500">
             Loading dashboard...
           </p>
-
         </div>
-
       </PageContainer>
     );
   }
 
   return (
     <PageContainer>
-
       <WelcomeBanner />
 
       <DashboardStats
@@ -74,7 +73,6 @@ export default function AdminDashboard() {
       />
 
       <DashboardWidgets />
-
     </PageContainer>
   );
 }

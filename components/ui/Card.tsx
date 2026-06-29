@@ -15,11 +15,11 @@ export default function Card({
 }: Props) {
   return (
     <div
-      className={`rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:shadow-lg ${className}`}
+      className={`rounded-3xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${className}`}
     >
       {title && (
-        <div className="border-b border-slate-200 px-6 py-4">
-          <h2 className="text-lg font-semibold">
+        <div className="border-b border-slate-100 px-6 py-5">
+          <h2 className="text-lg font-bold">
             {title}
           </h2>
         </div>
