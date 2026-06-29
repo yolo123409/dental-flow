@@ -1,35 +1,33 @@
 "use client";
 
-import Card from "@/components/ui/Card";
+import RevenueWidget from "./RevenueWidget";
+import AIStatusCard from "./AIStatusCard";
+import QuickActions from "./QuickActions";
+import RecentPatientsWidget from "./RecentPatientsWidget";
+import TodaysAppointmentsWidget from "./TodaysAppointmentsWidget";
 
-export default function RevenueWidget() {
+export default function DashboardWidgets() {
   return (
-    <Card title="Revenue">
+    <div className="grid gap-6 xl:grid-cols-3">
 
-      <div className="space-y-6">
+      <div className="space-y-6 xl:col-span-2">
 
-        <div>
+        <RevenueWidget />
 
-          <p className="text-sm text-slate-500">
-            This Month
-          </p>
-
-          <h2 className="mt-2 text-4xl font-bold">
-            KSh 0
-          </h2>
-
-        </div>
-
-        <div className="flex h-48 items-center justify-center rounded-xl border border-dashed">
-
-          <p className="text-slate-500">
-            Revenue chart coming soon
-          </p>
-
-        </div>
+        <TodaysAppointmentsWidget />
 
       </div>
 
-    </Card>
+      <div className="space-y-6">
+
+        <AIStatusCard />
+
+        <RecentPatientsWidget />
+
+        <QuickActions />
+
+      </div>
+
+    </div>
   );
 }

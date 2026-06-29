@@ -1,62 +1,70 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getPatientCount } from "@/services/patients";
-import { getAppointmentCount } from "@/services/appointments";
-import { getDentistCount } from "@/services/dentists";
-import { getOrderCount } from "@/services/orders";
 
-import DashboardHeader from "@/components/dashboard/DashboardHeader";
-import DashboardStats from "@/components/dashboard/DashboardStats";
-import Card from "@/components/ui/Card";
-import QuickActions from "@/components/dashboard/QuickActions";
-import RevenueChart from "@/components/dashboard/RevenueChart";
-import TodaysSchedule from "@/components/dashboard/TodaysSchedule";
-import RecentActivity from "@/components/dashboard/RecentActivity";
-import KPISection from "@/components/dashboard/KPISection";
+import { getDashboardStats } from "@/services/dashboard";
 
 import PageContainer from "@/components/ui/PageContainer";
 
 import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
+import DashboardStats from "@/components/dashboard/DashboardStats";
 import DashboardWidgets from "@/components/dashboard/DashboardWidgets";
 
+interface DashboardState {
+  patients: number;
+  appointments: number;
+  dentists: number;
+  orders: number;
+}
+
 export default function AdminDashboard() {
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<DashboardState>({
     patients: 0,
     appointments: 0,
     dentists: 0,
     orders: 0,
   });
 
-  async function loadStats() {
-  const [
-    patients,
-    appointments,
-    dentists,
-    orders,
-  ] = await Promise.all([
-    getPatientCount(),
-    getAppointmentCount(),
-    getDentistCount(),
-    getOrderCount(),
-  ]);
+  const [loading, setLoading] = useState(true);
 
-  setStats({
-    patients,
-    appointments,
-    dentists,
-    orders,
-  });
-}
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+
+      const dashboardStats = await getDashboardStats();
+
+      setStats(dashboardStats);
+    } catch (error) {
+      console.error("Failed to load dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <PageContainer>
+
+        <div className="flex h-[70vh] items-center justify-center">
+
+          <p className="text-lg text-slate-500">
+            Loading dashboard...
+          </p>
+
+        </div>
+
+      </PageContainer>
+    );
+  }
 
   return (
-    <div className="space-y-8">
+    <PageContainer>
 
-      <DashboardHeader />
-
-      <KPISection />
-
-      <QuickActions />
+      <WelcomeBanner />
 
       <DashboardStats
         patients={stats.patients}
@@ -65,22 +73,8 @@ export default function AdminDashboard() {
         orders={stats.orders}
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <DashboardWidgets />
 
-        <Card title="Revenue">
-            <RevenueChart />
-        </Card>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-
-  <TodaysSchedule />
-
-  <RecentActivity />
-
-</div>
-
-      </div>
-
-    </div>
+    </PageContainer>
   );
 }
