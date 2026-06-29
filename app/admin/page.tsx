@@ -15,6 +15,10 @@ import TodaysSchedule from "@/components/dashboard/TodaysSchedule";
 import RecentActivity from "@/components/dashboard/RecentActivity";
 import KPISection from "@/components/dashboard/KPISection";
 
+import PageContainer from "@/components/ui/PageContainer";
+
+import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
+import DashboardWidgets from "@/components/dashboard/DashboardWidgets";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({

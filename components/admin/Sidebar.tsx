@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
 import {
   LayoutDashboard,
   Package,
@@ -10,67 +11,102 @@ import {
   UserRound,
   Stethoscope,
   CalendarDays,
+  Calendar,
   Bot,
   MessageSquare,
   BarChart3,
   Settings,
 } from "lucide-react";
 
-const links = [
+const sections = [
   {
-    name: "Dashboard",
-    href: "/admin",
-    icon: LayoutDashboard,
+    title: "OVERVIEW",
+    links: [
+      {
+        name: "Dashboard",
+        href: "/admin",
+        icon: LayoutDashboard,
+      },
+      {
+        name: "Analytics",
+        href: "/admin/analytics",
+        icon: BarChart3,
+      },
+    ],
   },
+
   {
-    name: "Products",
-    href: "/admin/products",
-    icon: Package,
+    title: "CLINIC",
+    links: [
+      {
+        name: "Patients",
+        href: "/admin/patients",
+        icon: UserRound,
+      },
+      {
+        name: "Dentists",
+        href: "/admin/dentists",
+        icon: Stethoscope,
+      },
+      {
+        name: "Appointments",
+        href: "/admin/appointments",
+        icon: CalendarDays,
+      },
+      {
+        name: "Calendar",
+        href: "/admin/calendar",
+        icon: Calendar,
+      },
+    ],
   },
+
   {
-    name: "Orders",
-    href: "/admin/orders",
-    icon: ShoppingCart,
+    title: "BUSINESS",
+    links: [
+      {
+        name: "Products",
+        href: "/admin/products",
+        icon: Package,
+      },
+      {
+        name: "Orders",
+        href: "/admin/orders",
+        icon: ShoppingCart,
+      },
+      {
+        name: "Customers",
+        href: "/admin/customers",
+        icon: Users,
+      },
+    ],
   },
+
   {
-    name: "Customers",
-    href: "/admin/customers",
-    icon: Users,
+    title: "AI",
+    links: [
+      {
+        name: "AI Receptionist",
+        href: "/admin/receptionist",
+        icon: Bot,
+      },
+      {
+        name: "AI Playground",
+        href: "/admin/playground",
+        icon: MessageSquare,
+      },
+    ],
   },
+
   {
-    name: "Patients",
-    href: "/admin/patients",
-    icon: UserRound,
-  },
-  {
-    name: "Dentists",
-    href: "/admin/dentists",
-    icon: Stethoscope,
-  },
-  {
-    name: "Appointments",
-    href: "/admin/appointments",
-    icon: CalendarDays,
-  },
-  {
-    name: "AI Receptionist",
-    href: "/admin/receptionist",
-    icon: Bot,
-  },
-  {
-    name: "AI Playground",
-    href: "/admin/playground",
-    icon: MessageSquare,
-  },
-  {
-    name: "Analytics",
-    href: "/admin/analytics",
-    icon: BarChart3,
-  },
-  {
-    name: "Settings",
-    href: "/admin/settings",
-    icon: Settings,
+    title: "SYSTEM",
+    links: [
+      {
+        name: "Settings",
+        href: "/admin/settings",
+        icon: Settings,
+      },
+    ],
   },
 ];
 
@@ -78,9 +114,10 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r bg-white">
+    <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r border-slate-200 bg-white shadow-sm">
 
-      <div className="border-b p-8">
+      {/* Logo */}
+      <div className="border-b border-slate-200 p-8">
 
         <h1 className="text-3xl font-black text-blue-600">
           Dental Flow
@@ -92,43 +129,70 @@ export default function Sidebar() {
 
       </div>
 
-      <nav className="flex-1 p-4">
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto px-4 py-6">
 
-        {links.map((link) => {
-          const Icon = link.icon;
+        {sections.map((section) => (
 
-          const active = pathname === link.href;
+          <div
+            key={section.title}
+            className="mb-8"
+          >
 
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`mb-2 flex items-center gap-3 rounded-xl px-5 py-4 transition ${
-                active
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              <Icon size={20} />
+            <p className="mb-3 px-3 text-xs font-bold uppercase tracking-widest text-slate-400">
 
-              <span className="font-medium">
-                {link.name}
-              </span>
-            </Link>
-          );
-        })}
+              {section.title}
+
+            </p>
+
+            {section.links.map((link) => {
+
+              const Icon = link.icon;
+
+              const active =
+                pathname === link.href ||
+                pathname.startsWith(`${link.href}/`);
+
+              return (
+
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`mb-2 flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-200 ${
+                    active
+                      ? "bg-blue-600 text-white shadow-lg"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+
+                  <Icon size={20} />
+
+                  <span className="font-medium">
+                    {link.name}
+                  </span>
+
+                </Link>
+
+              );
+
+            })}
+
+          </div>
+
+        ))}
 
       </nav>
 
-      <div className="border-t p-6">
+      {/* Footer */}
+      <div className="border-t border-slate-200 p-6">
 
-        <div className="rounded-xl bg-slate-100 p-4">
+        <div className="rounded-2xl bg-slate-100 p-4">
 
           <p className="text-sm text-slate-500">
-            Dental Flow v1
+            Dental Flow v2.0
           </p>
 
-          <p className="mt-2 font-semibold">
+          <p className="mt-2 font-semibold text-slate-800">
             Built with ❤️ and AI
           </p>
 

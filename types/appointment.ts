@@ -1,22 +1,13 @@
 export interface Appointment {
   id: string;
-
   patient_id: string;
-
-  dentist_id: string;
-
+  dentist_id: string | null;
   appointment_date: string;
-
   appointment_time: string;
-
   duration: number;
-
   treatment: string;
-
   notes: string;
-
-  status: "Scheduled" | "Completed" | "Cancelled";
-
+  status: string;
   created_at: string;
 
   patients?: {
