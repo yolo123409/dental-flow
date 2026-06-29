@@ -25,6 +25,32 @@ export async function getAppointments(): Promise<Appointment[]> {
   return (data as Appointment[]) ?? [];
 }
 
+export async function getAppointmentById(
+  id: string
+): Promise<Appointment | null> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select(`
+      *,
+      patients (
+        first_name,
+        last_name
+      ),
+      dentists (
+        full_name
+      )
+    `)
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Failed to fetch appointment:", error);
+    return null;
+  }
+
+  return data as Appointment;
+}
+
 export async function getAppointmentCount(): Promise<number> {
   const { count, error } = await supabase
     .from("appointments")

@@ -12,16 +12,10 @@ import AppointmentForm, {
 import { Appointment } from "@/types/appointment";
 import { updateAppointment } from "@/services/appointments";
 
-interface PatientOption {
-  id: string;
-  first_name: string;
-  last_name: string;
-}
-
-interface DentistOption {
-  id: string;
-  full_name: string;
-}
+import {
+  PatientOption,
+  DentistOption,
+} from "@/types/options";
 
 interface Props {
   open: boolean;

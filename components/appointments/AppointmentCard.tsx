@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Appointment } from "@/types/appointment";
+import { useRouter } from "next/navigation";
 
 interface Props {
   appointment: Appointment;
@@ -51,6 +52,8 @@ export default function AppointmentCard({
     day: "numeric",
     year: "numeric",
   });
+
+  const router = useRouter();
 
   return (
     <div className="rounded-2xl border bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
@@ -161,12 +164,16 @@ export default function AppointmentCard({
       <div className="mt-8 flex gap-2 border-t pt-5">
 
         <button
-          onClick={() => onView?.(appointment)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition hover:bg-slate-100"
-        >
-          <Eye size={16} />
-          View
-        </button>
+  onClick={() =>
+    router.push(
+      `/admin/appointments/${appointment.id}`
+    )
+  }
+  className="flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition hover:bg-slate-100"
+>
+  <Eye size={16} />
+  View
+</button>
 
         <button
           onClick={() => onEdit?.(appointment)}

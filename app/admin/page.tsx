@@ -14,8 +14,7 @@ import RevenueChart from "@/components/dashboard/RevenueChart";
 import TodaysSchedule from "@/components/dashboard/TodaysSchedule";
 import RecentActivity from "@/components/dashboard/RecentActivity";
 import KPISection from "@/components/dashboard/KPISection";
-import PatientHeader from "@/components/patients/PatientHeader";
-import PatientStats from "@/components/patients/PatientStats";
+
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({

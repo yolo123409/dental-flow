@@ -1,271 +1,189 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
-type Dentist = {
-  id: string;
-  full_name: string;
-  specialty: string;
-  email: string;
-  phone: string;
-  active: boolean;
-};
+import { Dentist } from "@/types/dentist";
+
+import {
+  getDentists,
+  deleteDentist,
+} from "@/services/dentists";
+
+import DentistHeader from "@/components/dentists/DentistHeader";
+import DentistStats from "@/components/dentists/DentistStats";
+import DentistGrid from "@/components/dentists/DentistGrid";
+import AddDentistModal from "@/components/dentists/AddDentistModal";
+import EditDentistModal from "@/components/dentists/EditDentistModal";
+
+import Button from "@/components/ui/Button";
+import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import EmptyState from "@/components/ui/EmptyState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function DentistsPage() {
   const [dentists, setDentists] = useState<Dentist[]>([]);
 
-  const [fullName, setFullName] = useState("");
-  const [specialty, setSpecialty] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
-  const [loading, setLoading] = useState(false);
+  const [showAddModal, setShowAddModal] =
+    useState(false);
+
+  const [showEditModal, setShowEditModal] =
+    useState(false);
+
+  const [showDeleteDialog, setShowDeleteDialog] =
+    useState(false);
+
+  const [selectedDentist, setSelectedDentist] =
+    useState<Dentist | null>(null);
 
   useEffect(() => {
     loadDentists();
   }, []);
 
   async function loadDentists() {
-    const { data } = await supabase
-      .from("dentists")
-      .select("*")
-      .order("full_name");
+    try {
+      setLoading(true);
 
-    setDentists(data || []);
+      const data = await getDentists();
+
+      setDentists(data);
+
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function addDentist() {
-    if (!fullName.trim()) {
-      alert("Dentist name is required.");
-      return;
-    }
-
-    setLoading(true);
-
-    const { error } = await supabase
-      .from("dentists")
-      .insert({
-        full_name: fullName,
-        specialty: specialty,
-        email: email,
-        phone: phone,
-        active: true,
-      });
-
-    setLoading(false);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setFullName("");
-    setSpecialty("");
-    setEmail("");
-    setPhone("");
-
-    loadDentists();
+  function handleEdit(dentist: Dentist) {
+    setSelectedDentist(dentist);
+    setShowEditModal(true);
   }
 
-  async function toggleActive(dentist: Dentist) {
-    const { error } = await supabase
-      .from("dentists")
-      .update({
-        active: !dentist.active,
-      })
-      .eq("id", dentist.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    loadDentists();
+  function handleDelete(dentist: Dentist) {
+    setSelectedDentist(dentist);
+    setShowDeleteDialog(true);
   }
 
-  async function deleteDentist(id: string) {
-    if (!confirm("Delete this dentist?")) return;
+  async function confirmDelete() {
+    if (!selectedDentist) return;
 
-    const { error } = await supabase
-      .from("dentists")
-      .delete()
-      .eq("id", id);
+    try {
+      setDeleting(true);
 
-    if (error) {
-      alert(error.message);
-      return;
+      await deleteDentist(selectedDentist.id);
+
+      await loadDentists();
+
+      setShowDeleteDialog(false);
+      setSelectedDentist(null);
+
+    } catch (error) {
+      console.error(error);
+      alert("Failed to delete dentist.");
+    } finally {
+      setDeleting(false);
     }
-
-    loadDentists();
   }
+
+  if (loading) {
+    return (
+      <LoadingSpinner text="Loading dentists..." />
+    );
+  }
+
+  const active = dentists.filter(
+    (d) => d.active
+  ).length;
+
+  const inactive = dentists.length - active;
 
   return (
-    <main className="min-h-screen bg-slate-100">
+    <div className="space-y-8">
 
-      <div className="mx-auto max-w-7xl px-8 py-12">
+      <div className="flex items-center justify-between">
 
-        <h1 className="text-5xl font-bold">
-          Dentist Management
-        </h1>
+        <DentistHeader
+          total={dentists.length}
+        />
 
-        <p className="mt-2 text-slate-600">
-          Manage dentists available for appointments.
-        </p>
-
-        <div className="mt-10 rounded-2xl bg-white p-8 shadow">
-
-          <h2 className="mb-6 text-2xl font-bold">
-            Add Dentist
-          </h2>
-
-          <div className="grid gap-4 md:grid-cols-2">
-
-            <input
-              className="rounded-lg border p-3"
-              placeholder="Full Name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
-
-            <input
-              className="rounded-lg border p-3"
-              placeholder="Specialty"
-              value={specialty}
-              onChange={(e) => setSpecialty(e.target.value)}
-            />
-
-            <input
-              className="rounded-lg border p-3"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-
-            <input
-              className="rounded-lg border p-3"
-              placeholder="Phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-
-          </div>
-
-          <button
-            onClick={addDentist}
-            disabled={loading}
-            className="mt-6 rounded-xl bg-blue-600 px-8 py-3 font-semibold text-white hover:bg-blue-700"
-          >
-            {loading ? "Saving..." : "Add Dentist"}
-          </button>
-
-        </div>
-
-        <div className="mt-10 rounded-2xl bg-white shadow">
-
-          <table className="w-full">
-
-            <thead>
-
-              <tr className="border-b bg-slate-50">
-
-                <th className="p-5 text-left">
-                  Name
-                </th>
-
-                <th className="text-left">
-                  Specialty
-                </th>
-
-                <th className="text-left">
-                  Email
-                </th>
-
-                <th className="text-left">
-                  Phone
-                </th>
-
-                <th className="text-left">
-                  Status
-                </th>
-
-                <th className="text-left">
-                  Actions
-                </th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {dentists.map((dentist) => (
-
-                <tr
-                  key={dentist.id}
-                  className="border-b"
-                >
-
-                  <td className="p-5 font-semibold">
-                    {dentist.full_name}
-                  </td>
-
-                  <td>
-                    {dentist.specialty || "-"}
-                  </td>
-
-                  <td>
-                    {dentist.email || "-"}
-                  </td>
-
-                  <td>
-                    {dentist.phone || "-"}
-                  </td>
-
-                  <td>
-
-                    <span
-                      className={
-                        dentist.active
-                          ? "font-semibold text-green-600"
-                          : "font-semibold text-red-600"
-                      }
-                    >
-                      {dentist.active ? "Active" : "Inactive"}
-                    </span>
-
-                  </td>
-
-                  <td className="space-x-2">
-
-                    <button
-                      onClick={() => toggleActive(dentist)}
-                      className="rounded-lg bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
-                    >
-                      Toggle
-                    </button>
-
-                    <button
-                      onClick={() => deleteDentist(dentist.id)}
-                      className="rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
-
-                  </td>
-
-                </tr>
-
-              ))}
-
-            </tbody>
-
-          </table>
-
-        </div>
+        <Button
+          onClick={() =>
+            setShowAddModal(true)
+          }
+        >
+          + Add Dentist
+        </Button>
 
       </div>
 
-    </main>
+      <DentistStats
+        total={dentists.length}
+        active={active}
+        inactive={inactive}
+      />
+
+      {dentists.length === 0 ? (
+        <EmptyState
+          title="No Dentists"
+          description="Add your first dentist to get started."
+          action={
+            <Button
+              onClick={() =>
+                setShowAddModal(true)
+              }
+            >
+              Add Dentist
+            </Button>
+          }
+        />
+      ) : (
+        <DentistGrid
+          dentists={dentists}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      )}
+
+      <AddDentistModal
+        open={showAddModal}
+        onClose={() =>
+          setShowAddModal(false)
+        }
+        onSuccess={loadDentists}
+      />
+
+      <EditDentistModal
+        open={showEditModal}
+        dentist={selectedDentist}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedDentist(null);
+        }}
+        onSuccess={loadDentists}
+      />
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Dentist"
+        description={
+          selectedDentist
+            ? `Are you sure you want to delete ${selectedDentist.full_name}? This action cannot be undone.`
+            : ""
+        }
+        confirmText={
+          deleting ? "Deleting..." : "Delete"
+        }
+        loading={deleting}
+        onCancel={() => {
+          setShowDeleteDialog(false);
+          setSelectedDentist(null);
+        }}
+        onConfirm={confirmDelete}
+      />
+
+    </div>
   );
 }

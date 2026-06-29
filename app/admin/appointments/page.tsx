@@ -28,16 +28,10 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
-interface PatientOption {
-  id: string;
-  first_name: string;
-  last_name: string;
-}
-
-interface DentistOption {
-  id: string;
-  full_name: string;
-}
+import {
+  PatientOption,
+  DentistOption,
+} from "@/types/options";
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);

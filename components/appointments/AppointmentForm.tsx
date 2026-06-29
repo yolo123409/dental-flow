@@ -15,16 +15,10 @@ export interface AppointmentFormData {
   status: AppointmentStatus;
 }
 
-interface PatientOption {
-  id: string;
-  first_name: string;
-  last_name: string;
-}
-
-interface DentistOption {
-  id: string;
-  full_name: string;
-}
+import {
+  PatientOption,
+  DentistOption,
+} from "@/types/options";
 
 interface AppointmentFormProps {
   form: AppointmentFormData;
