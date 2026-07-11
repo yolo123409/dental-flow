@@ -1,10 +1,12 @@
 "use client";
 
-import { Bell, Search, UserCircle2 } from "lucide-react";
+import { Bell, Search } from "lucide-react";
+
+import UserMenu from "@/components/auth/UserMenu";
 
 export default function Topbar() {
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b bg-white px-8">
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200 bg-white px-8">
 
       <div className="relative w-full max-w-md">
 
@@ -31,26 +33,7 @@ export default function Topbar() {
 
         </button>
 
-        <div className="flex items-center gap-3 rounded-xl border px-4 py-2">
-
-          <UserCircle2
-            size={36}
-            className="text-slate-500"
-          />
-
-          <div>
-
-            <p className="font-semibold">
-              Admin
-            </p>
-
-            <p className="text-sm text-slate-500">
-              Dental Flow
-            </p>
-
-          </div>
-
-        </div>
+        <UserMenu />
 
       </div>
 

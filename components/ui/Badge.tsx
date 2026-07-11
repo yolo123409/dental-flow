@@ -1,13 +1,16 @@
 "use client";
 
-interface Props {
-  children: React.ReactNode;
+import { ReactNode } from "react";
+
+interface BadgeProps {
+  children: ReactNode;
   color?:
     | "blue"
     | "green"
     | "red"
     | "yellow"
     | "gray";
+  className?: string;
 }
 
 const colors = {
@@ -21,10 +24,11 @@ const colors = {
 export default function Badge({
   children,
   color = "blue",
-}: Props) {
+  className = "",
+}: BadgeProps) {
   return (
     <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${colors[color]}`}
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${colors[color]} ${className}`}
     >
       {children}
     </span>

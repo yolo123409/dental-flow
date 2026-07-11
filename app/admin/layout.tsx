@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
+
 import AdminLayout from "@/components/admin/AdminLayout";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 export default function Layout({
   children,
@@ -7,8 +9,10 @@ export default function Layout({
   children: ReactNode;
 }) {
   return (
-    <AdminLayout>
-      {children}
-    </AdminLayout>
+    <ProtectedRoute>
+      <AdminLayout>
+        {children}
+      </AdminLayout>
+    </ProtectedRoute>
   );
 }

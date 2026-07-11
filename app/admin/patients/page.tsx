@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Patient } from "@/types/patient";
 import { getPatients } from "@/services/patients";
@@ -22,28 +22,37 @@ export default function PatientsPage() {
   }, []);
 
   async function loadPatients() {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const data = await getPatients();
+      const data = await getPatients();
 
-    setPatients(data);
-    setLoading(false);
+      setPatients(data);
+    } catch (error) {
+      console.error("Failed to load patients:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const filteredPatients = patients.filter((patient) => {
-    const fullName =
-      `${patient.first_name} ${patient.last_name}`.toLowerCase();
+  const filteredPatients = useMemo(() => {
+    return patients.filter((patient) => {
+      const fullName =
+        `${patient.first_name} ${patient.last_name}`.toLowerCase();
 
-    return (
-      fullName.includes(search.toLowerCase()) ||
-      patient.phone.includes(search)
-    );
-  });
+      return (
+        fullName.includes(search.toLowerCase()) ||
+        patient.phone.includes(search)
+      );
+    });
+  }, [patients, search]);
 
   if (loading) {
     return (
-      <div className="flex h-96 items-center justify-center text-lg font-medium">
-        Loading patients...
+      <div className="flex h-96 items-center justify-center">
+        <p className="text-lg font-medium text-slate-500">
+          Loading patients...
+        </p>
       </div>
     );
   }
@@ -56,12 +65,14 @@ export default function PatientsPage() {
       <PatientStats />
 
       <div className="flex justify-end">
+
         <button
           onClick={() => setShowModal(true)}
           className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
         >
           + Add Patient
         </button>
+
       </div>
 
       <PatientSearch
@@ -69,7 +80,9 @@ export default function PatientsPage() {
         onChange={setSearch}
       />
 
-      <PatientGrid patients={filteredPatients} />
+      <PatientGrid
+        patients={filteredPatients}
+      />
 
       <AddPatientModal
         open={showModal}

@@ -11,6 +11,8 @@ import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import DashboardWidgets from "@/components/dashboard/DashboardWidgets";
 
+import { useAuth } from "@/contexts/AuthContext";
+
 interface DashboardState {
   patients: number;
   appointments: number;
@@ -19,6 +21,8 @@ interface DashboardState {
 }
 
 export default function AdminDashboard() {
+  const { profile, authUser, loading: authLoading } = useAuth();
+
   const [stats, setStats] = useState<DashboardState>({
     patients: 0,
     appointments: 0,
@@ -27,6 +31,14 @@ export default function AdminDashboard() {
   });
 
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    console.log("========== AUTH TEST ==========");
+    console.log("Auth Loading:", authLoading);
+    console.log("Auth User:", authUser);
+    console.log("Clinic Profile:", profile);
+    console.log("===============================");
+  }, [authLoading, authUser, profile]);
 
   const loadDashboard = useCallback(async () => {
     try {

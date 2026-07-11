@@ -1,21 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import PageContainer from "@/components/ui/PageContainer";
 import Card from "@/components/ui/Card";
 
+import PatientProfileHeader from "@/components/patients/PatientProfileHeader";
+import PatientTabs from "@/components/patients/PatientTabs";
 import PatientTimeline from "@/components/patients/PatientTimeline";
+import BillingSummary from "@/components/patients/BillingSummary";
 
 import {
   getPatientProfile,
   getPatientAppointments,
 } from "@/services/patientProfile";
 
+import { getPatientTimeline } from "@/services/timeline";
+
 import {
-  getPatientTimeline,
-} from "@/services/timeline";
+  getPatientInvoices,
+  calculateBalance,
+} from "@/services/billing";
+
+import DentalChart from "@/components/patients/dental/DentalChart";
 
 export default function PatientProfilePage() {
   const params = useParams();
@@ -28,48 +36,57 @@ export default function PatientProfilePage() {
 
   const [timeline, setTimeline] = useState<any[]>([]);
 
+  const [billing, setBilling] = useState({
+    total: 0,
+    paid: 0,
+    outstanding: 0,
+  });
+
+  const [activeTab, setActiveTab] =
+    useState("Overview");
+
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
+  const loadPatient = useCallback(async () => {
     try {
       setLoading(true);
 
-      const profile = await getPatientProfile(id);
-
-      const history = await getPatientAppointments(id);
-
-      const timelineItems =
-        await getPatientTimeline(id);
+      const [
+        profile,
+        history,
+        timelineItems,
+        invoices,
+      ] = await Promise.all([
+        getPatientProfile(id),
+        getPatientAppointments(id),
+        getPatientTimeline(id),
+        getPatientInvoices(id),
+      ]);
 
       setPatient(profile);
-
       setAppointments(history);
-
       setTimeline(timelineItems);
+      setBilling(calculateBalance(invoices));
 
     } catch (error) {
       console.error("Failed to load patient:", error);
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    loadPatient();
+  }, [loadPatient]);
 
   if (loading) {
     return (
       <PageContainer>
-
         <div className="flex h-[60vh] items-center justify-center">
-
           <p className="text-lg text-slate-500">
             Loading patient...
           </p>
-
         </div>
-
       </PageContainer>
     );
   }
@@ -77,15 +94,11 @@ export default function PatientProfilePage() {
   if (!patient) {
     return (
       <PageContainer>
-
         <div className="flex h-[60vh] items-center justify-center">
-
           <p className="text-lg text-red-500">
             Patient not found.
           </p>
-
         </div>
-
       </PageContainer>
     );
   }
@@ -93,92 +106,93 @@ export default function PatientProfilePage() {
   return (
     <PageContainer>
 
-      {/* Patient Profile */}
+      <PatientProfileHeader patient={patient} />
 
-      <Card>
-
-        <div className="flex items-center justify-between">
-
-          <div>
-
-            <h1 className="text-4xl font-bold">
-
-              {patient.first_name} {patient.last_name}
-
-            </h1>
-
-            <p className="mt-4">
-
-              📞 {patient.phone || "No phone"}
-
-            </p>
-
-            <p>
-
-              📧 {patient.email || "No email"}
-
-            </p>
-
-          </div>
-
-        </div>
-
-      </Card>
-
-      {/* Appointment History */}
-
-      <Card title="Appointment History">
-
-        {appointments.length === 0 ? (
-
-          <p className="text-slate-500">
-            No appointments found.
-          </p>
-
-        ) : (
-
-          <div className="space-y-4">
-
-            {appointments.map((appointment) => (
-
-              <div
-                key={appointment.id}
-                className="rounded-xl bg-slate-50 p-4"
-              >
-
-                <h3 className="font-semibold">
-
-                  {appointment.treatment}
-
-                </h3>
-
-                <p className="mt-1 text-slate-500">
-
-                  {appointment.appointment_date}
-
-                </p>
-
-                <p className="text-sm text-slate-600">
-
-                  {appointment.dentists?.full_name}
-
-                </p>
-
-              </div>
-
-            ))}
-
-          </div>
-
-        )}
-
-      </Card>
-
-      {/* Patient Timeline */}
-
-      <PatientTimeline
-        items={timeline}
+      <PatientTabs
+        active={activeTab}
+        onChange={setActiveTab}
       />
+
+      {/* Overview */}
+
+      {activeTab === "Overview" && (
+        <BillingSummary
+          total={billing.total}
+          paid={billing.paid}
+          outstanding={billing.outstanding}
+        />
+      )}
+
+      {/* Dental Chart */}
+
+      {activeTab === "Dental Chart" && (
+  <DentalChart
+  patientId={patient.id}
+/>
+)}
+
+      {/* Appointments */}
+
+      {activeTab === "Appointments" && (
+        <Card title="Appointment History">
+
+          {appointments.length === 0 ? (
+
+            <p className="text-slate-500">
+              No appointments found.
+            </p>
+
+          ) : (
+
+            <div className="space-y-4">
+
+              {appointments.map((appointment) => (
+
+                <div
+                  key={appointment.id}
+                  className="rounded-xl bg-slate-50 p-4"
+                >
+
+                  <h3 className="font-semibold">
+                    {appointment.treatment}
+                  </h3>
+
+                  <p className="mt-1 text-slate-500">
+                    {appointment.appointment_date}
+                  </p>
+
+                  <p className="text-sm text-slate-600">
+                    {appointment.dentists?.full_name}
+                  </p>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          )}
+
+        </Card>
+      )}
+
+      {/* Billing */}
+
+      {activeTab === "Billing" && (
+        <BillingSummary
+          total={billing.total}
+          paid={billing.paid}
+          outstanding={billing.outstanding}
+        />
+      )}
+
+      {/* Timeline */}
+
+      {activeTab === "Timeline" && (
+        <PatientTimeline
+          items={timeline}
+        />
+      )}
 
     </PageContainer>
   );

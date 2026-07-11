@@ -157,3 +157,4 @@ export async function deleteAppointment(id: string) {
     throw error;
   }
 }
+
