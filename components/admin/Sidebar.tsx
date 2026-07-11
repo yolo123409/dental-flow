@@ -16,6 +16,7 @@ import {
   MessageSquare,
   BarChart3,
   Settings,
+  LucideIcon,
 } from "lucide-react";
 
 import { Permission } from "@/lib/permissions";
@@ -26,7 +27,7 @@ import usePermissions from "@/hooks/usePermissions";
 interface SidebarLink {
   name: string;
   href: string;
-  icon: any;
+  icon: LucideIcon;
   permission: Permission;
 }
 
@@ -175,7 +176,6 @@ export default function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-4 py-6">
 
         {sections.map((section) => {
-
           const visibleLinks =
             section.links.filter((link) =>
               hasPermission(link.permission)
@@ -196,14 +196,11 @@ export default function Sidebar() {
               </p>
 
               {visibleLinks.map((link) => {
-
                 const Icon = link.icon;
 
                 const active =
                   pathname === link.href ||
-                  pathname.startsWith(
-                    `${link.href}/`
-                  );
+                  pathname.startsWith(`${link.href}/`);
 
                 return (
                   <Link
@@ -223,12 +220,10 @@ export default function Sidebar() {
 
                   </Link>
                 );
-
               })}
 
             </div>
           );
-
         })}
 
       </nav>
@@ -250,11 +245,11 @@ export default function Sidebar() {
           <p className="mt-3 text-xs text-slate-500">
             Logged in as{" "}
             <span className="font-semibold">
-              {profile?.full_name}
+              {profile?.full_name ?? "Loading..."}
             </span>
           </p>
 
-          <p className="text-xs text-blue-600 font-semibold">
+          <p className="text-xs font-semibold text-blue-600">
             {role}
           </p>
 

@@ -2,14 +2,7 @@
 
 import Card from "@/components/ui/Card";
 
-interface Invoice {
-  id: string;
-  amount: number;
-  paid: number;
-  balance: number;
-  status: string;
-  created_at: string;
-}
+import { Invoice } from "@/types";
 
 interface Props {
   invoice: Invoice;
@@ -29,13 +22,13 @@ export default function InvoiceCard({
   onClick,
 }: Props) {
   return (
-    <Card
-      className="cursor-pointer hover:border-blue-500"
-    >
+    <Card className="cursor-pointer hover:border-blue-500">
+
       <div
         onClick={onClick}
         className="space-y-4"
       >
+
         <div className="flex items-center justify-between">
 
           <h3 className="font-bold">
@@ -80,6 +73,7 @@ export default function InvoiceCard({
         </p>
 
       </div>
+
     </Card>
   );
 }

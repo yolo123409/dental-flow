@@ -1,24 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
+
+import { toast } from "sonner";
+
 import { supabase } from "@/lib/supabase";
 
 type Props = {
   onSuccess: () => void;
 };
 
-export default function ProductForm({ onSuccess }: Props) {
+export default function ProductForm({
+  onSuccess,
+}: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [price, setPrice] = useState("");
 
-  const [image, setImage] = useState<File | null>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [image, setImage] =
+    useState<File | null>(null);
 
-  const [loading, setLoading] = useState(false);
+  const [file, setFile] =
+    useState<File | null>(null);
 
-  async function uploadImage() {
+  const [loading, setLoading] =
+    useState(false);
+
+  const uploadImage = useCallback(async () => {
     if (!image) return null;
 
     const filename = `${Date.now()}-${image.name}`;
@@ -36,9 +45,9 @@ export default function ProductForm({ onSuccess }: Props) {
       .getPublicUrl(filename);
 
     return publicUrl;
-  }
+  }, [image]);
 
-  async function uploadFile() {
+  const uploadFile = useCallback(async () => {
     if (!file) return null;
 
     const filename = `${Date.now()}-${file.name}`;
@@ -50,17 +59,19 @@ export default function ProductForm({ onSuccess }: Props) {
     if (error) throw error;
 
     return filename;
-  }
+  }, [file]);
 
   async function createProduct() {
     if (!title || !description || !price) {
-      alert("Please complete all required fields.");
+      toast.error(
+        "Please complete all required fields."
+      );
       return;
     }
 
-    setLoading(true);
-
     try {
+      setLoading(true);
+
       const imageUrl = await uploadImage();
       const downloadPath = await uploadFile();
 
@@ -87,12 +98,22 @@ export default function ProductForm({ onSuccess }: Props) {
 
       onSuccess();
 
-      alert("Product created successfully.");
-    } catch (err: any) {
-      alert(err.message);
-    }
+      toast.success(
+        "Product created successfully."
+      );
+    } catch (error: unknown) {
+      console.error(error);
 
-    setLoading(false);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error(
+          "Unable to create product."
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -108,21 +129,27 @@ export default function ProductForm({ onSuccess }: Props) {
           className="rounded-lg border p-3"
           placeholder="Title"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) =>
+            setTitle(e.target.value)
+          }
         />
 
         <textarea
           className="rounded-lg border p-3"
           placeholder="Description"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) =>
+            setDescription(e.target.value)
+          }
         />
 
         <input
           className="rounded-lg border p-3"
           placeholder="Category"
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(e) =>
+            setCategory(e.target.value)
+          }
         />
 
         <input
@@ -130,7 +157,9 @@ export default function ProductForm({ onSuccess }: Props) {
           type="number"
           placeholder="Price"
           value={price}
-          onChange={(e) => setPrice(e.target.value)}
+          onChange={(e) =>
+            setPrice(e.target.value)
+          }
         />
 
         <div>
@@ -144,7 +173,9 @@ export default function ProductForm({ onSuccess }: Props) {
             accept="image/*"
             className="mt-2"
             onChange={(e) =>
-              setImage(e.target.files?.[0] || null)
+              setImage(
+                e.target.files?.[0] ?? null
+              )
             }
           />
 
@@ -160,18 +191,22 @@ export default function ProductForm({ onSuccess }: Props) {
             type="file"
             className="mt-2"
             onChange={(e) =>
-              setFile(e.target.files?.[0] || null)
+              setFile(
+                e.target.files?.[0] ?? null
+              )
             }
           />
 
         </div>
 
         <button
-          disabled={loading}
           onClick={createProduct}
-          className="rounded-xl bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700"
+          disabled={loading}
+          className="rounded-xl bg-blue-600 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? "Uploading..." : "Create Product"}
+          {loading
+            ? "Uploading..."
+            : "Create Product"}
         </button>
 
       </div>

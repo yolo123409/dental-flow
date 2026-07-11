@@ -2,9 +2,15 @@
 
 import { useEffect, useState } from "react";
 
-import PatientForm from "@/components/patients/PatientForm";
+import PatientForm, {
+  PatientFormData,
+} from "@/components/patients/PatientForm";
+
 import { Patient } from "@/types/patient";
+import { PatientGender } from "@/types";
+
 import { updatePatient } from "@/services/patients";
+
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 
@@ -23,17 +29,18 @@ export default function EditPatientModal({
 }: Props) {
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    first_name: "",
-    last_name: "",
-    phone: "",
-    email: "",
-    gender: "",
-    date_of_birth: "",
-    address: "",
-    allergies: "",
-    medical_history: "",
-  });
+  const [form, setForm] =
+    useState<PatientFormData>({
+      first_name: "",
+      last_name: "",
+      phone: "",
+      email: "",
+      gender: null,
+      date_of_birth: "",
+      address: "",
+      allergies: "",
+      medical_history: "",
+    });
 
   useEffect(() => {
     if (!patient) return;
@@ -43,7 +50,7 @@ export default function EditPatientModal({
       last_name: patient.last_name ?? "",
       phone: patient.phone ?? "",
       email: patient.email ?? "",
-      gender: patient.gender ?? "",
+      gender: patient.gender,
       date_of_birth: patient.date_of_birth ?? "",
       address: patient.address ?? "",
       allergies: patient.allergies ?? "",
@@ -52,25 +59,31 @@ export default function EditPatientModal({
   }, [patient]);
 
   function update(
-    field: keyof typeof form,
+    field: keyof PatientFormData,
     value: string
   ) {
     setForm((prev) => ({
       ...prev,
-      [field]: value,
+      [field]:
+        field === "gender"
+          ? ((value === ""
+              ? null
+              : value) as PatientGender | null)
+          : value,
     }));
   }
 
   async function saveChanges() {
     if (!patient) return;
 
-    setLoading(true);
-
     try {
+      setLoading(true);
+
       await updatePatient(patient.id, form);
 
       onSuccess();
       onClose();
+
     } catch (error) {
       console.error(error);
       alert("Failed to update patient.");
@@ -80,34 +93,34 @@ export default function EditPatientModal({
   }
 
   return (
-  <Modal
-    open={open}
-    title="Edit Patient"
-    onClose={onClose}
-    footer={
-      <>
-        <Button
-          variant="secondary"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
+    <Modal
+      open={open}
+      title="Edit Patient"
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
 
-        <Button
-          onClick={saveChanges}
-          disabled={loading}
-        >
-          {loading ? "Saving..." : "Save Changes"}
-        </Button>
-      </>
-    }
-  >
-
-    <PatientForm
-      form={form}
-      onChange={update}
-    />
-
-  </Modal>
-);
+          <Button
+            onClick={saveChanges}
+            disabled={loading}
+          >
+            {loading
+              ? "Saving..."
+              : "Save Changes"}
+          </Button>
+        </>
+      }
+    >
+      <PatientForm
+        form={form}
+        onChange={update}
+      />
+    </Modal>
+  );
 }

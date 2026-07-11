@@ -1,59 +1,97 @@
 import { supabase } from "@/lib/supabase";
 
-export async function getPatientTimeline(patientId: string) {
-  const [appointments, treatments, invoices] =
-    await Promise.all([
-      supabase
-        .from("appointments")
-        .select("*")
-        .eq("patient_id", patientId),
+import { TimelineItem } from "@/types";
 
-      supabase
-        .from("treatments")
-        .select("*")
-        .eq("patient_id", patientId),
+interface AppointmentRow {
+  id: string;
+  treatment: string;
+  appointment_date: string;
+}
 
-      supabase
-        .from("invoices")
-        .select("*")
-        .eq("patient_id", patientId),
-    ]);
+interface TreatmentRow {
+  id: string;
+  treatment_name: string;
+  diagnosis: string | null;
+  created_at: string;
+}
 
-  const items: any[] = [];
+interface InvoiceRow {
+  id: string;
+  amount: number;
+  created_at: string;
+}
 
-  appointments.data?.forEach((a: any) => {
-    items.push({
-      id: a.id,
-      title: a.treatment,
-      description: "Appointment",
-      date: a.appointment_date,
-      type: "appointment",
-    });
-  });
+export async function getPatientTimeline(
+  patientId: string
+): Promise<TimelineItem[]> {
+  const [
+    appointments,
+    treatments,
+    invoices,
+  ] = await Promise.all([
+    supabase
+      .from("appointments")
+      .select("id, treatment, appointment_date")
+      .eq("patient_id", patientId),
 
-  treatments.data?.forEach((t: any) => {
-    items.push({
-      id: t.id,
-      title: t.treatment_name,
-      description: t.diagnosis,
-      date: t.created_at,
-      type: "treatment",
-    });
-  });
+    supabase
+      .from("treatments")
+      .select(
+        "id, treatment_name, diagnosis, created_at"
+      )
+      .eq("patient_id", patientId),
 
-  invoices.data?.forEach((i: any) => {
-    items.push({
-      id: i.id,
-      title: "Invoice",
-      description: `KSh ${i.amount}`,
-      date: i.created_at,
-      type: "invoice",
-    });
-  });
+    supabase
+      .from("invoices")
+      .select("id, amount, created_at")
+      .eq("patient_id", patientId),
+  ]);
+
+  const items: TimelineItem[] = [];
+
+  (appointments.data as AppointmentRow[] | null)?.forEach(
+    (appointment) => {
+      items.push({
+        id: appointment.id,
+        patient_id: patientId,
+        title: appointment.treatment,
+        description: "Appointment",
+        created_at: appointment.appointment_date,
+        type: "appointment",
+      });
+    }
+  );
+
+  (treatments.data as TreatmentRow[] | null)?.forEach(
+    (treatment) => {
+      items.push({
+        id: treatment.id,
+        patient_id: patientId,
+        title: treatment.treatment_name,
+        description:
+          treatment.diagnosis ?? "",
+        created_at: treatment.created_at,
+        type: "treatment",
+      });
+    }
+  );
+
+  (invoices.data as InvoiceRow[] | null)?.forEach(
+    (invoice) => {
+      items.push({
+        id: invoice.id,
+        patient_id: patientId,
+        title: "Invoice",
+        description: `KSh ${invoice.amount}`,
+        created_at: invoice.created_at,
+        type: "invoice",
+      });
+    }
+  );
 
   return items.sort(
     (a, b) =>
-      new Date(b.date).getTime() -
-      new Date(a.date).getTime()
+      new Date(b.created_at).getTime() -
+      new Date(a.created_at).getTime()
   );
 }

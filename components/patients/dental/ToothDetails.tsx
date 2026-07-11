@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  PatientTooth,
+  ToothCondition,
+} from "@/types";
+
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import FormTextarea from "@/components/ui/FormTextarea";
+
 import { saveTooth } from "@/services/patientTeeth";
 
-const conditions = [
+const conditions: ToothCondition[] = [
   "Healthy",
   "Caries",
   "Filling",
@@ -19,7 +25,7 @@ const conditions = [
 interface Props {
   patientId: string;
   tooth: number;
-  data?: any;
+  data?: PatientTooth | null;
   onSaved: () => void;
 }
 
@@ -29,18 +35,37 @@ export default function ToothDetails({
   data,
   onSaved,
 }: Props) {
-  const [condition, setCondition] = useState("Healthy");
-  const [diagnosis, setDiagnosis] = useState("");
-  const [treatment, setTreatment] = useState("");
-  const [notes, setNotes] = useState("");
+  const [condition, setCondition] =
+    useState<ToothCondition>("Healthy");
 
-  const [saving, setSaving] = useState(false);
+  const [diagnosis, setDiagnosis] =
+    useState("");
+
+  const [treatment, setTreatment] =
+    useState("");
+
+  const [notes, setNotes] =
+    useState("");
+
+  const [saving, setSaving] =
+    useState(false);
 
   useEffect(() => {
-    setCondition(data?.condition ?? "Healthy");
-    setDiagnosis(data?.diagnosis ?? "");
-    setTreatment(data?.treatment ?? "");
-    setNotes(data?.notes ?? "");
+    setCondition(
+      data?.condition ?? "Healthy"
+    );
+
+    setDiagnosis(
+      data?.diagnosis ?? ""
+    );
+
+    setTreatment(
+      data?.treatment ?? ""
+    );
+
+    setNotes(
+      data?.notes ?? ""
+    );
   }, [data]);
 
   async function handleSave() {
@@ -79,7 +104,9 @@ export default function ToothDetails({
           <select
             value={condition}
             onChange={(e) =>
-              setCondition(e.target.value)
+              setCondition(
+                e.target.value as ToothCondition
+              )
             }
             className="w-full rounded-xl border border-slate-200 p-3"
           >
@@ -96,28 +123,30 @@ export default function ToothDetails({
         </div>
 
         <FormTextarea
-  label="Diagnosis"
-  value={diagnosis}
-  onChange={setDiagnosis}
-/>
+          label="Diagnosis"
+          value={diagnosis}
+          onChange={setDiagnosis}
+        />
 
-<FormTextarea
-  label="Treatment"
-  value={treatment}
-  onChange={setTreatment}
-/>
+        <FormTextarea
+          label="Treatment"
+          value={treatment}
+          onChange={setTreatment}
+        />
 
-<FormTextarea
-  label="Clinical Notes"
-  value={notes}
-  onChange={setNotes}
-/>
+        <FormTextarea
+          label="Clinical Notes"
+          value={notes}
+          onChange={setNotes}
+        />
 
         <Button
           onClick={handleSave}
           disabled={saving}
         >
-          {saving ? "Saving..." : "Save Tooth"}
+          {saving
+            ? "Saving..."
+            : "Save Tooth"}
         </Button>
 
       </div>

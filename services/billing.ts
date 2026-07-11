@@ -1,27 +1,40 @@
 import { supabase } from "@/lib/supabase";
 
-export async function getPatientInvoices(patientId: string) {
+import {
+  Invoice,
+  BillingSummary,
+} from "@/types";
+
+export async function getPatientInvoices(
+  patientId: string
+): Promise<Invoice[]> {
   const { data, error } = await supabase
     .from("invoices")
     .select("*")
     .eq("patient_id", patientId)
-    .order("created_at", { ascending: false });
+    .order("created_at", {
+      ascending: false,
+    });
 
   if (error) {
     throw error;
   }
 
-  return data ?? [];
+  return (data ?? []) as Invoice[];
 }
 
-export function calculateBalance(invoices: any[]) {
+export function calculateBalance(
+  invoices: Invoice[]
+): BillingSummary {
   const total = invoices.reduce(
-    (sum, invoice) => sum + Number(invoice.amount ?? 0),
+    (sum, invoice) =>
+      sum + Number(invoice.amount ?? 0),
     0
   );
 
   const paid = invoices.reduce(
-    (sum, invoice) => sum + Number(invoice.paid ?? 0),
+    (sum, invoice) =>
+      sum + Number(invoice.paid ?? 0),
     0
   );
 
@@ -35,8 +48,7 @@ export function calculateBalance(invoices: any[]) {
 export async function recordInvoicePayment(
   invoiceId: string,
   paymentAmount: number
-) {
-  // Get the current invoice
+): Promise<Invoice> {
   const { data: invoice, error } = await supabase
     .from("invoices")
     .select("amount, paid")
@@ -48,7 +60,10 @@ export async function recordInvoicePayment(
   }
 
   const totalAmount = Number(invoice.amount);
-  const currentPaid = Number(invoice.paid ?? 0);
+
+  const currentPaid = Number(
+    invoice.paid ?? 0
+  );
 
   const newPaid = Math.min(
     currentPaid + paymentAmount,
@@ -64,21 +79,23 @@ export async function recordInvoicePayment(
       ? "Partially Paid"
       : "Pending";
 
-  const { data: updatedInvoice, error: updateError } =
-    await supabase
-      .from("invoices")
-      .update({
-        paid: newPaid,
-        balance,
-        status,
-      })
-      .eq("id", invoiceId)
-      .select()
-      .single();
+  const {
+    data: updatedInvoice,
+    error: updateError,
+  } = await supabase
+    .from("invoices")
+    .update({
+      paid: newPaid,
+      balance,
+      status,
+    })
+    .eq("id", invoiceId)
+    .select()
+    .single();
 
   if (updateError) {
     throw updateError;
   }
 
-  return updatedInvoice;
+  return updatedInvoice as Invoice;
 }

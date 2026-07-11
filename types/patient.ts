@@ -1,3 +1,8 @@
+export type PatientGender =
+  | "Male"
+  | "Female"
+  | "Other";
+
 export interface Patient {
   id: string;
 
@@ -5,19 +10,19 @@ export interface Patient {
 
   last_name: string;
 
-  email: string;
-
   phone: string;
 
-  date_of_birth?: string;
+  email: string | null;
 
-  gender?: string;
+  gender: PatientGender | null;
 
-  address?: string;
+  date_of_birth: string | null;
 
-  allergies?: string;
+  address: string | null;
 
-  medical_history?: string;
+  allergies: string | null;
+
+  medical_history: string | null;
 
   created_at: string;
 }

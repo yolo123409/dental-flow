@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import { toast } from "sonner";
 
 import { Patient } from "@/types/patient";
+
 import { getPatients } from "@/services/patients";
+
+import PageContainer from "@/components/ui/PageContainer";
 
 import PatientHeader from "@/components/patients/PatientHeader";
 import PatientStats from "@/components/patients/PatientStats";
@@ -13,15 +23,14 @@ import AddPatientModal from "@/components/patients/AddPatientModal";
 
 export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
+
   const [loading, setLoading] = useState(true);
+
   const [search, setSearch] = useState("");
+
   const [showModal, setShowModal] = useState(false);
 
-  useEffect(() => {
-    loadPatients();
-  }, []);
-
-  async function loadPatients() {
+  const loadPatients = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -30,66 +39,84 @@ export default function PatientsPage() {
       setPatients(data);
     } catch (error) {
       console.error("Failed to load patients:", error);
+
+      toast.error("Unable to load patients.");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadPatients();
+  }, [loadPatients]);
 
   const filteredPatients = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
     return patients.filter((patient) => {
       const fullName =
         `${patient.first_name} ${patient.last_name}`.toLowerCase();
 
+      const phone = patient.phone ?? "";
+
       return (
-        fullName.includes(search.toLowerCase()) ||
-        patient.phone.includes(search)
+        fullName.includes(query) ||
+        phone.includes(query)
       );
     });
   }, [patients, search]);
 
   if (loading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <p className="text-lg font-medium text-slate-500">
-          Loading patients...
-        </p>
-      </div>
+      <PageContainer>
+        <div className="flex h-[60vh] items-center justify-center">
+          <p className="text-lg font-medium text-slate-500">
+            Loading patients...
+          </p>
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <PageContainer>
 
-      <PatientHeader total={patients.length} />
+      <div className="space-y-8">
 
-      <PatientStats />
+        <PatientHeader
+          total={patients.length}
+        />
 
-      <div className="flex justify-end">
+        <PatientStats />
 
-        <button
-          onClick={() => setShowModal(true)}
-          className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
-        >
-          + Add Patient
-        </button>
+        <div className="flex justify-end">
+
+          <button
+            onClick={() => setShowModal(true)}
+            className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
+          >
+            + Add Patient
+          </button>
+
+        </div>
+
+        <PatientSearch
+          value={search}
+          onChange={setSearch}
+        />
+
+        <PatientGrid
+          patients={filteredPatients}
+        />
+
+        <AddPatientModal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          onSuccess={loadPatients}
+        />
 
       </div>
 
-      <PatientSearch
-        value={search}
-        onChange={setSearch}
-      />
-
-      <PatientGrid
-        patients={filteredPatients}
-      />
-
-      <AddPatientModal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        onSuccess={loadPatients}
-      />
-
-    </div>
+    </PageContainer>
   );
 }

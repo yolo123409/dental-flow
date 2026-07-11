@@ -14,6 +14,8 @@ import {
 
 import { getPatientTeeth } from "@/services/patientTeeth";
 
+import { PatientTooth } from "@/types";
+
 interface Props {
   patientId: string;
 }
@@ -25,7 +27,7 @@ export default function DentalChart({
     useState<number | null>(null);
 
   const [teeth, setTeeth] =
-    useState<any[]>([]);
+  useState<PatientTooth[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -48,16 +50,15 @@ export default function DentalChart({
     loadTeeth();
   }, [loadTeeth]);
 
-  const selectedToothData = useMemo(() => {
-    if (!selectedTooth) return null;
+  const selectedToothData = useMemo<PatientTooth | null>(() => {
+  if (!selectedTooth) return null;
 
-    return (
-      teeth.find(
-        (tooth) =>
-          tooth.tooth_number === selectedTooth
-      ) ?? null
-    );
-  }, [selectedTooth, teeth]);
+  return (
+    teeth.find(
+      (tooth) => tooth.tooth_number === selectedTooth
+    ) ?? null
+  );
+}, [selectedTooth, teeth]);
 
   return (
     <Card title="Dental Chart">

@@ -4,14 +4,28 @@ import { useState } from "react";
 
 import PatientForm from "@/components/patients/PatientForm";
 import { createPatient } from "@/services/patients";
+
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 
+import { PatientGender } from "@/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+interface PatientFormData {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  gender: PatientGender | null;
+  date_of_birth: string;
+  address: string;
+  allergies: string;
+  medical_history: string;
 }
 
 export default function AddPatientModal({
@@ -21,25 +35,31 @@ export default function AddPatientModal({
 }: Props) {
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    first_name: "",
-    last_name: "",
-    phone: "",
-    email: "",
-    gender: "",
-    date_of_birth: "",
-    address: "",
-    allergies: "",
-    medical_history: "",
-  });
+  const [form, setForm] =
+    useState<PatientFormData>({
+      first_name: "",
+      last_name: "",
+      phone: "",
+      email: "",
+      gender: null,
+      date_of_birth: "",
+      address: "",
+      allergies: "",
+      medical_history: "",
+    });
 
   function update(
-    field: keyof typeof form,
+    field: keyof PatientFormData,
     value: string
   ) {
     setForm((prev) => ({
       ...prev,
-      [field]: value,
+      [field]:
+        field === "gender"
+          ? ((value === ""
+              ? null
+              : value) as PatientGender | null)
+          : value,
     }));
   }
 
@@ -72,7 +92,7 @@ export default function AddPatientModal({
         last_name: "",
         phone: "",
         email: "",
-        gender: "",
+        gender: null,
         date_of_birth: "",
         address: "",
         allergies: "",
@@ -88,34 +108,34 @@ export default function AddPatientModal({
   }
 
   return (
-  <Modal
-    open={open}
-    title="Add Patient"
-    onClose={onClose}
-    footer={
-      <>
-        <Button
-          variant="secondary"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
+    <Modal
+      open={open}
+      title="Add Patient"
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
 
-        <Button
-          onClick={savePatient}
-          disabled={loading}
-        >
-          {loading ? "Saving..." : "Save Patient"}
-        </Button>
-      </>
-    }
-  >
-
-    <PatientForm
-      form={form}
-      onChange={update}
-    />
-
-  </Modal>
-);
+          <Button
+            onClick={savePatient}
+            disabled={loading}
+          >
+            {loading
+              ? "Saving..."
+              : "Save Patient"}
+          </Button>
+        </>
+      }
+    >
+      <PatientForm
+        form={form}
+        onChange={update}
+      />
+    </Modal>
+  );
 }

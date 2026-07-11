@@ -1,10 +1,12 @@
 "use client";
 
+import { Invoice } from "@/types";
+
 import InvoiceCard from "./InvoiceCard";
 
 interface Props {
-  invoices: any[];
-  onSelect: (invoice: any) => void;
+  invoices: Invoice[];
+  onSelect: (invoice: Invoice) => void;
 }
 
 export default function InvoiceList({
@@ -21,13 +23,17 @@ export default function InvoiceList({
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
+
       {invoices.map((invoice) => (
+
         <InvoiceCard
           key={invoice.id}
           invoice={invoice}
           onClick={() => onSelect(invoice)}
         />
+
       ))}
+
     </div>
   );
 }

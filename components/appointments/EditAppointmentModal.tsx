@@ -36,25 +36,29 @@ export default function EditAppointmentModal({
 }: Props) {
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState<AppointmentFormData>({
-    patient_id: "",
-    dentist_id: "",
-    treatment: "",
-    appointment_date: "",
-    appointment_time: "",
-    notes: "",
-    status: "Scheduled",
-  });
+  const [form, setForm] =
+    useState<AppointmentFormData>({
+      patient_id: "",
+      dentist_id: "",
+      treatment: "",
+      appointment_date: "",
+      appointment_time: "",
+      notes: "",
+      status: "Scheduled",
+    });
 
   useEffect(() => {
     if (!appointment) return;
 
     setForm({
       patient_id: appointment.patient_id,
-      dentist_id: appointment.dentist_id,
+      dentist_id:
+        appointment.dentist_id ?? "",
       treatment: appointment.treatment,
-      appointment_date: appointment.appointment_date,
-      appointment_time: appointment.appointment_time,
+      appointment_date:
+        appointment.appointment_date,
+      appointment_time:
+        appointment.appointment_time,
       notes: appointment.notes ?? "",
       status: appointment.status,
     });
@@ -84,9 +88,10 @@ export default function EditAppointmentModal({
         form
       );
 
-      await onSuccess();
+      onSuccess();
 
       onClose();
+
     } catch (error) {
       console.error(error);
       alert("Failed to update appointment.");

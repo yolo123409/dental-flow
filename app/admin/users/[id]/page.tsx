@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import PageContainer from "@/components/ui/PageContainer";
-import Card from "@/components/ui/Card";
 
 import {
   StaffHeader,
@@ -13,7 +12,7 @@ import {
   StaffPermissionsCard,
 } from "@/components/users";
 
-import { ClinicUser } from "@/types/clinicUser";
+import { ClinicUser } from "@/types";
 
 import {
   getUser,
@@ -33,27 +32,29 @@ export default function StaffProfilePage() {
   const [user, setUser] = useState<ClinicUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadUser();
-  }, []);
-
-  async function loadUser() {
+  const loadUser = useCallback(async () => {
     try {
       setLoading(true);
 
       const data = await getUser(id);
 
       setUser(data);
-    } catch (error: any) {
-  console.error("loadUser failed:", error);
-  console.error("Message:", error?.message);
-  console.error("Full error:", JSON.stringify(error, null, 2));
+    } catch (error: unknown) {
+      console.error("loadUser failed:", error);
 
-  toast.error("Unable to load staff member.");
-} finally {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+
+      toast.error("Unable to load staff member.");
+    } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
   async function toggleStatus() {
     if (!user) return;
@@ -118,30 +119,30 @@ export default function StaffProfilePage() {
   return (
     <PageContainer>
 
-  <StaffHeader
-    user={user}
-    onToggleStatus={toggleStatus}
-    onDelete={removeUser}
-  />
+      <StaffHeader
+        user={user}
+        onToggleStatus={toggleStatus}
+        onDelete={removeUser}
+      />
 
-  <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
 
-    <div className="space-y-6 lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2">
 
-      <StaffInfoCard user={user} />
+          <StaffInfoCard user={user} />
 
-      <StaffActivityCard />
+          <StaffActivityCard />
 
-    </div>
+        </div>
 
-    <div>
+        <div>
 
-      <StaffPermissionsCard />
+          <StaffPermissionsCard />
 
-    </div>
+        </div>
 
-  </div>
+      </div>
 
-</PageContainer>
+    </PageContainer>
   );
 }

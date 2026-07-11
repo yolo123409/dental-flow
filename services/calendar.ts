@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Appointment } from "@/types/appointment";
+import { Appointment } from "@/types";
 
 export async function getCalendarAppointments(
   startDate: string,

@@ -7,10 +7,12 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
+import { EventInput } from "@fullcalendar/core";
+
 import { getCalendarAppointments } from "@/services/calendar";
 
 export default function CalendarPage() {
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<EventInput[]>([]);
 
   useEffect(() => {
     loadAppointments();
@@ -37,14 +39,13 @@ export default function CalendarPage() {
         end.toISOString().split("T")[0]
       );
 
-    const calendarEvents = appointments.map(
-      (appointment) => ({
+    const calendarEvents: EventInput[] =
+      appointments.map((appointment) => ({
         id: appointment.id,
-        title: `${
-          appointment.patients
-            ? `${appointment.patients.first_name} ${appointment.patients.last_name}`
-            : "Patient"
-        } • ${appointment.treatment}`,
+
+        title: appointment.patients
+          ? `${appointment.patients.first_name} ${appointment.patients.last_name} • ${appointment.treatment}`
+          : `Patient • ${appointment.treatment}`,
 
         start: `${appointment.appointment_date}T${appointment.appointment_time}`,
 
@@ -54,8 +55,7 @@ export default function CalendarPage() {
             : appointment.status === "Cancelled"
             ? "#ef4444"
             : "#3b82f6",
-      })
-    );
+      }));
 
     setEvents(calendarEvents);
   }

@@ -19,24 +19,36 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(
-    e: React.FormEvent
+    e: React.FormEvent<HTMLFormElement>
   ) {
     e.preventDefault();
+
+    if (loading) return;
 
     try {
       setLoading(true);
 
-      await signIn(email, password);
+      await signIn(
+        email.trim(),
+        password
+      );
 
       toast.success("Welcome back!");
 
       router.push("/admin");
       router.refresh();
-    } catch (error: any) {
-      toast.error(
-        error.message ??
-          "Unable to sign in."
-      );
+
+    } catch (error: unknown) {
+      console.error(error);
+
+      if (error instanceof Error) {
+        toast.error(
+          error.message || "Unable to sign in."
+        );
+      } else {
+        toast.error("Unable to sign in.");
+      }
+
     } finally {
       setLoading(false);
     }
@@ -73,6 +85,7 @@ export default function LoginForm() {
           ? "Signing In..."
           : "Sign In"}
       </Button>
+
     </form>
   );
 }

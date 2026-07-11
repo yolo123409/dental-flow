@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { Appointment } from "@/types/appointment";
+import { Appointment } from "@/types";
 import { getAppointmentById } from "@/services/appointments";
 
 import Button from "@/components/ui/Button";
@@ -18,7 +18,8 @@ export default function AppointmentDetailsPage() {
   const [appointment, setAppointment] =
     useState<Appointment | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
   useEffect(() => {
     loadAppointment();
@@ -35,7 +36,6 @@ export default function AppointmentDetailsPage() {
       );
 
       setAppointment(data);
-
     } catch (error) {
       console.error(error);
     } finally {
@@ -140,7 +140,7 @@ export default function AppointmentDetailsPage() {
               Duration
             </h2>
 
-            <p>{appointment.duration} minutes</p>
+            <p>{appointment.duration ?? 0} minutes</p>
 
           </div>
 

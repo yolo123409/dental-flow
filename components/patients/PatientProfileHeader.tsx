@@ -3,19 +3,23 @@
 import Card from "@/components/ui/Card";
 import Avatar from "@/components/ui/Avatar";
 
+import { Patient } from "@/types";
+
 interface Props {
-  patient: any;
+  patient: Patient;
 }
 
-export default function PatientHeader({
+export default function PatientProfileHeader({
   patient,
 }: Props) {
   return (
     <Card>
+
       <div className="flex items-center gap-6">
 
         <Avatar
           name={`${patient.first_name} ${patient.last_name}`}
+          avatarUrl={null}
           size="xl"
         />
 
@@ -26,11 +30,11 @@ export default function PatientHeader({
           </h1>
 
           <p className="mt-3 text-slate-600">
-            📞 {patient.phone || "No phone"}
+            📞 {patient.phone ?? "No phone"}
           </p>
 
           <p>
-            📧 {patient.email || "No email"}
+            📧 {patient.email ?? "No email"}
           </p>
 
           <p className="mt-2 text-sm text-slate-500">
@@ -40,6 +44,7 @@ export default function PatientHeader({
         </div>
 
       </div>
+
     </Card>
   );
 }

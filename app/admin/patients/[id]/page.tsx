@@ -23,6 +23,13 @@ import {
   calculateBalance,
 } from "@/services/billing";
 
+import {
+  Patient,
+  Appointment,
+  TimelineItem,
+  BillingSummary as BillingSummaryType,
+} from "@/types";
+
 import DentalChart from "@/components/patients/dental/DentalChart";
 
 export default function PatientProfilePage() {
@@ -30,13 +37,17 @@ export default function PatientProfilePage() {
 
   const id = params.id as string;
 
-  const [patient, setPatient] = useState<any>(null);
+const [patient, setPatient] =
+  useState<Patient | null>(null);
 
-  const [appointments, setAppointments] = useState<any[]>([]);
+const [appointments, setAppointments] =
+  useState<Appointment[]>([]);
 
-  const [timeline, setTimeline] = useState<any[]>([]);
+const [timeline, setTimeline] =
+  useState<TimelineItem[]>([]);
 
-  const [billing, setBilling] = useState({
+const [billing, setBilling] =
+  useState<BillingSummaryType>({
     total: 0,
     paid: 0,
     outstanding: 0,
