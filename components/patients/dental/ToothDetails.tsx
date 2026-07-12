@@ -4,153 +4,209 @@ import { useEffect, useState } from "react";
 
 import {
   PatientTooth,
-  ToothCondition,
+  SavePatientTooth,
 } from "@/types";
 
-import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import FormTextarea from "@/components/ui/FormTextarea";
 
-import { saveTooth } from "@/services/patientTeeth";
+import TreatmentForm from "@/components/patients/dental/TreatmentForm";
+import ToothHistoryTab from "@/components/patients/dental/ToothHistoryTab";
+import ToothAttachments from "@/components/dental/attachments/ToothAttachments";
 
-const conditions: ToothCondition[] = [
-  "Healthy",
-  "Caries",
-  "Filling",
-  "Crown",
-  "Implant",
-  "Missing",
-];
+import {
+  getToothHistory,
+  saveTooth,
+} from "@/services/patientTeeth";
+
+type Tab =
+  | "details"
+  | "history"
+  | "attachments";
 
 interface Props {
   patientId: string;
+
   tooth: number;
-  data?: PatientTooth | null;
-  onSaved: () => void;
+
+  selectedSurface?: string | null;
+
+  data: PatientTooth | null;
+
+  onSaved: () => Promise<void>;
 }
 
 export default function ToothDetails({
   patientId,
   tooth,
+  selectedSurface,
   data,
   onSaved,
 }: Props) {
-  const [condition, setCondition] =
-    useState<ToothCondition>("Healthy");
-
-  const [diagnosis, setDiagnosis] =
-    useState("");
-
-  const [treatment, setTreatment] =
-    useState("");
-
-  const [notes, setNotes] =
-    useState("");
+  const [activeTab, setActiveTab] =
+    useState<Tab>("details");
 
   const [saving, setSaving] =
     useState(false);
 
+  const [history, setHistory] =
+    useState<any[]>([]);
+
   useEffect(() => {
-    setCondition(
-      data?.condition ?? "Healthy"
-    );
+    loadHistory();
+  }, [patientId, tooth]);
 
-    setDiagnosis(
-      data?.diagnosis ?? ""
-    );
+  async function loadHistory() {
+    try {
+      const result =
+        await getToothHistory(
+          patientId,
+          tooth
+        );
 
-    setTreatment(
-      data?.treatment ?? ""
-    );
+      setHistory(result);
+    } catch (error) {
+      console.error(error);
+    }
+  }
 
-    setNotes(
-      data?.notes ?? ""
-    );
-  }, [data]);
-
-  async function handleSave() {
+  async function handleSave(
+    values: SavePatientTooth
+  ) {
     try {
       setSaving(true);
 
-      await saveTooth({
-        patient_id: patientId,
-        tooth_number: tooth,
-        condition,
-        diagnosis,
-        treatment,
-        notes,
-      });
+      await saveTooth(values);
 
-      onSaved();
+      await onSaved();
 
+      await loadHistory();
     } catch (error) {
       console.error(error);
+
+      if (error instanceof Error) {
+        alert(error.message);
+      }
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card title={`Tooth #${tooth}`}>
+    <Card title={`🦷 Tooth ${tooth}`}>
+      <div className="space-y-6">
 
-      <div className="space-y-5">
+        <div className="border-b border-slate-200">
 
-        <div>
+          <nav className="flex gap-2">
 
-          <label className="mb-2 block text-sm font-medium">
-            Condition
-          </label>
+            <button
+              onClick={() =>
+                setActiveTab(
+                  "details"
+                )
+              }
+              className={`rounded-t-lg px-4 py-3 text-sm font-medium transition ${
+                activeTab ===
+                "details"
+                  ? "border-b-2 border-blue-600 text-blue-600"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Treatment
+            </button>
 
-          <select
-            value={condition}
-            onChange={(e) =>
-              setCondition(
-                e.target.value as ToothCondition
-              )
-            }
-            className="w-full rounded-xl border border-slate-200 p-3"
-          >
-            {conditions.map((item) => (
-              <option
-                key={item}
-                value={item}
-              >
-                {item}
-              </option>
-            ))}
-          </select>
+            <button
+              onClick={() =>
+                setActiveTab(
+                  "history"
+                )
+              }
+              className={`rounded-t-lg px-4 py-3 text-sm font-medium transition ${
+                activeTab ===
+                "history"
+                  ? "border-b-2 border-blue-600 text-blue-600"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              History
+            </button>
+
+            <button
+              onClick={() =>
+                setActiveTab(
+                  "attachments"
+                )
+              }
+              className={`rounded-t-lg px-4 py-3 text-sm font-medium transition ${
+                activeTab ===
+                "attachments"
+                  ? "border-b-2 border-blue-600 text-blue-600"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Attachments
+            </button>
+
+          </nav>
 
         </div>
 
-        <FormTextarea
-          label="Diagnosis"
-          value={diagnosis}
-          onChange={setDiagnosis}
-        />
+        {activeTab ===
+          "details" && (
+          <TreatmentForm
+            patientId={patientId}
+            tooth={tooth}
+            saving={saving}
+            onSave={handleSave}
+            initialValues={{
+              condition:
+                data?.condition ??
+                "Healthy",
 
-        <FormTextarea
-          label="Treatment"
-          value={treatment}
-          onChange={setTreatment}
-        />
+              diagnosis:
+                data?.diagnosis ??
+                "",
 
-        <FormTextarea
-          label="Clinical Notes"
-          value={notes}
-          onChange={setNotes}
-        />
+              treatment:
+                data?.treatment ??
+                "",
 
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving
-            ? "Saving..."
-            : "Save Tooth"}
-        </Button>
+              treatment_status:
+                data
+                  ?.treatment_status ??
+                "Planned",
+
+              materials:
+                data?.materials ??
+                "",
+
+              estimated_cost:
+                data
+                  ?.estimated_cost ??
+                null,
+
+              notes:
+                data?.notes ?? "",
+            }}
+          />
+        )}
+
+        {activeTab ===
+          "history" && (
+          <ToothHistoryTab
+            history={history}
+          />
+        )}
+
+        {activeTab ===
+          "attachments" && (
+          <ToothAttachments
+            patientId={patientId}
+            toothNumber={tooth}
+          />
+        )}
 
       </div>
-
     </Card>
   );
 }

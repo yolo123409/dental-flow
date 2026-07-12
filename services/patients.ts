@@ -1,25 +1,43 @@
 import { supabase } from "@/lib/supabase";
+
 import { Patient } from "@/types/patient";
 
+import { getCurrentClinicId } from "./clinic";
+
 export async function getPatients(): Promise<Patient[]> {
-  const { data, error } = await supabase
-    .from("patients")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { data, error } =
+    await supabase
+      .from("patients")
+      .select("*")
+      .eq("clinic_id", clinicId)
+      .order("created_at", {
+        ascending: false,
+      });
 
   if (error) {
     console.error(error);
     return [];
   }
 
-  return (data as Patient[]) ?? [];
+  return (data ??
+    []) as Patient[];
 }
 
 export async function getPatientOptions() {
-  const { data, error } = await supabase
-    .from("patients")
-    .select("id, first_name, last_name")
-    .order("first_name");
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { data, error } =
+    await supabase
+      .from("patients")
+      .select(
+        "id, first_name, last_name"
+      )
+      .eq("clinic_id", clinicId)
+      .order("first_name");
 
   if (error) {
     console.error(error);
@@ -30,12 +48,17 @@ export async function getPatientOptions() {
 }
 
 export async function getPatientCount() {
-  const { count, error } = await supabase
-    .from("patients")
-    .select("*", {
-      count: "exact",
-      head: true,
-    });
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { count, error } =
+    await supabase
+      .from("patients")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("clinic_id", clinicId);
 
   if (error) {
     console.error(error);
@@ -46,23 +69,42 @@ export async function getPatientCount() {
 }
 
 export async function createPatient(
-  patient: Omit<Patient, "id" | "created_at">
+  patient: Omit<
+    Patient,
+    | "id"
+    | "created_at"
+    | "clinic_id"
+  >
 ) {
-  const { error } = await supabase
-    .from("patients")
-    .insert(patient);
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { error } =
+    await supabase
+      .from("patients")
+      .insert({
+        ...patient,
+        clinic_id: clinicId,
+      });
 
   if (error) {
     throw error;
   }
 }
 
-export async function getPatientById(id: string) {
-  const { data, error } = await supabase
-    .from("patients")
-    .select("*")
-    .eq("id", id)
-    .single();
+export async function getPatientById(
+  id: string
+) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { data, error } =
+    await supabase
+      .from("patients")
+      .select("*")
+      .eq("clinic_id", clinicId)
+      .eq("id", id)
+      .single();
 
   if (error) {
     throw error;
@@ -75,21 +117,33 @@ export async function updatePatient(
   id: string,
   patient: Partial<Patient>
 ) {
-  const { error } = await supabase
-    .from("patients")
-    .update(patient)
-    .eq("id", id);
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { error } =
+    await supabase
+      .from("patients")
+      .update(patient)
+      .eq("clinic_id", clinicId)
+      .eq("id", id);
 
   if (error) {
     throw error;
   }
 }
 
-export async function deletePatient(id: string) {
-  const { error } = await supabase
-    .from("patients")
-    .delete()
-    .eq("id", id);
+export async function deletePatient(
+  id: string
+) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { error } =
+    await supabase
+      .from("patients")
+      .delete()
+      .eq("clinic_id", clinicId)
+      .eq("id", id);
 
   if (error) {
     throw error;

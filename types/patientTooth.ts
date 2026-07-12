@@ -6,6 +6,13 @@ export type ToothCondition =
   | "Implant"
   | "Missing";
 
+export type TreatmentStatus =
+  | "Planned"
+  | "In Progress"
+  | "Completed"
+  | "Referred"
+  | "Cancelled";
+
 export interface PatientTooth {
   id: string;
 
@@ -18,6 +25,12 @@ export interface PatientTooth {
   diagnosis: string | null;
 
   treatment: string | null;
+
+  treatment_status: TreatmentStatus | null;
+
+  materials: string | null;
+
+  estimated_cost: number | null;
 
   notes: string | null;
 
@@ -38,6 +51,12 @@ export interface SavePatientTooth {
   diagnosis: string | null;
 
   treatment: string | null;
+
+  treatment_status: TreatmentStatus | null;
+
+  materials: string | null;
+
+  estimated_cost: number | null;
 
   notes: string | null;
 }

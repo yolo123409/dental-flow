@@ -1,26 +1,76 @@
 "use client";
 
+import { useState } from "react";
+
+import {
+  PatientTooth,
+  ToothCondition,
+} from "@/types";
+
+import ToothIcon from "./svg/ToothIcon";
+import ToothTooltip from "./ToothTooltip";
+
 interface Props {
   number: number;
   selected: boolean;
+  condition?: ToothCondition;
+  data?: PatientTooth;
   onClick: () => void;
 }
 
 export default function Tooth({
   number,
   selected,
+  condition,
+  data,
   onClick,
 }: Props) {
+  const [hovered, setHovered] =
+    useState(false);
+
   return (
-    <button
-      onClick={onClick}
-      className={`flex h-14 w-14 items-center justify-center rounded-xl border-2 font-semibold transition-all duration-200 hover:scale-105 ${
-        selected
-          ? "border-blue-600 bg-blue-600 text-white shadow-lg"
-          : "border-slate-200 bg-white hover:border-blue-300"
-      }`}
+    <div
+      className="relative"
+      onMouseEnter={() =>
+        setHovered(true)
+      }
+      onMouseLeave={() =>
+        setHovered(false)
+      }
     >
-      {number}
-    </button>
+      {hovered && (
+        <ToothTooltip
+          tooth={number}
+          data={data}
+        />
+      )}
+
+      <button
+        onClick={onClick}
+        title={`Tooth ${number}${
+          condition ? ` • ${condition}` : ""
+        }`}
+        className={`flex flex-col items-center transition-all duration-200 ${
+          selected
+            ? "scale-110"
+            : "hover:scale-105"
+        }`}
+      >
+        <ToothIcon
+          condition={condition}
+          selected={selected}
+        />
+
+        <span
+          className={`mt-2 text-sm font-semibold ${
+            selected
+              ? "text-blue-600"
+              : "text-slate-700"
+          }`}
+        >
+          {number}
+        </span>
+      </button>
+    </div>
   );
 }

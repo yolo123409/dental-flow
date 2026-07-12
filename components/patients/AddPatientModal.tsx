@@ -100,9 +100,14 @@ export default function AddPatientModal({
       });
 
     } catch (error) {
-      console.error(error);
-      alert("Failed to save patient.");
-    } finally {
+  console.error("Save patient error:", error);
+
+  if (error instanceof Error) {
+    alert(error.message);
+  } else {
+    alert(JSON.stringify(error));
+  }
+}finally {
       setLoading(false);
     }
   }

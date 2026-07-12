@@ -177,9 +177,7 @@ export default function Sidebar() {
 
         {sections.map((section) => {
           const visibleLinks =
-            section.links.filter((link) =>
-              hasPermission(link.permission)
-            );
+  section.links;
 
           if (visibleLinks.length === 0) {
             return null;
