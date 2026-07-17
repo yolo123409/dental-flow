@@ -1,43 +1,191 @@
 import { supabase } from "@/lib/supabase";
 
-interface TreatmentInput {
-  patient_id: string;
-  dentist_id: string;
-  appointment_id?: string;
+import { getCurrentClinicId } from "./clinic";
 
-  treatment_name: string;
-  tooth_number?: string;
-  diagnosis?: string;
-  procedure_notes?: string;
-  prescription?: string;
+export interface ClinicTreatment {
+  id: string;
 
-  cost: number;
+  clinic_id: string;
 
-  duration?: number;
-  follow_up_date?: string;
+  name: string;
+
+  category: string;
+
+  default_price: number;
+
+  created_at: string;
+
+  updated_at: string;
 }
 
+/* -------------------------------------- */
+/* Get Treatments                         */
+/* -------------------------------------- */
+
+export async function getTreatments(): Promise<
+  ClinicTreatment[]
+> {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { data, error } =
+    await supabase
+      .from("clinic_treatments")
+      .select("*")
+      .eq("clinic_id", clinicId)
+      .order("category")
+      .order("name");
+
+  if (error) {
+    throw error;
+  }
+
+  return (
+    data ?? []
+  ) as ClinicTreatment[];
+}
+
+/* -------------------------------------- */
+/* Create Treatment                       */
+/* -------------------------------------- */
+
 export async function createTreatment(
-  treatment: TreatmentInput
+  name: string,
+  category: string,
+  defaultPrice: number
 ) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { data, error } =
+    await supabase
+      .from("clinic_treatments")
+      .insert({
+  clinic_id: clinicId,
+
+  name: name.trim(),
+
+  category: category.trim(),
+
+  default_price: defaultPrice,
+
+  active: true,
+})
+      .select()
+      .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as ClinicTreatment;
+}
+
+/* -------------------------------------- */
+/* Update Treatment                       */
+/* -------------------------------------- */
+
+export async function updateTreatment(
+  id: string,
+  name: string,
+  category: string,
+  defaultPrice: number
+) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { error } =
+    await supabase
+      .from("clinic_treatments")
+      .update({
+        name: name.trim(),
+
+        category:
+          category.trim(),
+
+        default_price:
+          defaultPrice,
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("clinic_id", clinicId)
+      .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+/* -------------------------------------- */
+/* Delete Treatment                       */
+/* -------------------------------------- */
+
+export async function deleteTreatment(
+  id: string
+) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { error } =
+    await supabase
+      .from("clinic_treatments")
+      .delete()
+      .eq("clinic_id", clinicId)
+      .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+/* -------------------------------------- */
+/* Get One Treatment                      */
+/* -------------------------------------- */
+
+export async function getTreatment(
+  id: string
+) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const { data, error } =
+    await supabase
+      .from("clinic_treatments")
+      .select("*")
+      .eq("clinic_id", clinicId)
+      .eq("id", id)
+      .single();
+
+  if (error) {
+  console.error("Treatments error:", error);
+  throw new Error(error.message);
+}
+
+  return data as ClinicTreatment;
+}
+
+/* -------------------------------------- */
+/* Search Treatments                      */
+/* -------------------------------------- */
+
+export async function searchTreatments() {
+  const clinicId = await getCurrentClinicId();
+
+  console.log("Clinic ID:", clinicId);
+
   const { data, error } = await supabase
-    .from("treatments")
-    .insert(treatment)
-    .select()
-    .single();
+    .from("clinic_treatments")
+    .select("*")
+    .eq("clinic_id", clinicId)
+    .order("name");
 
-  if (error) throw error;
+  console.log("Treatments:", data);
+  console.log("Error:", error);
 
-  await supabase
-    .from("invoices")
-    .insert({
-      patient_id: treatment.patient_id,
-      appointment_id: treatment.appointment_id,
-      amount: treatment.cost,
-      paid: 0,
-      balance: treatment.cost,
-      status: "Pending",
-    });
+  if (error) {
+    throw error;
+  }
 
-  return data;
+  return data ?? [];
 }

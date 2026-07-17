@@ -82,6 +82,12 @@ const sections: SidebarSection[] = [
         icon: Calendar,
         permission: "calendar",
       },
+      {
+        name: "Treatments",
+        href: "/admin/treatments",
+        icon: Package,
+        permission: "patients",
+      },
     ],
   },
 
@@ -89,14 +95,8 @@ const sections: SidebarSection[] = [
     title: "BUSINESS",
     links: [
       {
-        name: "Products",
-        href: "/admin/products",
-        icon: Package,
-        permission: "billing",
-      },
-      {
-        name: "Orders",
-        href: "/admin/orders",
+        name: "Billing",
+        href: "/admin/billing",
         icon: ShoppingCart,
         permission: "billing",
       },
@@ -105,24 +105,6 @@ const sections: SidebarSection[] = [
         href: "/admin/customers",
         icon: Users,
         permission: "patients",
-      },
-    ],
-  },
-
-  {
-    title: "AI",
-    links: [
-      {
-        name: "AI Receptionist",
-        href: "/admin/receptionist",
-        icon: Bot,
-        permission: "dashboard",
-      },
-      {
-        name: "AI Playground",
-        href: "/admin/playground",
-        icon: MessageSquare,
-        permission: "dashboard",
       },
     ],
   },

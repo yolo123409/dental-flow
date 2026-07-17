@@ -101,7 +101,7 @@ export async function saveTooth(
         },
         {
           onConflict:
-  "clinic_id,patient_id,tooth_number",
+            "clinic_id,patient_id,tooth_number",
         }
       );
 
@@ -149,6 +149,88 @@ export async function saveTooth(
 
   if (historyError) {
     throw historyError;
+  }
+
+  /* ------------------------------------ */
+  /* Create / Update Billing Charge       */
+  /* ------------------------------------ */
+
+  const treatment =
+    tooth.treatment?.trim() ?? "";
+
+  if (
+    treatment !== "" &&
+    tooth.estimated_cost != null &&
+    tooth.estimated_cost > 0
+  ) {
+    const {
+      data: existingCharge,
+      error: findError,
+    } = await supabase
+      .from("clinic_charges")
+      .select("id")
+      .eq("clinic_id", clinicId)
+      .eq("patient_id", tooth.patient_id)
+      .eq(
+        "tooth_number",
+        tooth.tooth_number
+      )
+      .eq(
+        "treatment_name",
+        treatment
+      )
+      .eq("status", "Pending")
+      .maybeSingle();
+
+    if (findError) {
+      throw findError;
+    }
+
+    if (existingCharge) {
+      const {
+        error: updateError,
+      } = await supabase
+        .from("clinic_charges")
+        .update({
+          amount:
+            tooth.estimated_cost,
+        })
+        .eq(
+          "id",
+          existingCharge.id
+        );
+
+      if (updateError) {
+        throw updateError;
+      }
+    } else {
+      const {
+        error: insertError,
+      } = await supabase
+        .from("clinic_charges")
+        .insert({
+          clinic_id: clinicId,
+
+          patient_id:
+            tooth.patient_id,
+
+          tooth_number:
+            tooth.tooth_number,
+
+          treatment_name:
+            treatment,
+
+          amount:
+            tooth.estimated_cost,
+
+          status:
+            "Pending",
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+    }
   }
 }
 

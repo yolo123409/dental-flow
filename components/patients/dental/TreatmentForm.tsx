@@ -12,6 +12,9 @@ import Button from "@/components/ui/Button";
 import FormInput from "@/components/ui/FormInput";
 import FormTextarea from "@/components/ui/FormTextarea";
 
+import TreatmentPicker from "@/components/treatments/TreatmentPicker";
+
+
 const conditions: ToothCondition[] = [
   "Healthy",
   "Caries",
@@ -72,6 +75,11 @@ export default function TreatmentForm({
 
   const [treatment, setTreatment] =
     useState("");
+
+    const [
+  customTreatment,
+  setCustomTreatment,
+] = useState(false);
 
   const [status, setStatus] =
     useState<TreatmentStatus>("Planned");
@@ -176,12 +184,57 @@ export default function TreatmentForm({
         onChange={setDiagnosis}
       />
 
-      <FormTextarea
-        label="Treatment Performed"
-        value={treatment}
-        rows={3}
-        onChange={setTreatment}
-      />
+      {!customTreatment && (
+
+  <TreatmentPicker
+    onSelect={(
+      selectedTreatment,
+      price
+    ) => {
+
+      setTreatment(
+        selectedTreatment
+      );
+
+      setCost(
+        String(price)
+      );
+
+    }}
+  />
+
+)}
+
+<div className="flex items-center gap-3">
+
+  <input
+    id="custom-treatment"
+    type="checkbox"
+    checked={
+      customTreatment
+    }
+    onChange={(e) =>
+      setCustomTreatment(
+        e.target.checked
+      )
+    }
+  />
+
+  <label
+    htmlFor="custom-treatment"
+    className="text-sm"
+  >
+    Custom Treatment
+  </label>
+
+</div>
+
+<FormTextarea
+  label="Treatment Performed"
+  value={treatment}
+  rows={3}
+  onChange={setTreatment}
+/>
 
       <div>
         <label className="mb-2 block text-sm font-medium">
