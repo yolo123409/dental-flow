@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import Card from "@/components/ui/Card";
@@ -45,47 +46,47 @@ export default function BillingPage() {
   }
 
   async function handleGenerateInvoice() {
-  if (selectedCharges.length === 0) {
-    return;
-  }
+    if (selectedCharges.length === 0) {
+      return;
+    }
 
-  const patientIds = [
-    ...new Set(
-      selectedCharges.map(
-        (charge) => charge.patient_id
-      )
-    ),
-  ];
+    const patientIds = [
+      ...new Set(
+        selectedCharges.map(
+          (charge) => charge.patient_id
+        )
+      ),
+    ];
 
-  if (patientIds.length !== 1) {
-    alert(
-      "Please select charges for one patient only."
-    );
+    if (patientIds.length !== 1) {
+      alert(
+        "Please select charges for one patient only."
+      );
 
-    return;
-  }
+      return;
+    }
 
-  try {
-    await createInvoice(
-      patientIds[0],
-      selectedCharges
-    );
+    try {
+      await createInvoice(
+        patientIds[0],
+        selectedCharges
+      );
 
-    setSelected([]);
+      setSelected([]);
 
-    await loadCharges();
+      await loadCharges();
 
-    alert(
-      "Invoice created successfully."
-    );
-  } catch (error) {
-    console.error(error);
+      alert(
+        "Invoice created successfully."
+      );
+    } catch (error) {
+      console.error(error);
 
-    if (error instanceof Error) {
-      alert(error.message);
+      if (error instanceof Error) {
+        alert(error.message);
+      }
     }
   }
-}
 
   function toggleCharge(
     chargeId: string
@@ -93,8 +94,7 @@ export default function BillingPage() {
     setSelected((current) =>
       current.includes(chargeId)
         ? current.filter(
-            (id) =>
-              id !== chargeId
+            (id) => id !== chargeId
           )
         : [...current, chargeId]
     );
@@ -104,9 +104,7 @@ export default function BillingPage() {
     useMemo(() => {
       return charges.filter(
         (charge) =>
-          selected.includes(
-            charge.id
-          )
+          selected.includes(charge.id)
       );
     }, [charges, selected]);
 
@@ -117,8 +115,10 @@ export default function BillingPage() {
       0
     );
 
-  return (
+      return (
     <div className="space-y-8">
+
+      {/* Header */}
 
       <div className="flex items-center justify-between">
 
@@ -129,14 +129,21 @@ export default function BillingPage() {
           </h1>
 
           <p className="mt-2 text-slate-500">
-            Generate invoices
-            from completed
-            treatments.
+            Generate invoices from completed treatments.
           </p>
 
         </div>
 
+        <Link
+          href="/admin/billing/invoices"
+          className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+        >
+          View Invoices
+        </Link>
+
       </div>
+
+      {/* Content */}
 
       <div className="grid gap-8 lg:grid-cols-3">
 
@@ -151,8 +158,7 @@ export default function BillingPage() {
               Loading...
             </div>
 
-          ) : charges.length ===
-            0 ? (
+          ) : charges.length === 0 ? (
 
             <div className="py-12 text-center text-slate-500">
               No pending charges.
@@ -162,59 +168,50 @@ export default function BillingPage() {
 
             <div className="space-y-3">
 
-              {charges.map(
-                (charge) => (
+              {charges.map((charge) => (
 
-                  <label
-                    key={
-                      charge.id
-                    }
-                    className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 p-4 hover:bg-slate-50"
-                  >
+                <label
+                  key={charge.id}
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 p-4 transition hover:bg-slate-50"
+                >
 
-                    <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4">
 
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(
-                          charge.id
-                        )}
-                        onChange={() =>
-                          toggleCharge(
-                            charge.id
-                          )
-                        }
-                      />
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(
+                        charge.id
+                      )}
+                      onChange={() =>
+                        toggleCharge(charge.id)
+                      }
+                    />
 
-                      <div>
+                    <div>
 
-                        <p className="font-medium">
-                          {
-                            charge.treatment_name
-                          }
-                        </p>
+                      <p className="font-medium">
+                        {charge.treatment_name}
+                      </p>
 
-                        <p className="text-sm text-slate-500">
-                          Tooth{" "}
-                          {charge.tooth_number ??
-                            "-"}
-                        </p>
-
-                      </div>
+                      <p className="text-sm text-slate-500">
+                        Tooth{" "}
+                        {charge.tooth_number ?? "-"}
+                      </p>
 
                     </div>
 
-                    <p className="font-bold">
-                      KES{" "}
-                      {Number(
-                        charge.amount
-                      ).toLocaleString()}
-                    </p>
+                  </div>
 
-                  </label>
+                  <p className="font-bold">
+                    KES{" "}
+                    {Number(
+                      charge.amount
+                    ).toLocaleString()}
+                  </p>
 
-                )
-              )}
+                </label>
+
+              ))}
 
             </div>
 
@@ -233,9 +230,7 @@ export default function BillingPage() {
               </span>
 
               <span className="font-semibold">
-                {
-                  selectedCharges.length
-                }
+                {selectedCharges.length}
               </span>
 
             </div>
@@ -267,16 +262,16 @@ export default function BillingPage() {
             </div>
 
             <Button
-  className="w-full"
-  disabled={
-    selectedCharges.length === 0
-  }
-  onClick={
-    handleGenerateInvoice
-  }
->
-  Generate Invoice
-</Button>
+              className="w-full"
+              disabled={
+                selectedCharges.length === 0
+              }
+              onClick={
+                handleGenerateInvoice
+              }
+            >
+              Generate Invoice
+            </Button>
 
           </div>
 

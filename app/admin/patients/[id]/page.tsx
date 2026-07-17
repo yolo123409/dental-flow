@@ -10,6 +10,7 @@ import PatientProfileHeader from "@/components/patients/PatientProfileHeader";
 import PatientTabs from "@/components/patients/PatientTabs";
 import PatientTimeline from "@/components/patients/PatientTimeline";
 import BillingSummary from "@/components/patients/BillingSummary";
+import PatientNotes from "@/components/patient-notes/PatientNotes";
 
 import {
   getPatientProfile,
@@ -37,26 +38,27 @@ export default function PatientProfilePage() {
 
   const id = params.id as string;
 
-const [patient, setPatient] =
-  useState<Patient | null>(null);
+  const [patient, setPatient] =
+    useState<Patient | null>(null);
 
-const [appointments, setAppointments] =
-  useState<Appointment[]>([]);
+  const [appointments, setAppointments] =
+    useState<Appointment[]>([]);
 
-const [timeline, setTimeline] =
-  useState<TimelineItem[]>([]);
+  const [timeline, setTimeline] =
+    useState<TimelineItem[]>([]);
 
-const [billing, setBilling] =
-  useState<BillingSummaryType>({
-    total: 0,
-    paid: 0,
-    outstanding: 0,
-  });
+  const [billing, setBilling] =
+    useState<BillingSummaryType>({
+      total: 0,
+      paid: 0,
+      outstanding: 0,
+    });
 
   const [activeTab, setActiveTab] =
     useState("Overview");
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
   const loadPatient = useCallback(async () => {
     try {
@@ -80,7 +82,10 @@ const [billing, setBilling] =
       setBilling(calculateBalance(invoices));
 
     } catch (error) {
-      console.error("Failed to load patient:", error);
+      console.error(
+        "Failed to load patient:",
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -117,7 +122,9 @@ const [billing, setBilling] =
   return (
     <PageContainer>
 
-      <PatientProfileHeader patient={patient} />
+      <PatientProfileHeader
+        patient={patient}
+      />
 
       <PatientTabs
         active={activeTab}
@@ -137,10 +144,10 @@ const [billing, setBilling] =
       {/* Dental Chart */}
 
       {activeTab === "Dental Chart" && (
-  <DentalChart
-  patientId={patient.id}
-/>
-)}
+        <DentalChart
+          patientId={patient.id}
+        />
+      )}
 
       {/* Appointments */}
 
@@ -157,28 +164,34 @@ const [billing, setBilling] =
 
             <div className="space-y-4">
 
-              {appointments.map((appointment) => (
+              {appointments.map(
+                (appointment) => (
 
-                <div
-                  key={appointment.id}
-                  className="rounded-xl bg-slate-50 p-4"
-                >
+                  <div
+                    key={appointment.id}
+                    className="rounded-xl bg-slate-50 p-4"
+                  >
 
-                  <h3 className="font-semibold">
-                    {appointment.treatment}
-                  </h3>
+                    <h3 className="font-semibold">
+                      {appointment.treatment}
+                    </h3>
 
-                  <p className="mt-1 text-slate-500">
-                    {appointment.appointment_date}
-                  </p>
+                    <p className="mt-1 text-slate-500">
+                      {appointment.appointment_date}
+                    </p>
 
-                  <p className="text-sm text-slate-600">
-                    {appointment.dentists?.full_name}
-                  </p>
+                    <p className="text-sm text-slate-600">
+                      {
+                        appointment
+                          .dentists
+                          ?.full_name
+                      }
+                    </p>
 
-                </div>
+                  </div>
 
-              ))}
+                )
+              )}
 
             </div>
 
@@ -202,6 +215,15 @@ const [billing, setBilling] =
       {activeTab === "Timeline" && (
         <PatientTimeline
           items={timeline}
+        />
+      )}
+
+      {/* Clinical Notes */}
+
+      {activeTab ===
+        "Clinical Notes" && (
+        <PatientNotes
+          patientId={patient.id}
         />
       )}
 

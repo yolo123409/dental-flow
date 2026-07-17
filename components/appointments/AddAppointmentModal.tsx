@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -18,11 +18,26 @@ import {
 
 interface Props {
   open: boolean;
+
   patients: PatientOption[];
   dentists: DentistOption[];
+
   onClose: () => void;
   onSuccess: () => Promise<void>;
+
+  defaultDate?: string;
+  defaultTime?: string;
 }
+
+const EMPTY_FORM: AppointmentFormData = {
+  patient_id: "",
+  dentist_id: "",
+  treatment: "",
+  appointment_date: "",
+  appointment_time: "",
+  notes: "",
+  status: "Scheduled",
+};
 
 export default function AddAppointmentModal({
   open,
@@ -30,19 +45,31 @@ export default function AddAppointmentModal({
   dentists,
   onClose,
   onSuccess,
+  defaultDate,
+  defaultTime,
 }: Props) {
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] =
-    useState<AppointmentFormData>({
-      patient_id: "",
-      dentist_id: "",
-      treatment: "",
-      appointment_date: "",
-      appointment_time: "",
-      notes: "",
-      status: "Scheduled",
+    useState<AppointmentFormData>(
+      EMPTY_FORM
+    );
+
+  useEffect(() => {
+    if (!open) return;
+
+    setForm({
+      ...EMPTY_FORM,
+      appointment_date:
+        defaultDate ?? "",
+      appointment_time:
+        defaultTime ?? "",
     });
+  }, [
+    open,
+    defaultDate,
+    defaultTime,
+  ]);
 
   function update(
     field: keyof AppointmentFormData,
@@ -63,7 +90,9 @@ export default function AddAppointmentModal({
       !form.appointment_date ||
       !form.appointment_time
     ) {
-      alert("Please complete all required fields.");
+      alert(
+        "Please complete all required fields."
+      );
       return;
     }
 
@@ -74,43 +103,47 @@ export default function AddAppointmentModal({
 
       await onSuccess();
 
-      setForm({
-        patient_id: "",
-        dentist_id: "",
-        treatment: "",
-        appointment_date: "",
-        appointment_time: "",
-        notes: "",
-        status: "Scheduled",
-      });
+      setForm(EMPTY_FORM);
 
       onClose();
-
     } catch (error) {
       console.error(error);
-      alert("Failed to create appointment.");
+
+      alert(
+        "Failed to create appointment."
+      );
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleClose() {
+    if (loading) return;
+
+    setForm(EMPTY_FORM);
+
+    onClose();
   }
 
   return (
     <Modal
       open={open}
       title="Book Appointment"
-      onClose={onClose}
+      onClose={handleClose}
       footer={
         <>
           <Button
             variant="secondary"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={loading}
           >
             Cancel
           </Button>
 
           <Button
-            onClick={saveAppointment}
+            onClick={
+              saveAppointment
+            }
             disabled={loading}
           >
             {loading

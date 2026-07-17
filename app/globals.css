@@ -19,8 +19,113 @@
   }
 }
 
+html,
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ----------------------------- */
+/* Printing                      */
+/* ----------------------------- */
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide application chrome */
+
+  nav,
+  aside,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  /* Hide interactive controls */
+
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Tailwind print utility */
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Let invoice use the whole page */
+
+  main {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Remove decorative effects */
+
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Prevent awkward page breaks */
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  img {
+    max-width: 100%;
+    page-break-inside: avoid;
+  }
+
+  .rounded-xl,
+  .rounded-2xl {
+    border-radius: 0 !important;
+  }
+
+  .shadow,
+  .shadow-lg,
+  .shadow-xl,
+  .shadow-2xl {
+    box-shadow: none !important;
+  }
 }

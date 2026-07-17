@@ -10,6 +10,7 @@ import AppointmentForm, {
 } from "./AppointmentForm";
 
 import { Appointment } from "@/types/appointment";
+
 import { updateAppointment } from "@/services/appointments";
 
 import {
@@ -19,12 +20,26 @@ import {
 
 interface Props {
   open: boolean;
+
   appointment: Appointment | null;
+
   patients: PatientOption[];
   dentists: DentistOption[];
+
   onClose: () => void;
-  onSuccess: () => void;
+
+  onSuccess: () => void | Promise<void>;
 }
+
+const EMPTY_FORM: AppointmentFormData = {
+  patient_id: "",
+  dentist_id: "",
+  treatment: "",
+  appointment_date: "",
+  appointment_time: "",
+  notes: "",
+  status: "Scheduled",
+};
 
 export default function EditAppointmentModal({
   open,
@@ -34,35 +49,46 @@ export default function EditAppointmentModal({
   onClose,
   onSuccess,
 }: Props) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] =
+    useState(false);
 
   const [form, setForm] =
-    useState<AppointmentFormData>({
-      patient_id: "",
-      dentist_id: "",
-      treatment: "",
-      appointment_date: "",
-      appointment_time: "",
-      notes: "",
-      status: "Scheduled",
-    });
+    useState<AppointmentFormData>(
+      EMPTY_FORM
+    );
 
   useEffect(() => {
-    if (!appointment) return;
+    if (!open) return;
+
+    if (!appointment) {
+      setForm(EMPTY_FORM);
+      return;
+    }
 
     setForm({
-      patient_id: appointment.patient_id,
+      patient_id:
+        appointment.patient_id,
+
       dentist_id:
-        appointment.dentist_id ?? "",
-      treatment: appointment.treatment,
+        appointment.dentist_id ??
+        "",
+
+      treatment:
+        appointment.treatment,
+
       appointment_date:
         appointment.appointment_date,
+
       appointment_time:
         appointment.appointment_time,
-      notes: appointment.notes ?? "",
-      status: appointment.status,
+
+      notes:
+        appointment.notes ?? "",
+
+      status:
+        appointment.status,
     });
-  }, [appointment]);
+  }, [open, appointment]);
 
   function update(
     field: keyof AppointmentFormData,
@@ -80,6 +106,17 @@ export default function EditAppointmentModal({
   async function saveChanges() {
     if (!appointment) return;
 
+    if (
+      !form.patient_id ||
+      !form.appointment_date ||
+      !form.appointment_time
+    ) {
+      alert(
+        "Please complete all required fields."
+      );
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -88,35 +125,47 @@ export default function EditAppointmentModal({
         form
       );
 
-      onSuccess();
+      await onSuccess();
 
-      onClose();
-
+      handleClose();
     } catch (error) {
       console.error(error);
-      alert("Failed to update appointment.");
+
+      alert(
+        "Failed to update appointment."
+      );
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleClose() {
+    if (loading) return;
+
+    setForm(EMPTY_FORM);
+
+    onClose();
   }
 
   return (
     <Modal
       open={open}
       title="Edit Appointment"
-      onClose={onClose}
+      onClose={handleClose}
       footer={
         <>
           <Button
             variant="secondary"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={loading}
           >
             Cancel
           </Button>
 
           <Button
-            onClick={saveChanges}
+            onClick={
+              saveChanges
+            }
             disabled={loading}
           >
             {loading

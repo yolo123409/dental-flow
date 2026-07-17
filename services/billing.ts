@@ -134,7 +134,19 @@ export async function getInvoice(
       .from("clinic_invoices")
       .select(`
         *,
-        clinic_invoice_items(*)
+        patients (
+          id,
+          first_name,
+          last_name,
+          phone,
+          email
+        ),
+        clinic_invoice_items (
+          *
+        ),
+        clinic_payments (
+          *
+        )
       `)
       .eq("clinic_id", clinicId)
       .eq("id", invoiceId)
@@ -191,8 +203,12 @@ export async function createInvoice(
   const clinicId =
     await getCurrentClinicId();
 
+  console.log("Step 1");
+
   const invoiceNumber =
     await generateInvoiceNumber();
+
+  console.log("Step 2");
 
   const subtotal =
     charges.reduce(
@@ -209,9 +225,7 @@ export async function createInvoice(
   const balance =
     total;
 
-  /* ----------------------------- */
-  /* Create Invoice                */
-  /* ----------------------------- */
+  console.log("Step 3");
 
   const {
     data: invoice,
@@ -220,96 +234,69 @@ export async function createInvoice(
     .from("clinic_invoices")
     .insert({
       clinic_id: clinicId,
-
       patient_id: patientId,
-
-      invoice_number:
-        invoiceNumber,
-
+      invoice_number: invoiceNumber,
       subtotal,
-
       discount,
-
       tax,
-
       total,
-
       amount_paid: 0,
-
       balance,
-
       status: "Unpaid",
-
-      notes:
-        notes ?? null,
+      notes: notes ?? null,
     })
     .select()
     .single();
 
+  console.log("Invoice:", invoice);
+
   if (invoiceError) {
+    console.error(invoiceError);
     throw invoiceError;
   }
 
-  /* ----------------------------- */
-  /* Create Invoice Items          */
-  /* ----------------------------- */
+  console.log("Step 4");
 
   const items =
-    charges.map(
-      (charge) => ({
-        invoice_id:
-          invoice.id,
+    charges.map((charge) => ({
+      invoice_id: invoice.id,
+      treatment_name:
+        charge.treatment_name,
+      quantity: 1,
+      unit_price: charge.amount,
+      total_price: charge.amount,
+    }));
 
-        treatment_name:
-          charge.treatment_name,
-
-        quantity: 1,
-
-        unit_price:
-          charge.amount,
-
-        total_price:
-          charge.amount,
-      })
-    );
-
-  const {
-    error: itemError,
-  } = await supabase
-    .from(
-      "clinic_invoice_items"
-    )
-    .insert(items);
+  const { error: itemError } =
+    await supabase
+      .from("clinic_invoice_items")
+      .insert(items);
 
   if (itemError) {
+    console.error(itemError);
     throw itemError;
   }
 
-  /* ----------------------------- */
-  /* Update Charges                */
-  /* ----------------------------- */
+  console.log("Step 5");
 
   const chargeIds =
-    charges.map(
-      (charge) => charge.id
-    );
+    charges.map((c) => c.id);
 
-  const {
-    error: chargeError,
-  } = await supabase
-    .from("clinic_charges")
-    .update({
-      status:
-        "Invoiced",
-
-      invoice_id:
-        invoice.id,
-    })
-    .in("id", chargeIds);
+  const { error: chargeError } =
+    await supabase
+      .from("clinic_charges")
+      .update({
+        status: "Invoiced",
+        invoice_id: invoice.id,
+      })
+      .in("id", chargeIds);
 
   if (chargeError) {
+    console.error(chargeError);
     throw chargeError;
   }
+
+  console.log("Step 6");
 
   return invoice;
 }
@@ -373,4 +360,111 @@ export function calculateBalance(
     outstanding:
       total - paid,
   };
+}
+
+/* -------------------------------------- */
+/* Record Payment                         */
+/* -------------------------------------- */
+
+export async function recordPayment(
+  invoiceId: string,
+  amount: number,
+  paymentMethod: string,
+  reference?: string,
+  notes?: string
+) {
+  const clinicId =
+    await getCurrentClinicId();
+
+  /* ----------------------------- */
+  /* Load Invoice                  */
+  /* ----------------------------- */
+
+  const {
+    data: invoice,
+    error: invoiceError,
+  } = await supabase
+    .from("clinic_invoices")
+    .select("*")
+    .eq("clinic_id", clinicId)
+    .eq("id", invoiceId)
+    .single();
+
+  if (invoiceError) {
+    throw invoiceError;
+  }
+
+  /* ----------------------------- */
+  /* Save Payment                  */
+  /* ----------------------------- */
+
+  const {
+    error: paymentError,
+  } = await supabase
+    .from("clinic_payments")
+    .insert({
+      clinic_id: clinicId,
+
+      invoice_id:
+        invoice.id,
+
+      patient_id:
+        invoice.patient_id,
+
+      amount,
+
+      payment_method:
+        paymentMethod,
+
+      reference:
+        reference ?? null,
+
+      notes:
+        notes ?? null,
+    });
+
+  if (paymentError) {
+    throw paymentError;
+  }
+
+  /* ----------------------------- */
+  /* Update Invoice                */
+  /* ----------------------------- */
+
+  const amountPaid =
+    Number(invoice.amount_paid) +
+    amount;
+
+  const balance =
+    Number(invoice.total) -
+    amountPaid;
+
+  let status = "Unpaid";
+
+  if (balance <= 0) {
+    status = "Paid";
+  } else if (
+    amountPaid > 0
+  ) {
+    status =
+      "Partially Paid";
+  }
+
+  const {
+    error: updateError,
+  } = await supabase
+    .from("clinic_invoices")
+    .update({
+      amount_paid:
+        amountPaid,
+
+      balance,
+
+      status,
+    })
+    .eq("id", invoice.id);
+
+  if (updateError) {
+    throw updateError;
+  }
 }
