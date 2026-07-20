@@ -44,9 +44,7 @@ export default function FileUpload({
     }
 
     setUploading(true);
-
     setCurrent(0);
-
     setTotal(files.length);
 
     try {
@@ -89,29 +87,13 @@ export default function FileUpload({
 
     } finally {
       setUploading(false);
-
       setCurrent(0);
-
       setTotal(0);
 
       if (inputRef.current) {
         inputRef.current.value = "";
       }
     }
-  }
-
-  function handleDrop(
-    e: React.DragEvent<HTMLDivElement>
-  ) {
-    e.preventDefault();
-
-    if (uploading) {
-      return;
-    }
-
-    uploadFiles(
-      e.dataTransfer.files
-    );
   }
 
   return (
@@ -130,72 +112,16 @@ export default function FileUpload({
         }}
       />
 
-      <div
-        onDragOver={(e) =>
-          e.preventDefault()
+      <Button
+        disabled={uploading}
+        onClick={() =>
+          inputRef.current?.click()
         }
-        onDrop={handleDrop}
-        className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center transition hover:border-blue-500 hover:bg-blue-50"
       >
-
-        <div className="mb-4 text-5xl">
-          📂
-        </div>
-
-        <h3 className="mb-2 text-lg font-semibold">
-          Drag & Drop Files
-        </h3>
-
-        <p className="mb-5 text-sm text-slate-500">
-          or choose one or multiple
-          files from your computer.
-        </p>
-
-        <Button
-          disabled={uploading}
-          onClick={() =>
-            inputRef.current?.click()
-          }
-        >
-          {uploading
-            ? `Uploading ${current} of ${total}`
-            : "Choose Files"}
-        </Button>
-
-        {uploading && (
-
-          <div className="mt-6">
-
-            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all"
-                style={{
-                  width: `${
-                    total === 0
-                      ? 0
-                      : (current /
-                          total) *
-                        100
-                  }%`,
-                }}
-              />
-
-            </div>
-
-            <p className="mt-2 text-sm text-slate-500">
-
-              Uploading {current} of{" "}
-              {total}
-
-            </p>
-
-          </div>
-
-        )}
-
-      </div>
-
+        {uploading
+          ? `Uploading ${current}/${total}`
+          : "+ Upload"}
+      </Button>
     </>
   );
 }

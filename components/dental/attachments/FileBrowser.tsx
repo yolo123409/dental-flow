@@ -15,7 +15,6 @@ import {
   getFiles,
   getSignedUrl,
   isImage,
-  isPdf,
   renameFile,
 } from "@/services/patientToothFiles";
 
@@ -51,23 +50,25 @@ export default function FileBrowser({
   const [deleting, setDeleting] =
     useState(false);
 
-const [viewMode, setViewMode] =
-  useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] =
+    useState<"grid" | "list">("grid");
 
-const [sortBy, setSortBy] =
-  useState<"name" | "date" | "size">("date");
+  const [sortBy, setSortBy] =
+    useState<"name" | "date" | "size">(
+      "date"
+    );
 
-const [ascending, setAscending] =
-  useState(false);  
+  const [ascending, setAscending] =
+    useState(false);
 
   const [renameTarget, setRenameTarget] =
-  useState<ToothFile | null>(null);
+    useState<ToothFile | null>(null);
 
-const [newFileName, setNewFileName] =
-  useState("");
+  const [newFileName, setNewFileName] =
+    useState("");
 
-const [renaming, setRenaming] =
-  useState(false);
+  const [renaming, setRenaming] =
+    useState(false);
 
   async function loadFiles() {
     try {
@@ -80,7 +81,6 @@ const [renaming, setRenaming] =
 
     } catch (error) {
       console.error(error);
-
       alert("Failed to load files.");
 
     } finally {
@@ -113,7 +113,6 @@ const [renaming, setRenaming] =
 
     } catch (error) {
       console.error(error);
-
       alert(
         "Unable to open file."
       );
@@ -121,42 +120,41 @@ const [renaming, setRenaming] =
   }
 
   async function downloadFile(
-  file: ToothFile
-) {
-  try {
-    const signedUrl =
-      await getSignedUrl(
-        file.file_url
+    file: ToothFile
+  ) {
+    try {
+      const signedUrl =
+        await getSignedUrl(
+          file.file_url
+        );
+
+      const link =
+        document.createElement("a");
+
+      link.href = signedUrl;
+      link.download =
+        file.file_name;
+
+      document.body.appendChild(
+        link
       );
 
-    const link =
-      document.createElement("a");
+      link.click();
 
-    link.href = signedUrl;
+      document.body.removeChild(
+        link
+      );
 
-    link.download =
-      file.file_name;
+    } catch (error) {
+      console.error(error);
 
-    document.body.appendChild(
-      link
-    );
-
-    link.click();
-
-    document.body.removeChild(
-      link
-    );
-
-  } catch (error) {
-    console.error(error);
-
-    alert(
-      "Unable to download file."
-    );
+      alert(
+        "Unable to download file."
+      );
+    }
   }
-}
 
-  async function confirmDelete() {
+    async function confirmDelete() {
     if (!deleteFileTarget) {
       return;
     }
@@ -195,58 +193,62 @@ const [renaming, setRenaming] =
   }
 
   async function confirmRename() {
-  if (!renameTarget) {
-    return;
-  }
-
-  const clean =
-    newFileName.trim();
-
-  if (!clean) {
-    alert("Please enter a file name.");
-    return;
-  }
-
-  try {
-    setRenaming(true);
-
-    await renameFile(
-      renameTarget.id,
-      clean
-    );
-
-    setRenameTarget(null);
-    setNewFileName("");
-
-    await loadFiles();
-
-  } catch (error) {
-    console.error(error);
-
-    if (error instanceof Error) {
-      alert(error.message);
+    if (!renameTarget) {
+      return;
     }
 
-  } finally {
-    setRenaming(false);
+    const clean =
+      newFileName.trim();
+
+    if (!clean) {
+      alert(
+        "Please enter a file name."
+      );
+      return;
+    }
+
+    try {
+      setRenaming(true);
+
+      await renameFile(
+        renameTarget.id,
+        clean
+      );
+
+      setRenameTarget(null);
+      setNewFileName("");
+
+      await loadFiles();
+
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof Error) {
+        alert(error.message);
+      }
+
+    } finally {
+      setRenaming(false);
+    }
   }
-}
 
   function formatSize(
     bytes: number | null
   ) {
     if (!bytes) return "-";
 
-    if (bytes < 1024)
+    if (bytes < 1024) {
       return `${bytes} B`;
+    }
 
     if (
       bytes <
       1024 * 1024
-    )
+    ) {
       return `${(
         bytes / 1024
       ).toFixed(1)} KB`;
+    }
 
     return `${(
       bytes /
@@ -255,137 +257,152 @@ const [renaming, setRenaming] =
     ).toFixed(2)} MB`;
   }
 
-  const filtered = useMemo(() => {
-  const result = files.filter((file) =>
-    file.file_name
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const filtered =
+    useMemo(() => {
+      const result =
+        files.filter((file) =>
+          file.file_name
+            .toLowerCase()
+            .includes(
+              search.toLowerCase()
+            )
+        );
 
-  result.sort((a, b) => {
-    let comparison = 0;
+      result.sort((a, b) => {
+        let comparison = 0;
 
-    switch (sortBy) {
-      case "name":
-        comparison =
-          a.file_name.localeCompare(
-            b.file_name
-          );
-        break;
+        switch (sortBy) {
+          case "name":
+            comparison =
+              a.file_name.localeCompare(
+                b.file_name
+              );
+            break;
 
-      case "date":
-        comparison =
-          new Date(
-            a.uploaded_at
-          ).getTime() -
-          new Date(
-            b.uploaded_at
-          ).getTime();
-        break;
+          case "date":
+            comparison =
+              new Date(
+                a.uploaded_at
+              ).getTime() -
+              new Date(
+                b.uploaded_at
+              ).getTime();
+            break;
 
-      case "size":
-        comparison =
-          (a.file_size ?? 0) -
-          (b.file_size ?? 0);
-        break;
-    }
+          case "size":
+            comparison =
+              (a.file_size ?? 0) -
+              (b.file_size ?? 0);
+            break;
+        }
 
-    return ascending
-      ? comparison
-      : -comparison;
-  });
+        return ascending
+          ? comparison
+          : -comparison;
+      });
 
-  return result;
-}, [
-  files,
-  search,
-  sortBy,
-  ascending,
-]);
+      return result;
+    }, [
+      files,
+      search,
+      sortBy,
+      ascending,
+    ]);
 
   return (
     <>
-
       <div className="space-y-6">
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
 
-  <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
 
-    <select
-      value={sortBy}
-      onChange={(e) =>
-        setSortBy(
-          e.target.value as
-            | "name"
-            | "date"
-            | "size"
-        )
-      }
-      className="rounded-xl border border-slate-300 px-3 py-2"
-    >
-      <option value="date">
-        Sort by Date
-      </option>
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(
+                  e.target.value as
+                    | "name"
+                    | "date"
+                    | "size"
+                )
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2"
+            >
+              <option value="date">
+                Sort by Date
+              </option>
 
-      <option value="name">
-        Sort by Name
-      </option>
+              <option value="name">
+                Sort by Name
+              </option>
 
-      <option value="size">
-        Sort by Size
-      </option>
+              <option value="size">
+                Sort by Size
+              </option>
+            </select>
 
-    </select>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setAscending(
+                  !ascending
+                )
+              }
+            >
+              {ascending
+                ? "↑ Asc"
+                : "↓ Desc"}
+            </Button>
 
-    <Button
-      variant="secondary"
-      onClick={() =>
-        setAscending(
-          !ascending
-        )
-      }
-    >
-      {ascending
-        ? "↑ Asc"
-        : "↓ Desc"}
-    </Button>
+          </div>
 
-  </div>
+          <div className="flex items-center gap-2">
 
-  <div className="flex gap-2">
+            <FileUpload
+              patientId={patientId}
+              toothNumber={toothNumber}
+              folderId={folderId}
+              onUploaded={loadFiles}
+            />
 
-    <Button
-      variant={
-        viewMode === "grid"
-          ? "primary"
-          : "secondary"
-      }
-      onClick={() =>
-        setViewMode("grid")
-      }
-    >
-      Grid
-    </Button>
+            <Button
+              variant={
+                viewMode ===
+                "grid"
+                  ? "primary"
+                  : "secondary"
+              }
+              onClick={() =>
+                setViewMode(
+                  "grid"
+                )
+              }
+            >
+              Grid
+            </Button>
 
-    <Button
-      variant={
-        viewMode === "list"
-          ? "primary"
-          : "secondary"
-      }
-      onClick={() =>
-        setViewMode("list")
-      }
-    >
-      List
-    </Button>
+            <Button
+              variant={
+                viewMode ===
+                "list"
+                  ? "primary"
+                  : "secondary"
+              }
+              onClick={() =>
+                setViewMode(
+                  "list"
+                )
+              }
+            >
+              List
+            </Button>
 
-  </div>
+          </div>
 
-</div>
+        </div>
 
-        {loading ? (
+                {loading ? (
 
           <Card>
 
@@ -401,13 +418,29 @@ const [renaming, setRenaming] =
 
             <div className="py-16 text-center">
 
-              <div className="mb-3 text-6xl">
+              <div className="mb-4 text-6xl">
                 📂
               </div>
 
               <h3 className="text-xl font-semibold">
-                No files found
+                No files yet
               </h3>
+
+              <p className="mt-2 text-slate-500">
+                Upload the first file to this
+                folder.
+              </p>
+
+              <div className="mt-6 flex justify-center">
+
+                <FileUpload
+                  patientId={patientId}
+                  toothNumber={toothNumber}
+                  folderId={folderId}
+                  onUploaded={loadFiles}
+                />
+
+              </div>
 
             </div>
 
@@ -415,29 +448,35 @@ const [renaming, setRenaming] =
 
         ) : (
 
-          <div className={
-  viewMode === "grid"
-    ? "grid grid-cols-2 gap-5 lg:grid-cols-4"
-    : "space-y-4"
-}>
+          <div
+            className={
+              viewMode === "grid"
+                ? "grid grid-cols-2 gap-5 lg:grid-cols-4"
+                : "space-y-4"
+            }
+          >
 
             {filtered.map((file) => (
 
-  <FileCard
-  key={file.id}
-  file={file}
-  viewMode={viewMode}
-  formatSize={formatSize}
-  onOpen={openFile}
-  onDownload={downloadFile}
-  onRename={(file) => {
-    setRenameTarget(file);
-    setNewFileName(file.file_name);
-  }}
-  onDelete={setDeleteFileTarget}
-/>
+              <FileCard
+                key={file.id}
+                file={file}
+                viewMode={viewMode}
+                formatSize={formatSize}
+                onOpen={openFile}
+                onDownload={downloadFile}
+                onRename={(file) => {
+                  setRenameTarget(file);
+                  setNewFileName(
+                    file.file_name
+                  );
+                }}
+                onDelete={
+                  setDeleteFileTarget
+                }
+              />
 
-))}
+            ))}
 
           </div>
 
@@ -454,8 +493,12 @@ const [renaming, setRenaming] =
 
               <button
                 onClick={() => {
-                  setPreviewFile(null);
-                  setPreviewUrl(null);
+                  setPreviewFile(
+                    null
+                  );
+                  setPreviewUrl(
+                    null
+                  );
                 }}
                 className="absolute right-6 top-6 text-4xl"
               >
@@ -463,7 +506,9 @@ const [renaming, setRenaming] =
               </button>
 
               <h2 className="mb-5 text-xl font-semibold">
-                {previewFile.file_name}
+                {
+                  previewFile.file_name
+                }
               </h2>
 
               {isImage(
@@ -488,70 +533,76 @@ const [renaming, setRenaming] =
 
           </div>
 
-        )}
+      )}
 
-        {renameTarget && (
+            {renameTarget && (
 
-  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
 
-    <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
 
-      <div className="border-b border-slate-200 px-6 py-5">
+            <div className="border-b border-slate-200 px-6 py-5">
 
-        <h2 className="text-xl font-semibold">
-          Rename File
-        </h2>
+              <h2 className="text-xl font-semibold">
+                Rename File
+              </h2>
 
-      </div>
+            </div>
 
-      <div className="p-6">
+            <div className="p-6">
 
-        <input
-          autoFocus
-          value={newFileName}
-          onChange={(e) =>
-            setNewFileName(
-              e.target.value
-            )
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              confirmRename();
-            }
-          }}
-          className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
-        />
+              <input
+                autoFocus
+                value={newFileName}
+                onChange={(e) =>
+                  setNewFileName(
+                    e.target.value
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter"
+                  ) {
+                    confirmRename();
+                  }
+                }}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+              />
 
-      </div>
+            </div>
 
-      <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
 
-        <Button
-          variant="secondary"
-          onClick={() => {
-            setRenameTarget(null);
-            setNewFileName("");
-          }}
-        >
-          Cancel
-        </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setRenameTarget(
+                    null
+                  );
+                  setNewFileName("");
+                }}
+              >
+                Cancel
+              </Button>
 
-        <Button
-          disabled={renaming}
-          onClick={confirmRename}
-        >
-          {renaming
-            ? "Saving..."
-            : "Save"}
-        </Button>
+              <Button
+                disabled={renaming}
+                onClick={
+                  confirmRename
+                }
+              >
+                {renaming
+                  ? "Saving..."
+                  : "Save"}
+              </Button>
 
-      </div>
+            </div>
 
-    </div>
+          </div>
 
-  </div>
+        </div>
 
-)}
+      )}
 
       {deleteFileTarget && (
 

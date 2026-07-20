@@ -3,18 +3,26 @@ import { supabase } from "@/lib/supabase";
 export async function getCurrentClinicUser() {
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) return null;
+  if (authError) {
+    throw authError;
+  }
 
-  const { data, error } =
-    await supabase
-      .from("clinic_users")
-      .select("*")
-      .eq("id", user.id)
-      .single();
+  if (!user) {
+    return null;
+  }
 
-  if (error) throw error;
+  const { data, error } = await supabase
+    .from("clinic_users")
+    .select("*")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (error) {
+    throw error;
+  }
 
   return data;
 }

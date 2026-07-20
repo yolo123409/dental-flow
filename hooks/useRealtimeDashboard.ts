@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+
 import { supabase } from "@/lib/supabase";
 
 export default function useRealtimeDashboard(
@@ -17,7 +18,9 @@ export default function useRealtimeDashboard(
           schema: "public",
           table: "patients",
         },
-        () => reload()
+        () => {
+          reload();
+        }
       )
 
       .on(
@@ -27,7 +30,9 @@ export default function useRealtimeDashboard(
           schema: "public",
           table: "appointments",
         },
-        () => reload()
+        () => {
+          reload();
+        }
       )
 
       .on(
@@ -35,9 +40,11 @@ export default function useRealtimeDashboard(
         {
           event: "*",
           schema: "public",
-          table: "dentists",
+          table: "treatments",
         },
-        () => reload()
+        () => {
+          reload();
+        }
       )
 
       .on(
@@ -45,15 +52,29 @@ export default function useRealtimeDashboard(
         {
           event: "*",
           schema: "public",
-          table: "orders",
+          table: "clinic_invoices",
         },
-        () => reload()
+        () => {
+          reload();
+        }
+      )
+
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "clinic_payments",
+        },
+        () => {
+          reload();
+        }
       )
 
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [reload]);
 }
