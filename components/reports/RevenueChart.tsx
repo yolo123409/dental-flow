@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   CartesianGrid,
   Line,
@@ -22,6 +24,11 @@ interface RevenueChartProps {
 export default function RevenueChart({
   data,
 }: RevenueChartProps) {
+  const hasRevenue = useMemo(
+    () => data.some((point) => point.revenue > 0),
+    [data]
+  );
+
   return (
     <Card className="p-6">
       <div className="mb-6">
@@ -35,26 +42,38 @@ export default function RevenueChart({
       </div>
 
       <div className="h-80">
-        <ResponsiveContainer
-          width="100%"
-          height="100%"
-        >
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
+        {hasRevenue ? (
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+          >
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" />
 
-            <XAxis dataKey="month" />
+              <XAxis dataKey="month" />
 
-            <YAxis />
+              <YAxis />
 
-            <Tooltip />
+              <Tooltip />
 
-            <Line
-              type="monotone"
-              dataKey="revenue"
-              strokeWidth={3}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+              <Line
+                type="monotone"
+                dataKey="revenue"
+                strokeWidth={3}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-slate-200 text-center">
+            <p className="font-medium text-slate-500">
+              No revenue yet for this period
+            </p>
+
+            <p className="text-sm text-slate-400">
+              Paid invoices will appear here as soon as they come in.
+            </p>
+          </div>
+        )}
       </div>
     </Card>
   );

@@ -22,7 +22,7 @@ export async function getDashboardAnalytics(
     getPatientAnalytics(range),
     getAppointmentAnalytics(range),
     getTreatmentAnalytics(range),
-    getRevenueChartData(),
+    getRevenueChartData(range),
     getAppointmentChartData(range),
   ]);
 

@@ -16,6 +16,17 @@ export function getDateRange(
       return { start, end };
     }
 
+    case "This Month": {
+      return {
+        start: new Date(
+          end.getFullYear(),
+          end.getMonth(),
+          1
+        ),
+        end,
+      };
+    }
+
     case "7 Days": {
       const start = new Date();
       start.setDate(start.getDate() - 7);

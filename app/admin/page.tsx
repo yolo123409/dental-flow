@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getDashboardStats } from "@/services/dashboard";
+import { getRevenueAnalytics } from "@/services/analytics/revenue";
+import {
+  getRevenueChartData,
+  RevenueChartPoint,
+} from "@/services/analytics/charts";
+import { getClinicSettings } from "@/services/settings";
 import useRealtimeDashboard from "@/hooks/useRealtimeDashboard";
 
 import PageContainer from "@/components/ui/PageContainer";
@@ -10,8 +16,6 @@ import PageContainer from "@/components/ui/PageContainer";
 import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import DashboardWidgets from "@/components/dashboard/DashboardWidgets";
-
-import { useAuth } from "@/contexts/AuthContext";
 
 interface DashboardState {
   patients: number;
@@ -21,8 +25,6 @@ interface DashboardState {
 }
 
 export default function AdminDashboard() {
-  const { profile, authUser, loading: authLoading } = useAuth();
-
   const [stats, setStats] = useState<DashboardState>({
     patients: 0,
     appointments: 0,
@@ -30,15 +32,20 @@ export default function AdminDashboard() {
     orders: 0,
   });
 
-  const [loading, setLoading] = useState(true);
+  const [revenue, setRevenue] = useState(0);
 
-  useEffect(() => {
-    console.log("========== AUTH TEST ==========");
-    console.log("Auth Loading:", authLoading);
-    console.log("Auth User:", authUser);
-    console.log("Clinic Profile:", profile);
-    console.log("===============================");
-  }, [authLoading, authUser, profile]);
+  const [revenueChart, setRevenueChart] = useState<
+    RevenueChartPoint[]
+  >([]);
+
+  const [currency, setCurrency] = useState("KES");
+
+  const [loading, setLoading] = useState(true);
+  const [revenueLoading, setRevenueLoading] = useState(true);
+
+  const [revenueError, setRevenueError] = useState<
+    string | null
+  >(null);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -52,13 +59,51 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+
+    // Same shared revenue source the Analytics page uses
+    // (services/analytics/revenue.ts + services/analytics/charts.ts) -
+    // isolated in its own try/catch so a revenue-source failure doesn't
+    // take down the rest of the dashboard.
+    try {
+      setRevenueLoading(true);
+      setRevenueError(null);
+
+      const [
+        monthRevenue,
+        chartData,
+        clinicSettings,
+      ] = await Promise.all([
+        getRevenueAnalytics("This Month"),
+        getRevenueChartData("30 Days"),
+        getClinicSettings(),
+      ]);
+
+      setRevenue(monthRevenue.totalRevenue);
+      setRevenueChart(chartData);
+      setCurrency(clinicSettings.currency || "KES");
+    } catch (error) {
+      console.error(
+        "Failed to load revenue widget:",
+        error
+      );
+
+      setRevenueError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load revenue."
+      );
+    } finally {
+      setRevenueLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
-  // Automatically refresh when dashboard data changes
+  // Automatically refresh when dashboard data changes - already covers
+  // clinic_invoices/clinic_payments, so the revenue widget rides this
+  // same subscription instead of opening a second one.
   useRealtimeDashboard(loadDashboard);
 
   if (loading) {
@@ -84,7 +129,13 @@ export default function AdminDashboard() {
         orders={stats.orders}
       />
 
-      <DashboardWidgets />
+      <DashboardWidgets
+        revenue={revenue}
+        revenueChart={revenueChart}
+        currency={currency}
+        revenueLoading={revenueLoading}
+        revenueError={revenueError}
+      />
     </PageContainer>
   );
 }

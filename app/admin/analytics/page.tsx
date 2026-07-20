@@ -13,8 +13,9 @@ import {
 
 import {
   getDashboardStats,
-  getRevenue,
 } from "@/services/dashboard";
+
+import { getClinicSettings } from "@/services/settings";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 
@@ -34,7 +35,6 @@ interface DashboardTotals {
   appointments: number;
   dentists: number;
   orders: number;
-  revenue: number;
 }
 
 export default function AnalyticsPage() {
@@ -51,8 +51,14 @@ export default function AnalyticsPage() {
       null
     );
 
+  const [currency, setCurrency] =
+    useState("KES");
+
   const [loading, setLoading] =
     useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   const realtimeTables = useMemo(
     () => [
@@ -69,29 +75,37 @@ export default function AnalyticsPage() {
     useCallback(async () => {
       try {
         setLoading(true);
+        setError(null);
 
         const [
           analyticsData,
           dashboardStats,
-          revenue,
+          clinicSettings,
         ] = await Promise.all([
           getDashboardAnalytics(range),
           getDashboardStats(),
-          getRevenue(),
+          getClinicSettings(),
         ]);
 
         setAnalytics(
           analyticsData
         );
 
-        setStats({
-          ...dashboardStats,
-          revenue,
-        });
-      } catch (error) {
+        setStats(dashboardStats);
+
+        setCurrency(
+          clinicSettings.currency || "KES"
+        );
+      } catch (err) {
         console.error(
           "Analytics Error:",
-          error
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load analytics."
         );
       } finally {
         setLoading(false);
@@ -106,6 +120,22 @@ export default function AnalyticsPage() {
     tables: realtimeTables,
     reload: loadAnalytics,
   });
+
+  if (error && !analytics) {
+    return (
+      <PageContainer>
+        <div className="flex h-[70vh] flex-col items-center justify-center gap-2">
+          <p className="text-lg font-semibold text-red-600">
+            Couldn&apos;t load analytics
+          </p>
+
+          <p className="text-sm text-slate-500">
+            {error}
+          </p>
+        </div>
+      </PageContainer>
+    );
+  }
 
   if (
     loading ||
@@ -123,6 +153,12 @@ export default function AnalyticsPage() {
     );
   }
 
+  const formattedRevenue = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(analytics.revenue.totalRevenue);
+
   return (
     <PageContainer>
       <ReportsHeader
@@ -134,7 +170,7 @@ export default function AnalyticsPage() {
 
         <ReportStatCard
           title="Revenue"
-          value={`KES ${stats.revenue.toLocaleString()}`}
+          value={formattedRevenue}
           subtitle={`${analytics.revenue.paidInvoices} paid invoices`}
         />
 

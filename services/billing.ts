@@ -335,7 +335,10 @@ export async function getPatientInvoices(
 /* -------------------------------------- */
 
 export function calculateBalance(
-  invoices: ClinicInvoice[]
+  invoices: Pick<
+    ClinicInvoice,
+    "total" | "amount_paid"
+  >[]
 ) {
   const total =
     invoices.reduce(

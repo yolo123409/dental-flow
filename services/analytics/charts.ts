@@ -1,16 +1,166 @@
+import { supabase } from "@/lib/supabase";
+
 import { getCurrentClinicId } from "@/services/clinic";
+
+import { getDateRange } from "./dateRange";
 
 export interface RevenueChartPoint {
   month: string;
   revenue: number;
 }
 
-export async function getRevenueChartData(): Promise<
-  RevenueChartPoint[]
-> {
-  // Keep clinic resolution so the function signature
-  // remains compatible when Billing is implemented.
-  await getCurrentClinicId();
+type Granularity = "hour" | "day" | "month";
 
-  return [];
+function granularityFor(range: string): Granularity {
+  if (range === "Today") return "hour";
+
+  if (range === "7 Days" || range === "30 Days") return "day";
+
+  return "month";
+}
+
+function bucketKey(
+  date: Date,
+  granularity: Granularity
+): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+
+  if (granularity === "hour") return `${year}-${month}-${day}-${hour}`;
+
+  if (granularity === "day") return `${year}-${month}-${day}`;
+
+  return `${year}-${month}`;
+}
+
+function bucketLabel(
+  date: Date,
+  granularity: Granularity
+): string {
+  if (granularity === "hour") {
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+    });
+  }
+
+  if (granularity === "day") {
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function nextBucket(
+  date: Date,
+  granularity: Granularity
+): Date {
+  const next = new Date(date);
+
+  if (granularity === "hour") next.setHours(next.getHours() + 1);
+  else if (granularity === "day") next.setDate(next.getDate() + 1);
+  else next.setMonth(next.getMonth() + 1);
+
+  return next;
+}
+
+/**
+ * The single source of revenue-over-time data - used by both the
+ * Analytics page's chart and the Dashboard's revenue widget. "Revenue"
+ * means the same thing here as in getRevenueAnalytics: sum of `total`
+ * for clinic_invoices with status 'Paid'.
+ */
+export async function getRevenueChartData(
+  range: string
+): Promise<RevenueChartPoint[]> {
+  const clinicId = await getCurrentClinicId();
+
+  const { start, end } = getDateRange(range);
+
+  const granularity = granularityFor(range);
+
+  let query = supabase
+    .from("clinic_invoices")
+    .select("total, created_at")
+    .eq("clinic_id", clinicId)
+    .eq("status", "Paid");
+
+  if (start) {
+    query = query.gte("created_at", start.toISOString());
+  }
+
+  if (end) {
+    query = query.lte("created_at", end.toISOString());
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error(
+      "[analytics] getRevenueChartData query failed:",
+      error
+    );
+
+    throw error;
+  }
+
+  const revenueByBucket = new Map<string, number>();
+
+  for (const invoice of data ?? []) {
+    const key = bucketKey(
+      new Date(invoice.created_at),
+      granularity
+    );
+
+    revenueByBucket.set(
+      key,
+      (revenueByBucket.get(key) ?? 0) +
+        Number(invoice.total ?? 0)
+    );
+  }
+
+  // Bounded ranges get every bucket zero-filled, so the trend line is
+  // continuous instead of jumping straight from one data point to the
+  // next with gaps skipped.
+  if (start && end) {
+    const points: RevenueChartPoint[] = [];
+
+    for (
+      let cursor = new Date(start);
+      cursor <= end;
+      cursor = nextBucket(cursor, granularity)
+    ) {
+      points.push({
+        month: bucketLabel(cursor, granularity),
+        revenue:
+          revenueByBucket.get(
+            bucketKey(cursor, granularity)
+          ) ?? 0,
+      });
+    }
+
+    return points;
+  }
+
+  // "All Time" has no fixed range to zero-fill from - only show buckets
+  // that actually have revenue, in chronological order.
+  return Array.from(revenueByBucket.keys())
+    .sort()
+    .map((key) => {
+      const [year, month, day] = key.split("-").map(Number);
+
+      const date = new Date(year, month - 1, day ?? 1);
+
+      return {
+        month: bucketLabel(date, granularity),
+        revenue: revenueByBucket.get(key) ?? 0,
+      };
+    });
 }

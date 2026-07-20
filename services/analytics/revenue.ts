@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
 import { getCurrentClinicId } from "@/services/clinic";
+import { calculateBalance } from "@/services/billing";
 
 import { getDateRange } from "./dateRange";
 
@@ -15,13 +16,13 @@ export async function getRevenueAnalytics(
 
   let revenueQuery = supabase
     .from("clinic_invoices")
-    .select("amount")
+    .select("total")
     .eq("clinic_id", clinicId)
     .eq("status", "Paid");
 
   let outstandingQuery = supabase
     .from("clinic_invoices")
-    .select("amount")
+    .select("total, amount_paid")
     .eq("clinic_id", clinicId)
     .neq("status", "Paid");
 
@@ -90,20 +91,38 @@ export async function getRevenueAnalytics(
     totalInvoicesQuery,
   ]);
 
+  const firstError = [
+    revenue,
+    outstanding,
+    paidInvoices,
+    unpaidInvoices,
+    totalInvoices,
+  ].find((result) => result.error)?.error;
+
+  if (firstError) {
+    console.error(
+      "[analytics] getRevenueAnalytics query failed:",
+      firstError
+    );
+
+    throw firstError;
+  }
+
   return {
     totalRevenue:
       revenue.data?.reduce(
         (sum, invoice) =>
-          sum + Number(invoice.amount ?? 0),
+          sum + Number(invoice.total ?? 0),
         0
       ) ?? 0,
 
-    outstandingBalance:
-      outstanding.data?.reduce(
-        (sum, invoice) =>
-          sum + Number(invoice.amount ?? 0),
-        0
-      ) ?? 0,
+    // Uses the same total-minus-paid formula as services/billing.ts's
+    // calculateBalance (the per-patient billing summary) - summing full
+    // `total` for unpaid invoices would double-count anything partially
+    // paid, since it ignores amount_paid already collected on those rows.
+    outstandingBalance: calculateBalance(
+      outstanding.data ?? []
+    ).outstanding,
 
     totalInvoices:
       totalInvoices.count ?? 0,
