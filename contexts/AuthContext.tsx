@@ -11,6 +11,7 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
+import { provisionPendingClinicIfNeeded } from "@/services/clinic";
 
 import { ClinicUser } from "@/types/clinicUser";
 
@@ -55,28 +56,68 @@ export function AuthProvider({
       return;
     }
 
-    const { data, error } = await supabase
+    console.log("[auth] loading clinic profile for", user.id);
+
+    let { data, error } = await supabase
       .from("clinic_users")
       .select("*")
       .eq("auth_user_id", user.id)
       .maybeSingle();
 
-      console.log("Logged in user ID:", user.id);
-console.log("Returned data:", data);
-console.log("Returned error:", error);
-
     if (error) {
-  console.error("Profile loading failed:", error);
-  console.error("Message:", error.message);
-  console.error("Details:", error.details);
-  console.error("Hint:", error.hint);
+      console.error("[auth] Failed to load clinic profile:", error);
 
-  setProfile(null);
+      setProfile(null);
 
-  return;
-}
+      return;
+    }
 
-    setProfile(data as ClinicUser);
+    // A session can become authenticated without ever going through the
+    // signup form's own onboarding call - e.g. Supabase's email-confirmation
+    // link establishes a session on whatever page it lands on. This is the
+    // single place that guarantees onboarding finishes before any page
+    // treats the user as "no clinic" regardless of how they got signed in.
+    if (
+      !data &&
+      user.user_metadata?.pending_clinic_name
+    ) {
+      console.log(
+        "[auth] no clinic_users row yet but pending clinic metadata found - provisioning now:",
+        user.user_metadata.pending_clinic_name
+      );
+
+      try {
+        await provisionPendingClinicIfNeeded();
+
+        const retry = await supabase
+          .from("clinic_users")
+          .select("*")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+
+        data = retry.data;
+        error = retry.error;
+
+        if (error) {
+          console.error(
+            "[auth] Failed to re-fetch clinic profile after provisioning:",
+            error
+          );
+        } else {
+          console.log(
+            "[auth] provisioning finished, clinic profile loaded:",
+            data
+          );
+        }
+      } catch (provisionError) {
+        console.error(
+          "[auth] Clinic provisioning failed:",
+          provisionError
+        );
+      }
+    }
+
+    setProfile((data ?? null) as ClinicUser | null);
   }
 
   async function refreshProfile() {

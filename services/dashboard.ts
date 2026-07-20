@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getCurrentClinicId } from "./clinic";
 
 export interface DashboardStats {
   patients: number;
@@ -8,53 +9,53 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
+  const clinicId = await getCurrentClinicId();
+
   const [
     patients,
     appointments,
     dentists,
-    orders,
   ] = await Promise.all([
     supabase
       .from("patients")
       .select("*", {
         count: "exact",
         head: true,
-      }),
+      })
+      .eq("clinic_id", clinicId),
 
     supabase
       .from("appointments")
       .select("*", {
         count: "exact",
         head: true,
-      }),
+      })
+      .eq("clinic_id", clinicId),
 
     supabase
       .from("dentists")
       .select("*", {
         count: "exact",
         head: true,
-      }),
-
-    supabase
-      .from("orders")
-      .select("*", {
-        count: "exact",
-        head: true,
-      }),
+      })
+      .eq("clinic_id", clinicId),
   ]);
 
   return {
     patients: patients.count ?? 0,
     appointments: appointments.count ?? 0,
     dentists: dentists.count ?? 0,
-    orders: orders.count ?? 0,
+    orders: 0,
   };
 }
 
 export async function getRecentPatients(limit = 5) {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("patients")
     .select("*")
+    .eq("clinic_id", clinicId)
     .order("created_at", {
       ascending: false,
     })
@@ -69,6 +70,8 @@ export async function getRecentPatients(limit = 5) {
 }
 
 export async function getTodaysAppointments() {
+  const clinicId = await getCurrentClinicId();
+
   const today = new Date()
     .toISOString()
     .split("T")[0];
@@ -85,6 +88,7 @@ export async function getTodaysAppointments() {
         full_name
       )
     `)
+    .eq("clinic_id", clinicId)
     .eq("appointment_date", today)
     .order("appointment_time");
 
@@ -94,40 +98,4 @@ export async function getTodaysAppointments() {
   }
 
   return data ?? [];
-}
-
-export async function getPendingOrders() {
-  const { count, error } = await supabase
-    .from("orders")
-    .select("*", {
-      count: "exact",
-      head: true,
-    })
-    .eq("payment_status", "Pending");
-
-  if (error) {
-    console.error(error);
-    return 0;
-  }
-
-  return count ?? 0;
-}
-
-export async function getRevenue() {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("amount")
-    .eq("payment_status", "Approved");
-
-  if (error) {
-    console.error(error);
-    return 0;
-  }
-
-  return (
-    data?.reduce(
-      (sum, order) => sum + Number(order.amount ?? 0),
-      0
-    ) ?? 0
-  );
 }

@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
+import { getCurrentClinicId } from "./clinic";
+
 export interface SearchResult {
   id: string;
   title: string;
@@ -13,12 +15,15 @@ export async function searchEverything(
 ): Promise<SearchResult[]> {
   if (!query.trim()) return [];
 
+  const clinicId = await getCurrentClinicId();
+
   const results: SearchResult[] = [];
 
   // Patients
   const { data: patients } = await supabase
     .from("patients")
     .select("id, first_name, last_name")
+    .eq("clinic_id", clinicId)
     .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
     .limit(5);
 
@@ -36,6 +41,7 @@ export async function searchEverything(
   const { data: dentists } = await supabase
     .from("dentists")
     .select("id, full_name")
+    .eq("clinic_id", clinicId)
     .ilike("full_name", `%${query}%`)
     .limit(5);
 

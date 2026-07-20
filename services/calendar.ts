@@ -1,10 +1,14 @@
 import { supabase } from "@/lib/supabase";
 import { Appointment } from "@/types";
 
+import { getCurrentClinicId } from "./clinic";
+
 export async function getCalendarAppointments(
   startDate: string,
   endDate: string
 ): Promise<Appointment[]> {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("appointments")
     .select(`
@@ -17,6 +21,7 @@ export async function getCalendarAppointments(
         full_name
       )
     `)
+    .eq("clinic_id", clinicId)
     .gte("appointment_date", startDate)
     .lte("appointment_date", endDate)
     .order("appointment_date")
@@ -39,6 +44,8 @@ export async function moveAppointment(
   start: Date,
   end: Date | null
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const appointmentDate =
     start.toISOString().split("T")[0];
 
@@ -64,6 +71,7 @@ export async function moveAppointment(
 
       duration,
     })
+    .eq("clinic_id", clinicId)
     .eq("id", appointmentId);
 
   if (error) {
@@ -76,6 +84,8 @@ export async function resizeAppointment(
   start: Date,
   end: Date
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const appointmentDate =
     start.toISOString().split("T")[0];
 
@@ -99,6 +109,7 @@ export async function resizeAppointment(
 
       duration,
     })
+    .eq("clinic_id", clinicId)
     .eq("id", appointmentId);
 
   if (error) {

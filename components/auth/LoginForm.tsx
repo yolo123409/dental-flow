@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
 import { signIn } from "@/services/auth";
+import { provisionPendingClinicIfNeeded } from "@/services/clinic";
 
 import { toast } from "sonner";
 
@@ -32,6 +33,8 @@ export default function LoginForm() {
         email.trim(),
         password
       );
+
+      await provisionPendingClinicIfNeeded();
 
       toast.success("Welcome back!");
 

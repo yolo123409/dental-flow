@@ -2,48 +2,55 @@ import { supabase } from "@/lib/supabase";
 
 import { TimelineItem } from "@/types";
 
+import { getCurrentClinicId } from "./clinic";
+
 interface AppointmentRow {
   id: string;
   treatment: string;
   appointment_date: string;
 }
 
-interface TreatmentRow {
+interface ChargeRow {
   id: string;
   treatment_name: string;
-  diagnosis: string | null;
+  amount: number;
   created_at: string;
 }
 
 interface InvoiceRow {
   id: string;
-  amount: number;
+  total: number;
   created_at: string;
 }
 
 export async function getPatientTimeline(
   patientId: string
 ): Promise<TimelineItem[]> {
+  const clinicId = await getCurrentClinicId();
+
   const [
     appointments,
-    treatments,
+    charges,
     invoices,
   ] = await Promise.all([
     supabase
       .from("appointments")
       .select("id, treatment, appointment_date")
+      .eq("clinic_id", clinicId)
       .eq("patient_id", patientId),
 
     supabase
-      .from("treatments")
+      .from("clinic_charges")
       .select(
-        "id, treatment_name, diagnosis, created_at"
+        "id, treatment_name, amount, created_at"
       )
+      .eq("clinic_id", clinicId)
       .eq("patient_id", patientId),
 
     supabase
-      .from("invoices")
-      .select("id, amount, created_at")
+      .from("clinic_invoices")
+      .select("id, total, created_at")
+      .eq("clinic_id", clinicId)
       .eq("patient_id", patientId),
   ]);
 
@@ -62,15 +69,14 @@ export async function getPatientTimeline(
     }
   );
 
-  (treatments.data as TreatmentRow[] | null)?.forEach(
-    (treatment) => {
+  (charges.data as ChargeRow[] | null)?.forEach(
+    (charge) => {
       items.push({
-        id: treatment.id,
+        id: charge.id,
         patient_id: patientId,
-        title: treatment.treatment_name,
-        description:
-          treatment.diagnosis ?? "",
-        created_at: treatment.created_at,
+        title: charge.treatment_name,
+        description: `KSh ${charge.amount}`,
+        created_at: charge.created_at,
         type: "treatment",
       });
     }
@@ -82,7 +88,7 @@ export async function getPatientTimeline(
         id: invoice.id,
         patient_id: patientId,
         title: "Invoice",
-        description: `KSh ${invoice.amount}`,
+        description: `KSh ${invoice.total}`,
         created_at: invoice.created_at,
         type: "invoice",
       });

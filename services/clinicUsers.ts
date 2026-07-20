@@ -18,7 +18,7 @@ export async function getCurrentClinicUser() {
     .from("clinic_users")
     .select("*")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw error;
