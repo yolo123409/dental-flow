@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getCurrentClinicId } from "@/services/clinic";
 
 type AIReceptionist = {
   id?: string;
@@ -41,11 +42,13 @@ export default function ReceptionistPage() {
   }, []);
 
   async function loadSettings() {
+    const clinicId = await getCurrentClinicId();
+
     const { data } = await supabase
       .from("ai_receptionists")
       .select("*")
-      .limit(1)
-      .single();
+      .eq("clinic_id", clinicId)
+      .maybeSingle();
 
     if (data) {
       setConfig(data);
@@ -55,11 +58,13 @@ export default function ReceptionistPage() {
   async function saveSettings() {
     setSaving(true);
 
+    const clinicId = await getCurrentClinicId();
+
     const { data } = await supabase
       .from("ai_receptionists")
       .select("id")
-      .limit(1)
-      .single();
+      .eq("clinic_id", clinicId)
+      .maybeSingle();
 
     let error;
 
@@ -71,7 +76,7 @@ export default function ReceptionistPage() {
     } else {
       ({ error } = await supabase
         .from("ai_receptionists")
-        .insert(config));
+        .insert({ ...config, clinic_id: clinicId }));
     }
 
     setSaving(false);

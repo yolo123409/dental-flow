@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getCurrentClinicId } from "@/services/clinic";
 
 type Message = {
   id: string;
@@ -27,9 +28,12 @@ export default function PlaygroundPage() {
   }, [messages]);
 
   async function loadConversation() {
+    const clinicId = await getCurrentClinicId();
+
     const { data } = await supabase
       .from("ai_conversations")
       .select("*")
+      .eq("clinic_id", clinicId)
       .order("created_at");
 
     setMessages(data || []);
@@ -38,10 +42,12 @@ export default function PlaygroundPage() {
   async function clearConversation() {
     if (!confirm("Clear conversation?")) return;
 
+    const clinicId = await getCurrentClinicId();
+
     await supabase
       .from("ai_conversations")
       .delete()
-      .neq("id", "");
+      .eq("clinic_id", clinicId);
 
     setMessages([]);
   }
@@ -54,15 +60,23 @@ export default function PlaygroundPage() {
     const patientMessage = prompt;
     setPrompt("");
 
+    const clinicId = await getCurrentClinicId();
+
     await supabase.from("ai_conversations").insert({
+      clinic_id: clinicId,
       sender: "Patient",
       message: patientMessage,
     });
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
     const response = await fetch("/api/ai", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token ?? ""}`,
       },
       body: JSON.stringify({
         message: patientMessage,
@@ -79,6 +93,7 @@ export default function PlaygroundPage() {
     }
 
     await supabase.from("ai_conversations").insert({
+      clinic_id: clinicId,
       sender: "AI Receptionist",
       message: result.reply,
     });

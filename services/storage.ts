@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
+import { getCurrentClinicId } from "./clinic";
+
 export async function uploadPatientFile(
   patientId: string,
   file: File
@@ -28,9 +30,12 @@ export async function saveAttachment(
   filePath: string,
   file: File
 ) {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("attachments")
     .insert({
+      clinic_id: clinicId,
       patient_id: patientId,
       title: file.name,
       file_url: filePath,
@@ -49,9 +54,12 @@ export async function saveAttachment(
 export async function getPatientFiles(
   patientId: string
 ) {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("attachments")
     .select("*")
+    .eq("clinic_id", clinicId)
     .eq("patient_id", patientId)
     .order("created_at", {
       ascending: false,

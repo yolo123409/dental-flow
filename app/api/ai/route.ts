@@ -8,12 +8,56 @@ const openai = new OpenAI({
 
 export async function POST(req: NextRequest) {
   try {
+    const token = req.headers
+      .get("authorization")
+      ?.replace("Bearer ", "");
+
+    if (!token) {
+      return NextResponse.json(
+        { error: "Not authenticated." },
+        { status: 401 }
+      );
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Not authenticated." },
+        { status: 401 }
+      );
+    }
+
+    const { data: clinicUser } = await supabaseAdmin
+      .from("clinic_users")
+      .select("clinic_id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (!clinicUser?.clinic_id) {
+      return NextResponse.json(
+        { error: "This account is not linked to a clinic." },
+        { status: 403 }
+      );
+    }
+
     const { message } = await req.json();
+
+    if (typeof message !== "string" || !message.trim()) {
+      return NextResponse.json(
+        { error: "Message is required." },
+        { status: 400 }
+      );
+    }
 
     const { data: receptionist } = await supabaseAdmin
       .from("ai_receptionists")
       .select("*")
-      .single();
+      .eq("clinic_id", clinicUser.clinic_id)
+      .maybeSingle();
 
     const systemPrompt = `
 You are ${receptionist?.ai_name || "Ava"}.
