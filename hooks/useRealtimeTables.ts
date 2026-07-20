@@ -23,13 +23,9 @@ export default function useRealtimeTables({
   useEffect(() => {
     const channelName = `realtime-${tables.join("-")}`;
 
-    console.log("Creating channel:", channelName);
-
     const channel = supabase.channel(channelName);
 
     tables.forEach((table) => {
-      console.log("Subscribing to:", table);
-
       channel.on(
         "postgres_changes",
         {
@@ -37,21 +33,15 @@ export default function useRealtimeTables({
           schema,
           table,
         },
-        async (payload) => {
-          console.log("EVENT RECEIVED", table, payload);
-
+        async () => {
           await reloadRef.current();
         }
       );
     });
 
-    channel.subscribe((status) => {
-      console.log("CHANNEL STATUS:", status);
-    });
+    channel.subscribe();
 
     return () => {
-      console.log("Removing channel:", channelName);
-
       void supabase.removeChannel(channel);
     };
   }, [schema, tables]);
