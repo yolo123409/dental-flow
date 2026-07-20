@@ -110,13 +110,15 @@ export default function TreatmentModal({
       await onSaved();
 
       onClose();
-    } catch (error: any) {
-  console.error("CREATE TREATMENT ERROR:", error);
+    } catch (error) {
+      console.error("Failed to save treatment:", error);
 
-  alert(
-    JSON.stringify(error, null, 2)
-  );
-} finally {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Unable to save treatment."
+      );
+    } finally {
       setSaving(false);
     }
   }

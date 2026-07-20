@@ -25,7 +25,7 @@ export default function ReportsHeader({
         </h1>
 
         <p className="mt-2 text-slate-500">
-          Monitor your clinic's performance.
+          Monitor your clinic&apos;s performance.
         </p>
       </div>
 

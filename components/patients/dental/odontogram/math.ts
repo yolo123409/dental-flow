@@ -1,5 +1,7 @@
+import { svgPathProperties } from "svg-path-properties";
+
 export function tangentAngle(
-  path: any,
+  path: InstanceType<typeof svgPathProperties>,
   distance: number
 ) {
   const before = path.getPointAtLength(

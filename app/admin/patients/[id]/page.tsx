@@ -28,10 +28,13 @@ import {
   Patient,
   Appointment,
   TimelineItem,
-  BillingSummary as BillingSummaryType,
 } from "@/types";
 
 import DentalChart from "@/components/patients/dental/DentalChart";
+
+type BillingSummaryState = ReturnType<
+  typeof calculateBalance
+>;
 
 export default function PatientProfilePage() {
   const params = useParams();
@@ -48,7 +51,7 @@ export default function PatientProfilePage() {
     useState<TimelineItem[]>([]);
 
   const [billing, setBilling] =
-    useState<BillingSummaryType>({
+    useState<BillingSummaryState>({
       total: 0,
       paid: 0,
       outstanding: 0,

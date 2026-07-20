@@ -2,7 +2,7 @@
 
 import HistoryCard from "./HistoryCard";
 
-interface HistoryItem {
+export interface HistoryItem {
   id: string;
 
   condition: string;
@@ -42,7 +42,7 @@ export default function ToothHistoryTab({
         </h3>
 
         <p className="mt-2 text-sm text-slate-500">
-          This tooth doesn't have any saved treatment
+          This tooth doesn&apos;t have any saved treatment
           records yet.
         </p>
 

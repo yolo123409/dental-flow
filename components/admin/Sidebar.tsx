@@ -12,8 +12,6 @@ import {
   Stethoscope,
   CalendarDays,
   Calendar,
-  Bot,
-  MessageSquare,
   BarChart3,
   Settings,
   LucideIcon,
@@ -100,12 +98,6 @@ const sections: SidebarSection[] = [
         icon: ShoppingCart,
         permission: "billing",
       },
-      {
-        name: "Customers",
-        href: "/admin/customers",
-        icon: Users,
-        permission: "patients",
-      },
     ],
   },
 
@@ -159,7 +151,9 @@ export default function Sidebar() {
 
         {sections.map((section) => {
           const visibleLinks =
-  section.links;
+            section.links.filter((link) =>
+              hasPermission(link.permission)
+            );
 
           if (visibleLinks.length === 0) {
             return null;

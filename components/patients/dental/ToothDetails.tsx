@@ -10,7 +10,9 @@ import {
 import Card from "@/components/ui/Card";
 
 import TreatmentForm from "@/components/patients/dental/TreatmentForm";
-import ToothHistoryTab from "@/components/patients/dental/ToothHistoryTab";
+import ToothHistoryTab, {
+  HistoryItem,
+} from "@/components/patients/dental/ToothHistoryTab";
 import ToothAttachments from "@/components/dental/attachments/ToothAttachments";
 
 import {
@@ -49,7 +51,7 @@ export default function ToothDetails({
     useState(false);
 
   const [history, setHistory] =
-    useState<any[]>([]);
+    useState<HistoryItem[]>([]);
 
   useEffect(() => {
     loadHistory();
