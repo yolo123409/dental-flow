@@ -1,39 +1,15 @@
-"use client";
+import { ReactNode } from "react";
 
 interface Props {
-  label: string;
-
-  value: string;
-
-  rows?: number;
-
-  onChange: (
-    value: string
-  ) => void;
+  children: ReactNode;
 }
 
-export default function FormTextarea({
-  label,
-  value,
-  rows = 4,
-  onChange,
-}: Props) {
+export default function DataTable({ children }: Props) {
   return (
-    <div>
-
-      <label className="mb-2 block font-medium">
-        {label}
-      </label>
-
-      <textarea
-        rows={rows}
-        value={value}
-        onChange={(e) =>
-          onChange(e.target.value)
-        }
-        className="w-full rounded-xl border border-slate-300 p-3 transition focus:border-blue-500 focus:outline-none"
-      />
-
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <table className="w-full border-collapse text-sm">
+        {children}
+      </table>
     </div>
   );
 }
