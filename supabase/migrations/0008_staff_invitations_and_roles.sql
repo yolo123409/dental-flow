@@ -92,40 +92,53 @@ on conflict (clinic_id, name) do nothing;
 --    permitting a target row with role = 'Owner' to be changed or removed
 --    by anyone (an Owner has no self-edit UI today, so no self carve-out
 --    is needed - add one if a "my profile" feature is built later).
+--
+--    A policy ON clinic_users cannot itself query clinic_users with a raw
+--    EXISTS the way every OTHER table's policy safely does (that pattern
+--    only works cross-table) - Postgres rejects it outright at evaluation
+--    time with "infinite recursion detected in policy for relation
+--    clinic_users" (42P17), which breaks EVERY read of this table,
+--    including the plain self-select every page depends on via
+--    getCurrentClinicId(). Confirmed live: a first version of this
+--    migration without the helper function below took down the entire
+--    app. The fix is the standard one for this exact self-referential
+--    case - a SECURITY DEFINER function, so the inner membership lookup
+--    bypasses RLS instead of re-triggering the very policy being
+--    evaluated.
 -- ============================================================
+
+create or replace function public.is_clinic_owner_or_admin(p_clinic_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.clinic_users cu
+    where cu.auth_user_id = auth.uid()
+      and cu.clinic_id = p_clinic_id
+      and cu.role in ('Owner', 'Admin')
+  );
+$$;
+
+grant execute on function public.is_clinic_owner_or_admin(uuid) to authenticated;
 
 drop policy if exists "clinic_users_select_own_clinic_staff_admins" on public.clinic_users;
 create policy "clinic_users_select_own_clinic_staff_admins"
   on public.clinic_users for select
-  using (
-    exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = clinic_users.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
-  );
+  using (public.is_clinic_owner_or_admin(clinic_users.clinic_id));
 
 drop policy if exists "clinic_users_update_staff_management" on public.clinic_users;
 create policy "clinic_users_update_staff_management"
   on public.clinic_users for update
   using (
     clinic_users.role <> 'Owner'
-    and exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = clinic_users.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
+    and public.is_clinic_owner_or_admin(clinic_users.clinic_id)
   )
   with check (
     role <> 'Owner'
-    and exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = clinic_users.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
+    and public.is_clinic_owner_or_admin(clinic_id)
   );
 
 drop policy if exists "clinic_users_delete_staff_management" on public.clinic_users;
@@ -133,38 +146,19 @@ create policy "clinic_users_delete_staff_management"
   on public.clinic_users for delete
   using (
     clinic_users.role <> 'Owner'
-    and exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = clinic_users.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
+    and public.is_clinic_owner_or_admin(clinic_users.clinic_id)
   );
 
 -- Owner manages the clinic/billing too, not just Admin.
 drop policy if exists "clinics_update_admin_only" on public.clinics;
 create policy "clinics_update_admin_only"
   on public.clinics for update
-  using (
-    exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = clinics.id
-        and cu.role in ('Owner', 'Admin')
-    )
-  );
+  using (public.is_clinic_owner_or_admin(clinics.id));
 
 drop policy if exists "clinic_settings_update_admin_only" on public.clinic_settings;
 create policy "clinic_settings_update_admin_only"
   on public.clinic_settings for update
-  using (
-    exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = clinic_settings.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
-  );
+  using (public.is_clinic_owner_or_admin(clinic_settings.clinic_id));
 
 -- ============================================================
 -- 3. create_clinic_with_admin: new clinics get an Owner, not an Admin.
@@ -276,26 +270,12 @@ alter table public.staff_invitations enable row level security;
 drop policy if exists "staff_invitations_select_owner_admin" on public.staff_invitations;
 create policy "staff_invitations_select_owner_admin"
   on public.staff_invitations for select
-  using (
-    exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = staff_invitations.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
-  );
+  using (public.is_clinic_owner_or_admin(staff_invitations.clinic_id));
 
 drop policy if exists "staff_invitations_delete_owner_admin" on public.staff_invitations;
 create policy "staff_invitations_delete_owner_admin"
   on public.staff_invitations for delete
-  using (
-    exists (
-      select 1 from public.clinic_users cu
-      where cu.auth_user_id = auth.uid()
-        and cu.clinic_id = staff_invitations.clinic_id
-        and cu.role in ('Owner', 'Admin')
-    )
-  );
+  using (public.is_clinic_owner_or_admin(staff_invitations.clinic_id));
 
 -- ============================================================
 -- 5. create_staff_invitation - the only way an invitation is created.
