@@ -21,10 +21,6 @@ export default function AppointmentDetailsPage() {
   const [loading, setLoading] =
     useState(true);
 
-  useEffect(() => {
-    loadAppointment();
-  }, [appointmentId]);
-
   async function loadAppointment() {
     if (!appointmentId) return;
 
@@ -42,6 +38,10 @@ export default function AppointmentDetailsPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadAppointment();
+  }, [appointmentId]);
 
   if (loading) {
     return (

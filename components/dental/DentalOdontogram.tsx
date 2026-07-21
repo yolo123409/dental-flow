@@ -197,9 +197,15 @@ export default function DentalOdontogram({
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
         <Odontogram
+          key={selectedTooth ?? "none"}
           theme="light"
           showLabels={false}
           singleSelect
+          defaultSelected={
+            selectedTooth != null
+              ? [`teeth-${selectedTooth}`]
+              : []
+          }
           teethConditions={conditions}
           onToothClick={onToothClick}
         />

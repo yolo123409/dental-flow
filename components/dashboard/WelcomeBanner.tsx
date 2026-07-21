@@ -32,7 +32,7 @@ export default function WelcomeBanner() {
 
           <p className="mt-3 max-w-xl text-blue-100 text-lg">
             Welcome back to Dental Flow.
-            Here's what's happening in your clinic today.
+            Here&apos;s what&apos;s happening in your clinic today.
           </p>
 
         </div>

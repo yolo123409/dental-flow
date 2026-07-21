@@ -129,6 +129,7 @@ export default function UserMenu() {
         }`}
       >
         <UserDropdown
+          loading={loading}
           onLogout={handleLogout}
         />
       </div>

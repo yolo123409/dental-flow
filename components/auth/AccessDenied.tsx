@@ -24,7 +24,7 @@ export default function AccessDenied() {
         </h1>
 
         <p className="mt-3 text-slate-500">
-          You don't have permission to
+          You don&apos;t have permission to
           access this page.
         </p>
 

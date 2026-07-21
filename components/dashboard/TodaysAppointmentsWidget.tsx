@@ -26,14 +26,14 @@ export default function TodaysAppointmentsWidget() {
   const [appointments, setAppointments] =
     useState<Appointment[]>([]);
 
-  useEffect(() => {
-    loadAppointments();
-  }, []);
-
   async function loadAppointments() {
     const data = await getTodaysAppointments();
     setAppointments(data);
   }
+
+  useEffect(() => {
+    loadAppointments();
+  }, []);
 
   return (
     <Card title="Today's Appointments">

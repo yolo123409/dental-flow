@@ -30,10 +30,6 @@ export default function TreatmentPicker({
   const [treatments, setTreatments] =
     useState<Treatment[]>([]);
 
-  useEffect(() => {
-    loadTreatments();
-  }, []);
-
   async function loadTreatments() {
     try {
       setLoading(true);
@@ -58,6 +54,10 @@ export default function TreatmentPicker({
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadTreatments();
+  }, []);
 
   const filtered =
     useMemo(() => {

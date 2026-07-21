@@ -30,10 +30,6 @@ export default function TreatmentSelect({
   const [treatments, setTreatments] =
     useState<Treatment[]>([]);
 
-  useEffect(() => {
-    loadTreatments();
-  }, []);
-
   async function loadTreatments() {
     try {
       const data =
@@ -46,6 +42,10 @@ export default function TreatmentSelect({
       console.error(error);
     }
   }
+
+  useEffect(() => {
+    loadTreatments();
+  }, []);
 
   const filtered =
     useMemo(() => {

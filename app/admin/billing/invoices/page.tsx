@@ -24,10 +24,6 @@ export default function InvoiceListPage() {
   const [currency, setCurrency] =
     useState("KES");
 
-  useEffect(() => {
-    loadInvoices();
-  }, []);
-
   async function loadInvoices() {
     try {
       setLoading(true);
@@ -54,6 +50,10 @@ export default function InvoiceListPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadInvoices();
+  }, []);
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat(undefined, {

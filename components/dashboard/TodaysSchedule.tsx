@@ -9,14 +9,14 @@ import { getTodaysAppointments } from "@/services/appointments";
 export default function TodaysSchedule() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-  useEffect(() => {
-    loadAppointments();
-  }, []);
-
   async function loadAppointments() {
     const data = await getTodaysAppointments();
     setAppointments(data);
   }
+
+  useEffect(() => {
+    loadAppointments();
+  }, []);
 
   return (
     <div className="rounded-2xl border bg-white p-6 shadow-sm">
@@ -26,7 +26,7 @@ export default function TodaysSchedule() {
         <CalendarDays className="text-blue-600" />
 
         <h2 className="text-xl font-bold">
-          Today's Schedule
+          Today&apos;s Schedule
         </h2>
 
       </div>

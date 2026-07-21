@@ -10,10 +10,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
+  loading?: boolean;
   onLogout: () => void;
 }
 
 export default function UserDropdown({
+  loading = false,
   onLogout,
 }: Props) {
   const { profile } = useAuth();
@@ -71,11 +73,12 @@ export default function UserDropdown({
 
   <button
     onClick={onLogout}
-    className="flex w-full items-center gap-3 px-5 py-3 text-left text-red-600 transition hover:bg-red-50"
+    disabled={loading}
+    className="flex w-full items-center gap-3 px-5 py-3 text-left text-red-600 transition hover:bg-red-50 disabled:opacity-50"
   >
     <LogOut size={18} />
 
-    <span>Logout</span>
+    <span>{loading ? "Logging out..." : "Logout"}</span>
 
   </button>
 

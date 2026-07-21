@@ -3,7 +3,6 @@
 import {
   Calendar,
   Clock,
-  User,
   Stethoscope,
   FileText,
   Eye,
@@ -23,7 +22,6 @@ interface Props {
 
 export default function AppointmentCard({
   appointment,
-  onView,
   onEdit,
   onDelete,
 }: Props) {

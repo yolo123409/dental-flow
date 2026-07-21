@@ -32,8 +32,6 @@ interface Props {
 
   tooth: number;
 
-  selectedSurface?: string | null;
-
   data: PatientTooth | null;
 
   onSaved: () => Promise<void>;
@@ -45,7 +43,6 @@ interface Props {
 export default function ToothDetails({
   patientId,
   tooth,
-  selectedSurface,
   data,
   onSaved,
   onAddToTreatmentPlan,

@@ -15,14 +15,14 @@ interface Patient {
 export default function RecentPatientsWidget() {
   const [patients, setPatients] = useState<Patient[]>([]);
 
-  useEffect(() => {
-    loadPatients();
-  }, []);
-
   async function loadPatients() {
     const data = await getRecentPatients();
     setPatients(data);
   }
+
+  useEffect(() => {
+    loadPatients();
+  }, []);
 
   return (
     <Card title="Recent Patients">

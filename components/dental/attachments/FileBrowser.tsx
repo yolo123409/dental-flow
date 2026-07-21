@@ -36,7 +36,7 @@ export default function FileBrowser({
   const [loading, setLoading] =
     useState(true);
 
-  const [search, setSearch] =
+  const [search] =
     useState("");
 
   const [previewFile, setPreviewFile] =

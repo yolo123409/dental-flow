@@ -15,7 +15,7 @@ export default function DentistHeader({
       </h1>
 
       <p className="mt-2 text-slate-500">
-        Manage your clinic's dentists, availability,
+        Manage your clinic&apos;s dentists, availability,
         and appointments.
       </p>
 

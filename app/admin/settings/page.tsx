@@ -25,10 +25,6 @@ export default function SettingsPage() {
       null
     );
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
   async function loadSettings() {
     try {
       setLoading(true);
@@ -49,6 +45,10 @@ export default function SettingsPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   async function handleSave() {
     if (!settings) return;

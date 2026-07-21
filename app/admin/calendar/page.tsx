@@ -74,10 +74,6 @@ export default function CalendarPage() {
   const [visibleEnd, setVisibleEnd] =
     useState<Date | null>(null);
 
-  useEffect(() => {
-    loadLookupData();
-  }, []);
-
   async function loadLookupData() {
     try {
       const [
@@ -97,6 +93,10 @@ export default function CalendarPage() {
       );
     }
   }
+
+  useEffect(() => {
+    loadLookupData();
+  }, []);
 
   async function loadAppointments(
     start: Date,

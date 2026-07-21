@@ -52,8 +52,8 @@ export default function ToothAttachments({
   const [saving, setSaving] =
     useState(false);
 
-  const [search, setSearch] =
-  useState(""); 
+  const [search] =
+  useState("");
 
   async function loadFolders() {
     try {

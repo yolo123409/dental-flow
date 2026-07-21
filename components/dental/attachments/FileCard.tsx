@@ -86,7 +86,7 @@ export default function FileCard({
     };
   }, [menuOpen]);
 
-  const Menu = () => (
+  const menuContent = (
     <div
       className={`absolute top-2 z-[100] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl ${
         menuLeft
@@ -202,7 +202,7 @@ export default function FileCard({
           </button>
         </div>
 
-        {menuOpen && <Menu />}
+        {menuOpen && menuContent}
       </div>
     );
   }
@@ -261,7 +261,7 @@ export default function FileCard({
         </button>
       </div>
 
-      {menuOpen && <Menu />}
+      {menuOpen && menuContent}
     </div>
   );
 }
