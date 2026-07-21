@@ -33,6 +33,7 @@ import {
 } from "@/types";
 
 import DentalChart from "@/components/patients/dental/DentalChart";
+import TreatmentPlansTab from "@/components/patients/treatment-plans/TreatmentPlansTab";
 
 type BillingSummaryState = ReturnType<
   typeof calculateBalance
@@ -64,6 +65,14 @@ export default function PatientProfilePage() {
 
   const [activeTab, setActiveTab] =
     useState("Overview");
+
+  const [focusTooth, setFocusTooth] = useState<
+    number | null
+  >(null);
+
+  const [pendingTooth, setPendingTooth] = useState<
+    number | null
+  >(null);
 
   const [loading, setLoading] =
     useState(true);
@@ -158,6 +167,28 @@ export default function PatientProfilePage() {
       {activeTab === "Dental Chart" && (
         <DentalChart
           patientId={patient.id}
+          focusTooth={focusTooth}
+          onAddToTreatmentPlan={(tooth) => {
+            setPendingTooth(tooth);
+            setActiveTab("Treatment Plans");
+          }}
+        />
+      )}
+
+      {/* Treatment Plans */}
+
+      {activeTab === "Treatment Plans" && (
+        <TreatmentPlansTab
+          patientId={patient.id}
+          currency={currency}
+          pendingTooth={pendingTooth}
+          onPendingToothConsumed={() =>
+            setPendingTooth(null)
+          }
+          onViewOnChart={(tooth) => {
+            setFocusTooth(tooth);
+            setActiveTab("Dental Chart");
+          }}
         />
       )}
 

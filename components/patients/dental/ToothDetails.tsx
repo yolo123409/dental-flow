@@ -9,6 +9,7 @@ import {
 } from "@/types";
 
 import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 
 import TreatmentForm from "@/components/patients/dental/TreatmentForm";
 import ToothHistoryTab, {
@@ -36,6 +37,9 @@ interface Props {
   data: PatientTooth | null;
 
   onSaved: () => Promise<void>;
+
+  /** Omit to hide the "Add to Treatment Plan" entry point. */
+  onAddToTreatmentPlan?: () => void;
 }
 
 export default function ToothDetails({
@@ -44,6 +48,7 @@ export default function ToothDetails({
   selectedSurface,
   data,
   onSaved,
+  onAddToTreatmentPlan,
 }: Props) {
   const [activeTab, setActiveTab] =
     useState<Tab>("details");
@@ -99,6 +104,16 @@ export default function ToothDetails({
   return (
     <Card title={`🦷 Tooth ${tooth}`}>
       <div className="space-y-6">
+
+        {onAddToTreatmentPlan && (
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={onAddToTreatmentPlan}
+          >
+            + Add to Treatment Plan
+          </Button>
+        )}
 
         <div className="border-b border-slate-200">
 

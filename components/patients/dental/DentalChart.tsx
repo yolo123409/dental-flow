@@ -13,13 +13,30 @@ import { PatientTooth } from "@/types";
 
 interface Props {
   patientId: string;
+
+  /** Externally-requested tooth to focus (e.g. from the Treatment
+   * Plans tab). Purely additive - internal click-to-select behavior
+   * is unchanged when this is omitted. */
+  focusTooth?: number | null;
+
+  /** Called with the currently selected tooth when the user wants to
+   * add it to a treatment plan. Omit to hide that entry point. */
+  onAddToTreatmentPlan?: (tooth: number) => void;
 }
 
 export default function DentalChart({
   patientId,
+  focusTooth,
+  onAddToTreatmentPlan,
 }: Props) {
   const [selectedTooth, setSelectedTooth] =
     useState<number | null>(null);
+
+  useEffect(() => {
+    if (focusTooth != null) {
+      setSelectedTooth(focusTooth);
+    }
+  }, [focusTooth]);
 
   const [teeth, setTeeth] =
     useState<PatientTooth[]>([]);
@@ -110,6 +127,14 @@ export default function DentalChart({
                 tooth={selectedTooth}
                 data={selectedToothData}
                 onSaved={loadTeeth}
+                onAddToTreatmentPlan={
+                  onAddToTreatmentPlan
+                    ? () =>
+                        onAddToTreatmentPlan(
+                          selectedTooth
+                        )
+                    : undefined
+                }
               />
 
             ) : (

@@ -8,6 +8,7 @@ interface Props {
 const tabs = [
   "Overview",
   "Dental Chart",
+  "Treatment Plans",
   "Appointments",
   "Billing",
   "Timeline",
