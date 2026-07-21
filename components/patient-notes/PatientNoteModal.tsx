@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import FormInput from "@/components/ui/FormInput";
 import FormModal from "@/components/ui/FormModal";
@@ -69,12 +70,12 @@ export default function PatientNoteModal({
 
   async function handleSubmit() {
     if (!form.title.trim()) {
-      alert("Please enter a title.");
+      toast.error("Please enter a title.");
       return;
     }
 
     if (!form.content.trim()) {
-      alert("Please enter a clinical note.");
+      toast.error("Please enter a clinical note.");
       return;
     }
 
@@ -97,6 +98,18 @@ export default function PatientNoteModal({
       }
 
       setForm(EMPTY_FORM);
+
+      toast.success(
+        note ? "Note updated." : "Note added."
+      );
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save note."
+      );
     } finally {
       setSaving(false);
     }

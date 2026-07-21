@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -39,9 +40,11 @@ export default function SettingsPage() {
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load settings."
+      );
     } finally {
       setLoading(false);
     }
@@ -60,13 +63,15 @@ export default function SettingsPage() {
 
       setSettings(updated);
 
-      alert("Settings saved.");
+      toast.success("Settings saved.");
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save settings."
+      );
     } finally {
       setSaving(false);
     }
@@ -90,9 +95,11 @@ export default function SettingsPage() {
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to upload logo."
+      );
     }
   }
 
@@ -114,7 +121,7 @@ export default function SettingsPage() {
         </h1>
 
         <p className="mt-2 text-slate-500">
-          Configure your clinic's
+          Configure your clinic&apos;s
           branding and contact
           information.
         </p>

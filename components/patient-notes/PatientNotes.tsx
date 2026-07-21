@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 import PatientNoteCard from "./PatientNoteCard";
 import PatientNoteModal from "./PatientNoteModal";
@@ -34,6 +36,11 @@ export default function PatientNotes({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingNote, setEditingNote] =
     useState<PatientNote | null>(null);
+
+  const [deleteTarget, setDeleteTarget] =
+    useState<string | null>(null);
+
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadNotes();
@@ -80,29 +87,45 @@ export default function PatientNotes({
     setModalOpen(false);
   }
 
-  async function handleDelete(id: string) {
-    if (
-      !confirm(
-        "Delete this clinical note?"
-      )
-    ) {
-      return;
+  function handleDelete(id: string) {
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    try {
+      setDeleting(true);
+
+      await deletePatientNote(deleteTarget);
+
+      await loadNotes();
+
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error(error);
+
+      toast.error("Failed to delete note.");
+    } finally {
+      setDeleting(false);
     }
-
-    await deletePatientNote(id);
-
-    await loadNotes();
   }
 
   async function handlePin(
     note: PatientNote
   ) {
-    await togglePatientNotePinned(
-      note.id,
-      !note.is_pinned
-    );
+    try {
+      await togglePatientNotePinned(
+        note.id,
+        !note.is_pinned
+      );
 
-    await loadNotes();
+      await loadNotes();
+    } catch (error) {
+      console.error(error);
+
+      toast.error("Failed to update note.");
+    }
   }
 
   return (
@@ -162,6 +185,16 @@ export default function PatientNotes({
         }}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete clinical note"
+        description="This cannot be undone."
+        confirmText="Delete"
+        loading={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
       />
 
     </div>
