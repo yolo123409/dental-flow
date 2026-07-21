@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -81,7 +82,7 @@ export default function FileBrowser({
 
     } catch (error) {
       console.error(error);
-      alert("Failed to load files.");
+      toast.error("Failed to load files.");
 
     } finally {
       setLoading(false);
@@ -113,7 +114,7 @@ export default function FileBrowser({
 
     } catch (error) {
       console.error(error);
-      alert(
+      toast.error(
         "Unable to open file."
       );
     }
@@ -148,7 +149,7 @@ export default function FileBrowser({
     } catch (error) {
       console.error(error);
 
-      alert(
+      toast.error(
         "Unable to download file."
       );
     }
@@ -183,9 +184,11 @@ export default function FileBrowser({
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete file."
+      );
 
     } finally {
       setDeleting(false);
@@ -201,7 +204,7 @@ export default function FileBrowser({
       newFileName.trim();
 
     if (!clean) {
-      alert(
+      toast.error(
         "Please enter a file name."
       );
       return;
@@ -223,9 +226,11 @@ export default function FileBrowser({
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to rename file."
+      );
 
     } finally {
       setRenaming(false);

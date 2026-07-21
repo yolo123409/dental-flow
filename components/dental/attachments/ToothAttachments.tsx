@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Button from "@/components/ui/Button";
 
@@ -69,7 +70,7 @@ export default function ToothAttachments({
     } catch (error) {
       console.error(error);
 
-      alert("Failed to load folders.");
+      toast.error("Failed to load folders.");
 
     } finally {
       setLoading(false);
@@ -82,7 +83,7 @@ export default function ToothAttachments({
 
  async function handleCreate() {
   if (!folderName.trim()) {
-    alert("Please enter a folder name.");
+    toast.error("Please enter a folder name.");
     return;
   }
 
@@ -102,15 +103,13 @@ export default function ToothAttachments({
     await loadFolders();
 
   } catch (error) {
-    console.error("loadFolders error:", error);
+    console.error("Failed to create folder:", error);
 
-if (error instanceof Error) {
-  console.error(error.message);
-}
-
-    if (error instanceof Error) {
-      alert(error.message);
-    }
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Failed to create folder."
+    );
 
   } finally {
     setSaving(false);
@@ -172,6 +171,14 @@ async function createDefaultFolders() {
 
       await loadFolders();
 
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to rename folder."
+      );
     } finally {
       setSaving(false);
     }
@@ -195,6 +202,14 @@ async function createDefaultFolders() {
 
       await loadFolders();
 
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete folder."
+      );
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import {
   PatientTooth,
@@ -85,9 +86,11 @@ export default function ToothDetails({
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save tooth record."
+      );
     } finally {
       setSaving(false);
     }
