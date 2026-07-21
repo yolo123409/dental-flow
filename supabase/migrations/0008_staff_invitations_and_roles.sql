@@ -1,0 +1,527 @@
+-- Staff Invitations and Role Management.
+--
+-- Adds a fourth role, Owner - the original clinic creator - above Admin,
+-- and a staff_invitations table so new staff join a clinic exclusively
+-- through an invitation (never by choosing their own clinic/role).
+--
+-- IMPORTANT - two pre-existing bugs discovered and fixed here, verified
+-- live against this project with a throwaway paired-user probe before
+-- writing this migration:
+--   1. public.clinic_users had NO select policy beyond "read your own row"
+--      (0002's clinic_users_select_self). A signed-in Owner/Admin could
+--      not see any OTHER staff member - the Staff page's "list all staff"
+--      query was silently returning only the caller's own row. Invisible
+--      until now because every live clinic so far has exactly one member.
+--   2. public.clinic_users had NO update or delete policy at all. Suspend/
+--      change-role/delete on the Staff page called the service function,
+--      got a 200 with zero rows affected (Postgres RLS silently filters
+--      rather than erroring), and the UI showed a false-positive success
+--      toast while nothing actually changed in the database.
+-- Both are fixed below with policies scoped to Owner/Admin, in addition to
+-- everything new for invitations.
+--
+-- Safe to re-run: every statement is idempotent (IF NOT EXISTS / OR REPLACE
+-- / DROP POLICY IF EXISTS), matching every other migration in this folder.
+
+create extension if not exists pgcrypto;
+
+-- ============================================================
+-- 1. Owner role: backfill + going-forward RPC change
+-- ============================================================
+
+-- Each live clinic today has exactly one Admin (the person who ran
+-- create_clinic_with_admin at signup) - verified live before writing this,
+-- so promoting the earliest-created Admin per clinic to Owner is
+-- unambiguous. Any additional Admin added later (e.g. via the old direct
+-- "Add Staff Member" flow this feature replaces) correctly stays Admin.
+with earliest_admin_per_clinic as (
+  select distinct on (clinic_id) id
+  from public.clinic_users
+  where role = 'Admin'
+  order by clinic_id, created_at asc
+)
+update public.clinic_users
+set role = 'Owner'
+where id in (select id from earliest_admin_per_clinic);
+
+-- Now that data is clean, enforce the fixed role set at the DB level too
+-- (was an unconstrained text column).
+alter table public.clinic_users drop constraint if exists clinic_users_role_check;
+alter table public.clinic_users
+  add constraint clinic_users_role_check
+  check (role in ('Owner', 'Admin', 'Dentist', 'Receptionist'));
+
+insert into public.clinic_roles (clinic_id, name, permissions, is_system)
+select id, 'Owner', '["*"]'::jsonb, true from public.clinics
+on conflict (clinic_id, name) do nothing;
+
+-- ============================================================
+-- 2. clinic_users: add the select/update/delete policies that were
+--    missing entirely (see note above), scoped to Owner/Admin, and never
+--    permitting a target row with role = 'Owner' to be changed or removed
+--    by anyone (an Owner has no self-edit UI today, so no self carve-out
+--    is needed - add one if a "my profile" feature is built later).
+-- ============================================================
+
+drop policy if exists "clinic_users_select_own_clinic_staff_admins" on public.clinic_users;
+create policy "clinic_users_select_own_clinic_staff_admins"
+  on public.clinic_users for select
+  using (
+    exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = clinic_users.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+drop policy if exists "clinic_users_update_staff_management" on public.clinic_users;
+create policy "clinic_users_update_staff_management"
+  on public.clinic_users for update
+  using (
+    clinic_users.role <> 'Owner'
+    and exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = clinic_users.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  )
+  with check (
+    role <> 'Owner'
+    and exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = clinic_users.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+drop policy if exists "clinic_users_delete_staff_management" on public.clinic_users;
+create policy "clinic_users_delete_staff_management"
+  on public.clinic_users for delete
+  using (
+    clinic_users.role <> 'Owner'
+    and exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = clinic_users.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+-- Owner manages the clinic/billing too, not just Admin.
+drop policy if exists "clinics_update_admin_only" on public.clinics;
+create policy "clinics_update_admin_only"
+  on public.clinics for update
+  using (
+    exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = clinics.id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+drop policy if exists "clinic_settings_update_admin_only" on public.clinic_settings;
+create policy "clinic_settings_update_admin_only"
+  on public.clinic_settings for update
+  using (
+    exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = clinic_settings.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+-- ============================================================
+-- 3. create_clinic_with_admin: new clinics get an Owner, not an Admin.
+-- ============================================================
+
+create or replace function public.create_clinic_with_admin(
+  p_clinic_name text,
+  p_owner_full_name text,
+  p_owner_email text,
+  p_owner_phone text default null
+)
+returns table (clinic_id uuid, clinic_user_id uuid)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_clinic_id uuid;
+  v_clinic_user_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if exists (select 1 from public.clinic_users where auth_user_id = v_uid) then
+    raise exception 'This account is already linked to a clinic';
+  end if;
+
+  if p_clinic_name is null or length(trim(p_clinic_name)) = 0 then
+    raise exception 'Clinic name is required';
+  end if;
+
+  insert into public.clinics (name, email, plan)
+  values (trim(p_clinic_name), p_owner_email, 'free')
+  returning id into v_clinic_id;
+
+  insert into public.clinic_settings (clinic_id, clinic_name, email)
+  values (v_clinic_id, trim(p_clinic_name), p_owner_email);
+
+  insert into public.clinic_roles (clinic_id, name, permissions, is_system)
+  values
+    (v_clinic_id, 'Owner', '["*"]'::jsonb, true),
+    (v_clinic_id, 'Admin', '["*"]'::jsonb, true),
+    (v_clinic_id, 'Dentist',
+      '["dashboard","patients","appointments","calendar","treatments","documents"]'::jsonb,
+      true),
+    (v_clinic_id, 'Receptionist',
+      '["dashboard","patients","appointments","calendar","billing","payments"]'::jsonb,
+      true);
+
+  insert into public.clinic_users (
+    clinic_id, full_name, email, phone, role, status, auth_user_id
+  )
+  values (
+    v_clinic_id, p_owner_full_name, p_owner_email, p_owner_phone,
+    'Owner', 'Active', v_uid
+  )
+  returning id into v_clinic_user_id;
+
+  return query select v_clinic_id, v_clinic_user_id;
+end;
+$$;
+
+grant execute on function public.create_clinic_with_admin(text, text, text, text)
+  to authenticated;
+
+-- ============================================================
+-- 4. staff_invitations
+-- ============================================================
+
+create table if not exists public.staff_invitations (
+  id uuid primary key default gen_random_uuid(),
+
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+
+  email text not null,
+  full_name text not null,
+  role text not null check (role in ('Admin', 'Dentist', 'Receptionist')),
+
+  -- 256-bit random token, generated server-side inside the RPCs below -
+  -- never client-supplied. Kept (not nulled) after acceptance so the
+  -- invite page can tell "already accepted" apart from "not found"; the
+  -- accepted_at check is what actually makes it unusable.
+  token text not null unique,
+
+  invited_by uuid references public.clinic_users(id) on delete set null,
+
+  accepted_at timestamptz,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_staff_invitations_clinic_id on public.staff_invitations(clinic_id);
+create index if not exists idx_staff_invitations_email on public.staff_invitations(lower(email));
+
+-- One active (unaccepted) invitation per email per clinic.
+create unique index if not exists uq_staff_invitations_pending_email_per_clinic
+  on public.staff_invitations (clinic_id, lower(email))
+  where accepted_at is null;
+
+alter table public.staff_invitations enable row level security;
+
+-- Reads and cancellation go through normal RLS (simple clinic + role
+-- check, no cross-clinic logic needed). Creating, resending and accepting
+-- go through SECURITY DEFINER RPCs only - deliberately no insert/update
+-- policy here, so those are the only two doors into writing this table.
+
+drop policy if exists "staff_invitations_select_owner_admin" on public.staff_invitations;
+create policy "staff_invitations_select_owner_admin"
+  on public.staff_invitations for select
+  using (
+    exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = staff_invitations.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+drop policy if exists "staff_invitations_delete_owner_admin" on public.staff_invitations;
+create policy "staff_invitations_delete_owner_admin"
+  on public.staff_invitations for delete
+  using (
+    exists (
+      select 1 from public.clinic_users cu
+      where cu.auth_user_id = auth.uid()
+        and cu.clinic_id = staff_invitations.clinic_id
+        and cu.role in ('Owner', 'Admin')
+    )
+  );
+
+-- ============================================================
+-- 5. create_staff_invitation - the only way an invitation is created.
+--    Runs every validation server-side so it can't be bypassed by calling
+--    the table API directly: caller must be Owner/Admin, role must not be
+--    Owner, target must not already be staff anywhere, and duplicate
+--    pending invitations are rejected (expired ones are cleaned up first).
+-- ============================================================
+
+create or replace function public.create_staff_invitation(
+  p_email text,
+  p_full_name text,
+  p_role text
+)
+returns table (invitation_id uuid, token text, expires_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_caller_clinic_id uuid;
+  v_caller_clinic_user_id uuid;
+  v_caller_role text;
+  v_email text := lower(trim(p_email));
+  v_token text;
+  v_invitation_id uuid;
+  v_expires_at timestamptz;
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select clinic_id, id, role
+    into v_caller_clinic_id, v_caller_clinic_user_id, v_caller_role
+  from public.clinic_users
+  where auth_user_id = v_uid;
+
+  if v_caller_clinic_id is null then
+    raise exception 'Not linked to a clinic';
+  end if;
+
+  if v_caller_role not in ('Owner', 'Admin') then
+    raise exception 'Only clinic owners and admins can invite staff';
+  end if;
+
+  if p_role not in ('Admin', 'Dentist', 'Receptionist') then
+    raise exception 'Invalid role';
+  end if;
+
+  if p_full_name is null or length(trim(p_full_name)) = 0 then
+    raise exception 'Full name is required';
+  end if;
+
+  if v_email = '' or v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'Please provide a valid email address';
+  end if;
+
+  if exists (
+    select 1 from public.clinic_users
+    where clinic_id = v_caller_clinic_id and lower(email) = v_email
+  ) then
+    raise exception 'This person is already a staff member of this clinic';
+  end if;
+
+  if exists (
+    select 1 from public.clinic_users where lower(email) = v_email
+  ) then
+    raise exception 'This email already belongs to a staff member at another clinic';
+  end if;
+
+  delete from public.staff_invitations
+  where clinic_id = v_caller_clinic_id
+    and lower(email) = v_email
+    and accepted_at is null
+    and expires_at < now();
+
+  if exists (
+    select 1 from public.staff_invitations
+    where clinic_id = v_caller_clinic_id
+      and lower(email) = v_email
+      and accepted_at is null
+  ) then
+    raise exception 'An invitation is already pending for this email';
+  end if;
+
+  v_token := encode(gen_random_bytes(32), 'hex');
+  v_expires_at := now() + interval '7 days';
+
+  insert into public.staff_invitations (
+    clinic_id, email, full_name, role, token, invited_by, expires_at
+  )
+  values (
+    v_caller_clinic_id, v_email, trim(p_full_name), p_role, v_token,
+    v_caller_clinic_user_id, v_expires_at
+  )
+  returning id into v_invitation_id;
+
+  return query select v_invitation_id, v_token, v_expires_at;
+end;
+$$;
+
+grant execute on function public.create_staff_invitation(text, text, text) to authenticated;
+
+-- ============================================================
+-- 6. resend_staff_invitation - regenerates the token and expiry on the
+--    same row (old link stops working the moment this runs).
+-- ============================================================
+
+create or replace function public.resend_staff_invitation(p_invitation_id uuid)
+returns table (token text, expires_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_caller_clinic_id uuid;
+  v_caller_role text;
+  v_invitation_clinic_id uuid;
+  v_token text;
+  v_expires_at timestamptz;
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select clinic_id, role into v_caller_clinic_id, v_caller_role
+  from public.clinic_users
+  where auth_user_id = v_uid;
+
+  if v_caller_role not in ('Owner', 'Admin') then
+    raise exception 'Only clinic owners and admins can resend invitations';
+  end if;
+
+  select clinic_id into v_invitation_clinic_id
+  from public.staff_invitations
+  where id = p_invitation_id;
+
+  if v_invitation_clinic_id is null or v_invitation_clinic_id <> v_caller_clinic_id then
+    raise exception 'Invitation not found';
+  end if;
+
+  v_token := encode(gen_random_bytes(32), 'hex');
+  v_expires_at := now() + interval '7 days';
+
+  update public.staff_invitations
+  set token = v_token, expires_at = v_expires_at
+  where id = p_invitation_id and accepted_at is null;
+
+  if not found then
+    raise exception 'This invitation has already been accepted';
+  end if;
+
+  return query select v_token, v_expires_at;
+end;
+$$;
+
+grant execute on function public.resend_staff_invitation(uuid) to authenticated;
+
+-- ============================================================
+-- 7. get_invitation_details - the ONLY thing an unauthenticated visitor
+--    to /invite/[token] can read. Returns clinic NAME, never clinic_id,
+--    and nothing about any other invitation.
+-- ============================================================
+
+create or replace function public.get_invitation_details(p_token text)
+returns table (
+  email text,
+  role text,
+  full_name text,
+  clinic_name text,
+  expires_at timestamptz,
+  accepted_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select si.email, si.role, si.full_name, c.name, si.expires_at, si.accepted_at
+  from public.staff_invitations si
+  join public.clinics c on c.id = si.clinic_id
+  where si.token = p_token;
+end;
+$$;
+
+grant execute on function public.get_invitation_details(text) to anon, authenticated;
+
+-- ============================================================
+-- 8. accept_staff_invitation - the one deliberate SECURITY DEFINER bypass
+--    for this feature, same shape as create_clinic_with_admin: a brand
+--    new user has no clinic_users row yet, so nothing else can create one
+--    for them. Must be called AFTER supabase.auth.signUp() establishes a
+--    session, so auth.uid()/auth.jwt() resolve to the invited account.
+-- ============================================================
+
+create or replace function public.accept_staff_invitation(p_token text)
+returns table (clinic_id uuid, clinic_user_id uuid, role text, full_name text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_caller_email text;
+  v_invitation record;
+  v_clinic_user_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if exists (select 1 from public.clinic_users where auth_user_id = v_uid) then
+    raise exception 'This account is already linked to a clinic';
+  end if;
+
+  select * into v_invitation
+  from public.staff_invitations
+  where token = p_token
+  for update;
+
+  if not found then
+    raise exception 'Invitation not found';
+  end if;
+
+  if v_invitation.accepted_at is not null then
+    raise exception 'This invitation has already been accepted';
+  end if;
+
+  if v_invitation.expires_at < now() then
+    raise exception 'This invitation has expired';
+  end if;
+
+  v_caller_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+
+  if v_caller_email = '' or v_caller_email <> lower(v_invitation.email) then
+    raise exception 'This invitation was issued to a different email address';
+  end if;
+
+  insert into public.clinic_users (
+    clinic_id, full_name, email, role, status, auth_user_id
+  )
+  values (
+    v_invitation.clinic_id, v_invitation.full_name, v_invitation.email,
+    v_invitation.role, 'Active', v_uid
+  )
+  returning id into v_clinic_user_id;
+
+  update public.staff_invitations
+  set accepted_at = now()
+  where id = v_invitation.id;
+
+  return query select
+    v_invitation.clinic_id, v_clinic_user_id, v_invitation.role, v_invitation.full_name;
+end;
+$$;
+
+grant execute on function public.accept_staff_invitation(text) to authenticated;
