@@ -14,7 +14,7 @@ export default function CalendarDay({
   return (
     <button
       onClick={() => onSelect(day)}
-      className={`min-h-[140px] rounded-xl border p-3 text-left transition-all hover:border-blue-500 hover:shadow-md ${
+      className={`min-h-35 rounded-xl border p-3 text-left transition-all hover:border-blue-500 hover:shadow-md ${
         day.isToday
           ? "border-blue-500 bg-blue-50"
           : day.isCurrentMonth

@@ -44,7 +44,7 @@ export default function CalendarHeader({
           ← Previous
         </Button>
 
-        <div className="min-w-[220px] text-center">
+        <div className="min-w-55 text-center">
 
           <h2 className="text-2xl font-bold">
             {month}

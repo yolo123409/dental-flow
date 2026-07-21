@@ -139,7 +139,7 @@ export default function DentalChart({
 
             ) : (
 
-              <div className="flex min-h-[500px] items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+              <div className="flex min-h-125 items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-10 text-center">
 
                 <div>
 

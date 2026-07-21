@@ -27,7 +27,7 @@ export default function DashboardHeader() {
         </p>
       </div>
 
-      <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-5 text-white shadow-lg">
+      <div className="rounded-2xl bg-linear-to-r from-blue-600 to-indigo-600 px-8 py-5 text-white shadow-lg">
         <h2 className="text-lg font-semibold">
           Dental Flow
         </h2>

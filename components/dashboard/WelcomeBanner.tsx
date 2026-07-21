@@ -20,7 +20,7 @@ export default function WelcomeBanner() {
   });
 
   return (
-    <div className="mb-8 overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-cyan-500 to-sky-400 p-8 text-white shadow-2xl">
+    <div className="mb-8 overflow-hidden rounded-3xl bg-linear-to-r from-blue-600 via-cyan-500 to-sky-400 p-8 text-white shadow-2xl">
 
       <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
 

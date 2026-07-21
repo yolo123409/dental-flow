@@ -103,7 +103,7 @@ export default function UserMenu() {
           size="md"
         />
 
-        <div className="min-w-[120px] text-left">
+        <div className="min-w-30 text-left">
           <p className="font-semibold text-slate-900">
             {profile?.full_name}
           </p>
@@ -122,7 +122,7 @@ export default function UserMenu() {
       </button>
 
       <div
-        className={`absolute right-0 top-[72px] origin-top-right transition-all duration-200 ${
+        className={`absolute right-0 top-18 origin-top-right transition-all duration-200 ${
           open
             ? "scale-100 opacity-100"
             : "pointer-events-none scale-95 opacity-0"

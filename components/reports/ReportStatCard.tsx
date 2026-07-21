@@ -57,7 +57,7 @@ export default function ReportStatCard({
         )}
       </div>
 
-      <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-blue-500 to-cyan-500" />
+      <div className="absolute bottom-0 left-0 h-1 w-full bg-linear-to-r from-blue-500 to-cyan-500" />
     </Card>
   );
 }

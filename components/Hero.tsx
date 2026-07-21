@@ -1,6 +1,6 @@
 export default function Hero() {
   return (
-    <section className="flex min-h-[85vh] items-center justify-center bg-gradient-to-b from-slate-50 to-white px-6">
+    <section className="flex min-h-[85vh] items-center justify-center bg-linear-to-b from-slate-50 to-white px-6">
       <div className="max-w-4xl text-center">
         <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-medium text-blue-700">
           AI Automation for Dental Clinics
