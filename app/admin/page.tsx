@@ -21,7 +21,6 @@ interface DashboardState {
   patients: number;
   appointments: number;
   dentists: number;
-  orders: number;
 }
 
 export default function AdminDashboard() {
@@ -29,7 +28,6 @@ export default function AdminDashboard() {
     patients: 0,
     appointments: 0,
     dentists: 0,
-    orders: 0,
   });
 
   const [revenue, setRevenue] = useState(0);
@@ -126,7 +124,6 @@ export default function AdminDashboard() {
         patients={stats.patients}
         appointments={stats.appointments}
         dentists={stats.dentists}
-        orders={stats.orders}
       />
 
       <DashboardWidgets

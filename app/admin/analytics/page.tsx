@@ -34,7 +34,6 @@ interface DashboardTotals {
   patients: number;
   appointments: number;
   dentists: number;
-  orders: number;
 }
 
 export default function AnalyticsPage() {

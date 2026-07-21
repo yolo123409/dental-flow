@@ -5,7 +5,6 @@ export interface DashboardStats {
   patients: number;
   appointments: number;
   dentists: number;
-  orders: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -45,7 +44,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     patients: patients.count ?? 0,
     appointments: appointments.count ?? 0,
     dentists: dentists.count ?? 0,
-    orders: 0,
   };
 }
 

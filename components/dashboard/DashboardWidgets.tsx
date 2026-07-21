@@ -1,7 +1,6 @@
 "use client";
 
 import RevenueWidget from "./RevenueWidget";
-import AIStatusCard from "./AIStatusCard";
 import QuickActions from "./QuickActions";
 import RecentPatientsWidget from "./RecentPatientsWidget";
 import TodaysAppointmentsWidget from "./TodaysAppointmentsWidget";
@@ -41,8 +40,6 @@ export default function DashboardWidgets({
       </div>
 
       <div className="space-y-6">
-
-        <AIStatusCard />
 
         <RecentPatientsWidget />
 

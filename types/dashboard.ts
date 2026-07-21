@@ -4,6 +4,4 @@ export interface DashboardStats {
   appointments: number;
 
   dentists: number;
-
-  orders: number;
 }
