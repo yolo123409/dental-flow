@@ -2,10 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { ClinicUser } from "@/types/clinicUser";
 
 import { getCurrentClinicId } from "./clinic";
-import {
-  notifyStaffAdded,
-  notifyStaffRoleChanged,
-} from "./notifications";
+import { notifyStaffRoleChanged } from "./notifications";
 
 
 export async function getUsers(): Promise<ClinicUser[]> {
@@ -35,28 +32,6 @@ export async function getUser(
     .single();
 
   if (error) throw error;
-
-  return data as ClinicUser;
-}
-
-export async function createUser(
-  user: Omit<Partial<ClinicUser>, "clinic_id">
-): Promise<ClinicUser> {
-  const clinicId = await getCurrentClinicId();
-
-  const { data, error } = await supabase
-    .from("clinic_users")
-    .insert({
-      ...user,
-      clinic_id: clinicId,
-      status: "Active",
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  await notifyStaffAdded(data as ClinicUser);
 
   return data as ClinicUser;
 }

@@ -11,7 +11,10 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
-import { provisionPendingClinicIfNeeded } from "@/services/clinic";
+import {
+  provisionPendingClinicIfNeeded,
+  acceptPendingInvitationIfNeeded,
+} from "@/services/clinic";
 
 import { ClinicUser } from "@/types/clinicUser";
 
@@ -113,6 +116,35 @@ export function AuthProvider({
         console.error(
           "[auth] Clinic provisioning failed:",
           provisionError
+        );
+      }
+    }
+
+    // Same deferred-session gap, for staff who signed up via an invite
+    // link rather than creating a clinic.
+    if (
+      !data &&
+      user.user_metadata?.pending_invitation_token
+    ) {
+      console.log(
+        "[auth] no clinic_users row yet but a pending invitation token was found - accepting now"
+      );
+
+      try {
+        await acceptPendingInvitationIfNeeded();
+
+        const retry = await supabase
+          .from("clinic_users")
+          .select("*")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+
+        data = retry.data;
+        error = retry.error;
+      } catch (acceptError) {
+        console.error(
+          "[auth] Invitation acceptance failed:",
+          acceptError
         );
       }
     }

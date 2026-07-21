@@ -1,7 +1,17 @@
 export type UserRole =
+  | "Owner"
   | "Admin"
   | "Dentist"
   | "Receptionist";
+
+/** Roles that can be assigned through a staff invitation. Owner is never invited. */
+export type InvitableRole = Exclude<UserRole, "Owner">;
+
+export const INVITABLE_ROLES: InvitableRole[] = [
+  "Admin",
+  "Dentist",
+  "Receptionist",
+];
 
 export type Permission =
   | "dashboard"
@@ -17,6 +27,8 @@ export type Permission =
   | "settings";
 
 export const permissions: Record<UserRole, ("*" | Permission)[]> = {
+  Owner: ["*"],
+
   Admin: ["*"],
 
   Dentist: [

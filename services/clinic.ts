@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
 import { getCurrentClinicUser } from "./clinicUsers";
+import { acceptInvitation } from "./staffInvitations";
 
 export async function getCurrentClinicId() {
   const user =
@@ -130,6 +131,53 @@ export async function provisionPendingClinicIfNeeded() {
         "[onboarding] clinic was already created by a concurrent call, continuing"
       );
 
+      return false;
+    }
+
+    throw error;
+  }
+
+  return true;
+}
+
+/**
+ * Mirrors provisionPendingClinicIfNeeded() above, but for staff who signed
+ * up by accepting an invitation link. Handles the same deferred-session
+ * case (email confirmation required, so the invite page's own signUp()
+ * call has no immediate session to accept with) - called both right after
+ * the invite page's signUp() and from AuthContext.loadProfile.
+ */
+export async function acceptPendingInvitationIfNeeded() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return false;
+  }
+
+  const pendingToken = user.user_metadata
+    ?.pending_invitation_token as string | undefined;
+
+  if (!pendingToken) {
+    return false;
+  }
+
+  const existing = await getCurrentClinicUser();
+
+  if (existing) {
+    return false;
+  }
+
+  try {
+    await acceptInvitation(pendingToken);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+
+    // A concurrent call (immediate-session branch racing with
+    // AuthContext's own check) may have already accepted it.
+    if (message.includes("already linked")) {
       return false;
     }
 

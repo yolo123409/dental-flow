@@ -8,6 +8,13 @@ export default function RoleBadge({
   role,
 }: RoleBadgeProps) {
   switch (role) {
+    case "Owner":
+      return (
+        <Badge color="purple">
+          {role}
+        </Badge>
+      );
+
     case "Admin":
       return (
         <Badge color="blue">
