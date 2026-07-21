@@ -105,21 +105,32 @@ on conflict (clinic_id, name) do nothing;
 --    case - a SECURITY DEFINER function, so the inner membership lookup
 --    bypasses RLS instead of re-triggering the very policy being
 --    evaluated.
+--
+--    MUST be language plpgsql, not sql: a `language sql` function this
+--    simple is eligible for inlining by the planner, which flattens it
+--    straight back into the policy expression and silently discards the
+--    security definer bypass - reproducing the exact same recursion.
+--    Confirmed live: this was the first fix attempt and it did NOT
+--    resolve the error. plpgsql functions are opaque to the planner and
+--    are never inlined, which is also why create_clinic_with_admin and
+--    accept_staff_invitation (both plpgsql) have worked all along.
 -- ============================================================
 
 create or replace function public.is_clinic_owner_or_admin(p_clinic_id uuid)
 returns boolean
-language sql
+language plpgsql
 security definer
 set search_path = public
 stable
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.clinic_users cu
     where cu.auth_user_id = auth.uid()
       and cu.clinic_id = p_clinic_id
       and cu.role in ('Owner', 'Admin')
   );
+end;
 $$;
 
 grant execute on function public.is_clinic_owner_or_admin(uuid) to authenticated;
