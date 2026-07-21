@@ -3,3 +3,5 @@ export { default as StaffInfoCard } from "./StaffInfoCard";
 export { default as StaffActivityCard } from "./StaffActivityCard";
 export { default as StaffPermissionsCard } from "./StaffPermissionsCard";
 export { default as StaffModal } from "./StaffModal";
+export { default as InviteStaffModal } from "./InviteStaffModal";
+export { default as PendingInvitationRow } from "./PendingInvitationRow";

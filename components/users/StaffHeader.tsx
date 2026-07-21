@@ -21,6 +21,8 @@ export default function StaffHeader({
   onToggleStatus,
   onDelete,
 }: StaffHeaderProps) {
+  const isOwner = user.role === "Owner";
+
   return (
     <Card>
       <div className="space-y-6">
@@ -60,23 +62,30 @@ export default function StaffHeader({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={onToggleStatus}
-            >
-              {user.status === "Suspended"
-                ? "Activate"
-                : "Suspend"}
-            </Button>
+          {isOwner ? (
+            <p className="text-sm italic text-slate-400">
+              Clinic owner - can&apos;t be suspended or
+              removed here.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                onClick={onToggleStatus}
+              >
+                {user.status === "Suspended"
+                  ? "Activate"
+                  : "Suspend"}
+              </Button>
 
-            <Button
-              variant="danger"
-              onClick={onDelete}
-            >
-              Delete
-            </Button>
-          </div>
+              <Button
+                variant="danger"
+                onClick={onDelete}
+              >
+                Delete
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </Card>

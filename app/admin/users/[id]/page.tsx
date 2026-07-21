@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import PageContainer from "@/components/ui/PageContainer";
+
+import useRealtimeTables from "@/hooks/useRealtimeTables";
 
 import {
   StaffHeader,
@@ -55,6 +57,16 @@ export default function StaffProfilePage() {
   useEffect(() => {
     loadUser();
   }, [loadUser]);
+
+  const realtimeTables = useMemo(
+    () => ["clinic_users"],
+    []
+  );
+
+  useRealtimeTables({
+    tables: realtimeTables,
+    reload: loadUser,
+  });
 
   async function toggleStatus() {
     if (!user) return;

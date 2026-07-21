@@ -6,26 +6,21 @@ import FormModal from "@/components/ui/FormModal";
 import FormInput from "@/components/ui/FormInput";
 
 import { ClinicUser } from "@/types/clinicUser";
+import { INVITABLE_ROLES, InvitableRole } from "@/lib/permissions";
 
-import {
-  createUser,
-  updateUser,
-} from "@/services/users";
+import { updateUser } from "@/services/users";
 
 import { toast } from "sonner";
 
-
 interface StaffModalProps {
   open: boolean;
-  mode: "create" | "edit";
-  user?: ClinicUser | null;
+  user: ClinicUser | null;
   onClose: () => void;
   onSuccess: () => Promise<void>;
 }
 
 export default function StaffModal({
   open,
-  mode,
   user,
   onClose,
   onSuccess,
@@ -33,67 +28,45 @@ export default function StaffModal({
   const [loading, setLoading] = useState(false);
 
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  const [role, setRole] =
-    useState("Receptionist");
-
-  const [status, setStatus] =
-    useState("Active");
+  const [role, setRole] = useState<InvitableRole>(
+    "Receptionist"
+  );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !user) return;
 
-    if (mode === "edit" && user) {
-      setFullName(user.full_name);
-      setEmail(user.email);
-      setPhone(user.phone ?? "");
-      setRole(user.role);
-      setStatus(user.status);
-    } else {
-      setFullName("");
-      setEmail("");
-      setPhone("");
-      setRole("Receptionist");
-      setStatus("Active");
-    }
-  }, [open, mode, user]);
+    setFullName(user.full_name);
+    setPhone(user.phone ?? "");
+    setRole(user.role as InvitableRole);
+  }, [open, user]);
 
   async function save() {
+    if (!user) return;
+
     try {
       setLoading(true);
 
-      if (mode === "create") {
-        await createUser({
-          full_name: fullName,
-          email,
-          phone,
-          role,
-        });
+      await updateUser(user.id, {
+        full_name: fullName,
+        phone,
+        role,
+      });
 
-        toast.success("Staff member created.");
-      } else {
-        await updateUser(user!.id, {
-          full_name: fullName,
-          email,
-          phone,
-          role,
-          status,
-        });
-
-        toast.success("Staff member updated.");
-      }
+      toast.success("Staff member updated.");
 
       await onSuccess();
 
       onClose();
-
     } catch (error) {
       console.error(error);
 
-      toast.error("Unable to save staff member.");
-
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to save staff member."
+      );
     } finally {
       setLoading(false);
     }
@@ -102,33 +75,34 @@ export default function StaffModal({
   return (
     <FormModal
       open={open}
-      title={
-        mode === "create"
-          ? "Add Staff Member"
-          : "Edit Staff Member"
-      }
+      title="Edit Staff Member"
       loading={loading}
       onClose={onClose}
       onSubmit={save}
-      submitText={
-        mode === "create"
-          ? "Create"
-          : "Save Changes"
-      }
+      submitText="Save Changes"
     >
-
       <FormInput
         label="Full Name"
         value={fullName}
         onChange={setFullName}
       />
 
-      <FormInput
-        label="Email"
-        type="email"
-        value={email}
-        onChange={setEmail}
-      />
+      <div>
+        <label className="mb-2 block font-medium">
+          Email
+        </label>
+
+        <input
+          value={user?.email ?? ""}
+          disabled
+          className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 p-3 text-slate-500"
+        />
+
+        <p className="mt-1 text-xs text-slate-400">
+          Set when the invitation was accepted - can&apos;t be
+          changed here.
+        </p>
+      </div>
 
       <FormInput
         label="Phone"
@@ -137,7 +111,6 @@ export default function StaffModal({
       />
 
       <div>
-
         <label className="mb-2 block font-medium">
           Role
         </label>
@@ -145,41 +118,17 @@ export default function StaffModal({
         <select
           value={role}
           onChange={(e) =>
-            setRole(e.target.value)
+            setRole(e.target.value as InvitableRole)
           }
           className="w-full rounded-xl border border-slate-300 p-3"
         >
-          <option>Admin</option>
-          <option>Dentist</option>
-          <option>Receptionist</option>
+          {INVITABLE_ROLES.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
         </select>
-
       </div>
-
-      {mode === "edit" && (
-
-        <div>
-
-          <label className="mb-2 block font-medium">
-            Status
-          </label>
-
-          <select
-            value={status}
-            onChange={(e) =>
-              setStatus(e.target.value)
-            }
-            className="w-full rounded-xl border border-slate-300 p-3"
-          >
-            <option>Active</option>
-            <option>Pending</option>
-            <option>Suspended</option>
-          </select>
-
-        </div>
-
-      )}
-
     </FormModal>
   );
 }
