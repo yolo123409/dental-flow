@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 import { getCurrentClinicId } from "./clinic";
 
 export interface ClinicSettings {
@@ -37,7 +38,9 @@ export async function getClinicSettings() {
       .maybeSingle();
 
   if (error) {
-    throw error;
+    logError("[settings] getClinicSettings failed:", error);
+
+    throw toError(error);
   }
 
   if (data) {
@@ -76,7 +79,12 @@ export async function getClinicSettings() {
     .single();
 
   if (insertError) {
-    throw insertError;
+    logError(
+      "[settings] Failed to insert default clinic settings:",
+      insertError
+    );
+
+    throw toError(insertError);
   }
 
   return inserted as ClinicSettings;
@@ -103,7 +111,9 @@ export async function saveClinicSettings(
     .single();
 
   if (error) {
-    throw error;
+    logError("[settings] saveClinicSettings failed:", error);
+
+    throw toError(error);
   }
 
   return data as ClinicSettings;
@@ -130,7 +140,9 @@ export async function uploadClinicLogo(
     });
 
   if (uploadError) {
-    throw uploadError;
+    logError("[settings] uploadClinicLogo failed:", uploadError);
+
+    throw toError(uploadError);
   }
 
   const {

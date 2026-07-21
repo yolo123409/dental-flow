@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
+import { logError } from "@/lib/logError";
 
 import {
   checkOverdueInvoices,
@@ -42,7 +43,7 @@ export default function useNotifications() {
       setNotifications(list);
       setUnreadCount(count);
     } catch (err) {
-      console.error("Failed to load notifications:", err);
+      logError("[useNotifications] Failed to load notifications:", err);
 
       setError(
         err instanceof Error
@@ -71,7 +72,10 @@ export default function useNotifications() {
       await markNotificationRead(id);
       await load();
     } catch (err) {
-      console.error("Failed to mark notification read:", err);
+      logError(
+        "[useNotifications] Failed to mark notification read:",
+        err
+      );
     }
   }
 
@@ -80,8 +84,8 @@ export default function useNotifications() {
       await markAllNotificationsRead();
       await load();
     } catch (err) {
-      console.error(
-        "Failed to mark all notifications read:",
+      logError(
+        "[useNotifications] Failed to mark all notifications read:",
         err
       );
     }
@@ -92,7 +96,10 @@ export default function useNotifications() {
       await deleteNotification(id);
       await load();
     } catch (err) {
-      console.error("Failed to delete notification:", err);
+      logError(
+        "[useNotifications] Failed to delete notification:",
+        err
+      );
     }
   }
 

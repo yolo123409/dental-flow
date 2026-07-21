@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "@/services/clinic";
 
@@ -103,12 +104,12 @@ export async function getRevenueChartData(
   const { data, error } = await query;
 
   if (error) {
-    console.error(
+    logError(
       "[analytics] getRevenueChartData query failed:",
       error
     );
 
-    throw error;
+    throw toError(error);
   }
 
   const revenueByBucket = new Map<string, number>();

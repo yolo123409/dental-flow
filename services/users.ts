@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 import { ClinicUser } from "@/types/clinicUser";
 
 import { getCurrentClinicId } from "./clinic";
@@ -14,7 +15,11 @@ export async function getUsers(): Promise<ClinicUser[]> {
     .eq("clinic_id", clinicId)
     .order("created_at", { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    logError("[users] getUsers failed:", error);
+
+    throw toError(error);
+  }
 
   return (data ?? []) as ClinicUser[];
 }
@@ -31,7 +36,11 @@ export async function getUser(
     .eq("id", id)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    logError("[users] getUser failed:", error);
+
+    throw toError(error);
+  }
 
   return data as ClinicUser;
 }
@@ -57,7 +66,11 @@ export async function updateUser(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    logError("[users] updateUser failed:", error);
+
+    throw toError(error);
+  }
 
   if (
     updates.role !== undefined &&
@@ -81,7 +94,11 @@ export async function suspendUser(id: string) {
     .eq("clinic_id", clinicId)
     .eq("id", id);
 
-  if (error) throw error;
+  if (error) {
+    logError("[users] suspendUser failed:", error);
+
+    throw toError(error);
+  }
 }
 
 export async function activateUser(id: string) {
@@ -95,7 +112,11 @@ export async function activateUser(id: string) {
     .eq("clinic_id", clinicId)
     .eq("id", id);
 
-  if (error) throw error;
+  if (error) {
+    logError("[users] activateUser failed:", error);
+
+    throw toError(error);
+  }
 }
 
 export async function deleteUser(id: string) {
@@ -107,6 +128,9 @@ export async function deleteUser(id: string) {
     .eq("clinic_id", clinicId)
     .eq("id", id);
 
-  if (error) throw error;
-}
+  if (error) {
+    logError("[users] deleteUser failed:", error);
 
+    throw toError(error);
+  }
+}

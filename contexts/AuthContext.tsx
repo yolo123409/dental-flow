@@ -11,6 +11,7 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
 import {
   provisionPendingClinicIfNeeded,
   acceptPendingInvitationIfNeeded,
@@ -68,7 +69,7 @@ export function AuthProvider({
       .maybeSingle();
 
     if (error) {
-      console.error("[auth] Failed to load clinic profile:", error);
+      logError("[auth] Failed to load clinic profile:", error);
 
       setProfile(null);
 
@@ -102,7 +103,7 @@ export function AuthProvider({
         error = retry.error;
 
         if (error) {
-          console.error(
+          logError(
             "[auth] Failed to re-fetch clinic profile after provisioning:",
             error
           );
@@ -113,7 +114,7 @@ export function AuthProvider({
           );
         }
       } catch (provisionError) {
-        console.error(
+        logError(
           "[auth] Clinic provisioning failed:",
           provisionError
         );
@@ -141,8 +142,15 @@ export function AuthProvider({
 
         data = retry.data;
         error = retry.error;
+
+        if (error) {
+          logError(
+            "[auth] Failed to re-fetch clinic profile after accepting invitation:",
+            error
+          );
+        }
       } catch (acceptError) {
-        console.error(
+        logError(
           "[auth] Invitation acceptance failed:",
           acceptError
         );
@@ -158,19 +166,28 @@ export function AuthProvider({
 
   useEffect(() => {
     async function initialize() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-      setSession(session);
+        if (error) {
+          logError("[auth] Failed to get session:", error);
+        }
 
-      const user = session?.user ?? null;
+        setSession(session);
 
-      setAuthUser(user);
+        const user = session?.user ?? null;
 
-      await loadProfile(user);
+        setAuthUser(user);
 
-      setLoading(false);
+        await loadProfile(user);
+      } catch (error) {
+        logError("[auth] Failed to initialize auth state:", error);
+      } finally {
+        setLoading(false);
+      }
     }
 
     initialize();
@@ -179,13 +196,20 @@ export function AuthProvider({
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        setSession(session);
+        try {
+          setSession(session);
 
-        const user = session?.user ?? null;
+          const user = session?.user ?? null;
 
-        setAuthUser(user);
+          setAuthUser(user);
 
-        await loadProfile(user);
+          await loadProfile(user);
+        } catch (error) {
+          logError(
+            "[auth] Failed to handle auth state change:",
+            error
+          );
+        }
       }
     );
 

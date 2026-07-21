@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "@/services/clinic";
 import { calculateBalance } from "@/services/billing";
@@ -100,12 +101,12 @@ export async function getRevenueAnalytics(
   ].find((result) => result.error)?.error;
 
   if (firstError) {
-    console.error(
+    logError(
       "[analytics] getRevenueAnalytics query failed:",
       firstError
     );
 
-    throw firstError;
+    throw toError(firstError);
   }
 
   return {

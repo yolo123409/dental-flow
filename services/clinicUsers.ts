@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 export async function getCurrentClinicUser() {
   const {
@@ -7,7 +8,9 @@ export async function getCurrentClinicUser() {
   } = await supabase.auth.getUser();
 
   if (authError) {
-    throw authError;
+    logError("[clinicUsers] Failed to get auth user:", authError);
+
+    throw toError(authError);
   }
 
   if (!user) {
@@ -21,7 +24,12 @@ export async function getCurrentClinicUser() {
     .maybeSingle();
 
   if (error) {
-    throw error;
+    logError(
+      "[clinicUsers] Failed to load the current clinic_users row:",
+      error
+    );
+
+    throw toError(error);
   }
 
   return data;

@@ -1,4 +1,6 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
+
 import { getCurrentClinicId } from "./clinic";
 
 export interface DashboardStats {
@@ -40,6 +42,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .eq("clinic_id", clinicId),
   ]);
 
+  const firstError = [patients, appointments, dentists].find(
+    (result) => result.error
+  )?.error;
+
+  if (firstError) {
+    logError("[dashboard] getDashboardStats query failed:", firstError);
+
+    throw toError(firstError);
+  }
+
   return {
     patients: patients.count ?? 0,
     appointments: appointments.count ?? 0,
@@ -60,7 +72,7 @@ export async function getRecentPatients(limit = 5) {
     .limit(limit);
 
   if (error) {
-    console.error(error);
+    logError("[dashboard] getRecentPatients failed:", error);
     return [];
   }
 
@@ -91,7 +103,7 @@ export async function getTodaysAppointments() {
     .order("appointment_time");
 
   if (error) {
-    console.error(error);
+    logError("[dashboard] getTodaysAppointments failed:", error);
     return [];
   }
 

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
 import { notifyStaffAdded } from "./notifications";
@@ -29,7 +30,12 @@ export async function getPendingInvitations(): Promise<
     .order("created_at", { ascending: false });
 
   if (error) {
-    throw error;
+    logError(
+      "[staffInvitations] getPendingInvitations failed:",
+      error
+    );
+
+    throw toError(error);
   }
 
   return (data ?? []) as StaffInvitation[];
@@ -61,7 +67,9 @@ export async function createInvitation(
   );
 
   if (error) {
-    throw error;
+    logError("[staffInvitations] createInvitation failed:", error);
+
+    throw toError(error);
   }
 
   const invitation = data[0] as CreatedInvitation;
@@ -85,7 +93,9 @@ export async function resendInvitation(
   );
 
   if (error) {
-    throw error;
+    logError("[staffInvitations] resendInvitation failed:", error);
+
+    throw toError(error);
   }
 
   const result = data[0] as {
@@ -109,7 +119,9 @@ export async function cancelInvitation(
     .eq("id", invitationId);
 
   if (error) {
-    throw error;
+    logError("[staffInvitations] cancelInvitation failed:", error);
+
+    throw toError(error);
   }
 }
 
@@ -127,7 +139,12 @@ export async function getInvitationDetails(
   );
 
   if (error) {
-    throw error;
+    logError(
+      "[staffInvitations] getInvitationDetails failed:",
+      error
+    );
+
+    throw toError(error);
   }
 
   if (!data || data.length === 0) {
@@ -157,7 +174,9 @@ export async function acceptInvitation(
   );
 
   if (error) {
-    throw error;
+    logError("[staffInvitations] acceptInvitation failed:", error);
+
+    throw toError(error);
   }
 
   const accepted = data[0] as AcceptedInvitation;

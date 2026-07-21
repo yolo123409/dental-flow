@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
@@ -30,7 +31,9 @@ export async function getNotifications(
     .limit(limit);
 
   if (error) {
-    throw error;
+    logError("[notifications] Failed to load notifications:", error);
+
+    throw toError(error);
   }
 
   return (data ?? []) as Notification[];
@@ -48,7 +51,12 @@ export async function getUnreadNotificationCount(): Promise<number> {
     .or(`user_id.is.null,user_id.eq.${clinicUser?.id}`);
 
   if (error) {
-    throw error;
+    logError(
+      "[notifications] Failed to load unread count:",
+      error
+    );
+
+    throw toError(error);
   }
 
   return count ?? 0;
@@ -70,7 +78,12 @@ export async function markNotificationRead(
     .eq("id", id);
 
   if (error) {
-    throw error;
+    logError(
+      "[notifications] Failed to mark notification read:",
+      error
+    );
+
+    throw toError(error);
   }
 }
 
@@ -86,7 +99,12 @@ export async function markAllNotificationsRead(): Promise<void> {
     .or(`user_id.is.null,user_id.eq.${clinicUser?.id}`);
 
   if (error) {
-    throw error;
+    logError(
+      "[notifications] Failed to mark all notifications read:",
+      error
+    );
+
+    throw toError(error);
   }
 }
 
@@ -102,7 +120,12 @@ export async function deleteNotification(
     .eq("id", id);
 
   if (error) {
-    throw error;
+    logError(
+      "[notifications] Failed to delete notification:",
+      error
+    );
+
+    throw toError(error);
   }
 }
 
@@ -153,10 +176,10 @@ async function createNotification(
       });
 
     if (error) {
-      throw error;
+      throw toError(error);
     }
   } catch (error) {
-    console.error("Failed to create notification:", error);
+    logError("[notifications] Failed to create notification:", error);
   }
 }
 
@@ -384,6 +407,6 @@ export async function checkOverdueInvoices(): Promise<void> {
       });
     }
   } catch (error) {
-    console.error("Failed to check overdue invoices:", error);
+    logError("[notifications] Failed to check overdue invoices:", error);
   }
 }

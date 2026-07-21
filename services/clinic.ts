@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicUser } from "./clinicUsers";
 import { acceptInvitation } from "./staffInvitations";
@@ -48,12 +49,12 @@ export async function createClinicWithAdmin(
   );
 
   if (error) {
-    console.error(
+    logError(
       "[onboarding] create_clinic_with_admin RPC returned an error:",
       error
     );
 
-    throw error;
+    throw toError(error);
   }
 
   console.log(

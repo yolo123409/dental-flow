@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
 import {
@@ -110,7 +111,9 @@ export async function getInvoices() {
       });
 
   if (error) {
-    throw error;
+    logError("[billing] getInvoices failed:", error);
+
+    throw toError(error);
   }
 
   return (
@@ -137,7 +140,9 @@ export async function getPendingCharges() {
       });
 
   if (error) {
-    throw error;
+    logError("[billing] getPendingCharges failed:", error);
+
+    throw toError(error);
   }
 
   return (
@@ -179,7 +184,9 @@ export async function getInvoice(
       .single();
 
   if (error) {
-    throw error;
+    logError("[billing] getInvoice failed:", error);
+
+    throw toError(error);
   }
 
   return data;
@@ -229,12 +236,8 @@ export async function createInvoice(
   const clinicId =
     await getCurrentClinicId();
 
-  console.log("Step 1");
-
   const invoiceNumber =
     await generateInvoiceNumber();
-
-  console.log("Step 2");
 
   const subtotal =
     charges.reduce(
@@ -250,8 +253,6 @@ export async function createInvoice(
 
   const balance =
     total;
-
-  console.log("Step 3");
 
   const {
     data: invoice,
@@ -274,14 +275,11 @@ export async function createInvoice(
     .select()
     .single();
 
-  console.log("Invoice:", invoice);
-
   if (invoiceError) {
-    console.error(invoiceError);
-    throw invoiceError;
-  }
+    logError("[billing] createInvoice (insert invoice) failed:", invoiceError);
 
-  console.log("Step 4");
+    throw toError(invoiceError);
+  }
 
   const items =
     charges.map((charge) => ({
@@ -299,11 +297,10 @@ export async function createInvoice(
       .insert(items);
 
   if (itemError) {
-    console.error(itemError);
-    throw itemError;
-  }
+    logError("[billing] createInvoice (insert items) failed:", itemError);
 
-  console.log("Step 5");
+    throw toError(itemError);
+  }
 
   const chargeIds =
     charges.map((c) => c.id);
@@ -318,11 +315,10 @@ export async function createInvoice(
       .in("id", chargeIds);
 
   if (chargeError) {
-    console.error(chargeError);
-    throw chargeError;
-  }
+    logError("[billing] createInvoice (update charges) failed:", chargeError);
 
-  console.log("Step 6");
+    throw toError(chargeError);
+  }
 
   await notifyInvoiceCreated(invoice);
 
@@ -350,7 +346,9 @@ export async function getPatientInvoices(
       });
 
   if (error) {
-    throw error;
+    logError("[billing] getPatientInvoices failed:", error);
+
+    throw toError(error);
   }
 
   return (
@@ -422,7 +420,9 @@ export async function recordPayment(
     .single();
 
   if (invoiceError) {
-    throw invoiceError;
+    logError("[billing] recordPayment (load invoice) failed:", invoiceError);
+
+    throw toError(invoiceError);
   }
 
   /* ----------------------------- */
@@ -455,7 +455,9 @@ export async function recordPayment(
     });
 
   if (paymentError) {
-    throw paymentError;
+    logError("[billing] recordPayment (insert payment) failed:", paymentError);
+
+    throw toError(paymentError);
   }
 
   /* ----------------------------- */
@@ -496,7 +498,9 @@ export async function recordPayment(
     .eq("id", invoice.id);
 
   if (updateError) {
-    throw updateError;
+    logError("[billing] recordPayment (update invoice) failed:", updateError);
+
+    throw toError(updateError);
   }
 
   await notifyPaymentRecorded({

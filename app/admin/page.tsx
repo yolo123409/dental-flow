@@ -10,6 +10,7 @@ import {
 } from "@/services/analytics/charts";
 import { getClinicSettings } from "@/services/settings";
 import useRealtimeDashboard from "@/hooks/useRealtimeDashboard";
+import { logError } from "@/lib/logError";
 
 import PageContainer from "@/components/ui/PageContainer";
 
@@ -53,7 +54,7 @@ export default function AdminDashboard() {
 
       setStats(dashboardStats);
     } catch (error) {
-      console.error("Failed to load dashboard:", error);
+      logError("[dashboard page] Failed to load dashboard:", error);
     } finally {
       setLoading(false);
     }
@@ -80,8 +81,8 @@ export default function AdminDashboard() {
       setRevenueChart(chartData);
       setCurrency(clinicSettings.currency || "KES");
     } catch (error) {
-      console.error(
-        "Failed to load revenue widget:",
+      logError(
+        "[dashboard page] Failed to load revenue widget:",
         error
       );
 
