@@ -6,17 +6,19 @@ interface Props {
   total: number;
   paid: number;
   outstanding: number;
+  currency?: string;
 }
 
 export default function BillingSummary({
   total,
   paid,
   outstanding,
+  currency = "KES",
 }: Props) {
   function formatCurrency(amount: number) {
-    return new Intl.NumberFormat("en-KE", {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "KES",
+      currency,
       maximumFractionDigits: 0,
     }).format(amount);
   }

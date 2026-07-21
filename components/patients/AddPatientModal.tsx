@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 
 import PatientForm from "@/components/patients/PatientForm";
 import { createPatient } from "@/services/patients";
@@ -65,17 +66,17 @@ export default function AddPatientModal({
 
   async function savePatient() {
     if (!form.first_name.trim()) {
-      alert("First name is required.");
+      toast.error("First name is required.");
       return;
     }
 
     if (!form.last_name.trim()) {
-      alert("Last name is required.");
+      toast.error("Last name is required.");
       return;
     }
 
     if (!form.phone.trim()) {
-      alert("Phone number is required.");
+      toast.error("Phone number is required.");
       return;
     }
 
@@ -100,14 +101,14 @@ export default function AddPatientModal({
       });
 
     } catch (error) {
-  console.error("Save patient error:", error);
+      console.error("Save patient error:", error);
 
-  if (error instanceof Error) {
-    alert(error.message);
-  } else {
-    alert(JSON.stringify(error));
-  }
-}finally {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to save patient."
+      );
+    } finally {
       setLoading(false);
     }
   }

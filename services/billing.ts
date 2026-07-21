@@ -46,6 +46,28 @@ export interface InvoiceItem {
   total_price: number;
 }
 
+export interface ClinicPayment {
+  id: string;
+
+  invoice_id: string;
+
+  clinic_id: string;
+
+  patient_id: string;
+
+  amount: number;
+
+  payment_method: string;
+
+  reference: string | null;
+
+  notes: string | null;
+
+  received_at: string;
+
+  created_at: string;
+}
+
 export interface ClinicCharge {
   id: string;
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -236,7 +237,7 @@ export default function CalendarPage() {
 
       info.revert();
 
-      alert(
+      toast.error(
         "Unable to move appointment."
       );
     }
@@ -277,7 +278,7 @@ export default function CalendarPage() {
 
       eventInfo.revert();
 
-      alert(
+      toast.error(
         "Unable to resize appointment."
       );
     }
@@ -327,7 +328,7 @@ export default function CalendarPage() {
         error
       );
 
-      alert(
+      toast.error(
         "Unable to load appointment."
       );
     }

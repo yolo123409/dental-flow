@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Appointment } from "@/types/appointment";
 
@@ -134,7 +135,7 @@ export default function AppointmentsPage() {
   ) {
     setSelectedAppointment(appointment);
 
-    alert(
+    toast(
       `Viewing appointment for ${
         appointment.patients
           ? `${appointment.patients.first_name} ${appointment.patients.last_name}`
@@ -186,7 +187,7 @@ export default function AppointmentsPage() {
     } catch (error) {
       console.error(error);
 
-      alert(
+      toast.error(
         "Failed to delete appointment."
       );
     } finally {

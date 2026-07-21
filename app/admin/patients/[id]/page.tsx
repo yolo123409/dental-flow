@@ -24,6 +24,8 @@ import {
   calculateBalance,
 } from "@/services/billing";
 
+import { getClinicSettings } from "@/services/settings";
+
 import {
   Patient,
   Appointment,
@@ -57,6 +59,9 @@ export default function PatientProfilePage() {
       outstanding: 0,
     });
 
+  const [currency, setCurrency] =
+    useState("KES");
+
   const [activeTab, setActiveTab] =
     useState("Overview");
 
@@ -72,17 +77,20 @@ export default function PatientProfilePage() {
         history,
         timelineItems,
         invoices,
+        clinicSettings,
       ] = await Promise.all([
         getPatientProfile(id),
         getPatientAppointments(id),
         getPatientTimeline(id),
         getPatientInvoices(id),
+        getClinicSettings(),
       ]);
 
       setPatient(profile);
       setAppointments(history);
       setTimeline(timelineItems);
       setBilling(calculateBalance(invoices));
+      setCurrency(clinicSettings.currency || "KES");
 
     } catch (error) {
       console.error(
@@ -140,6 +148,7 @@ export default function PatientProfilePage() {
         <BillingSummary
           total={billing.total}
           paid={billing.paid}
+          currency={currency}
           outstanding={billing.outstanding}
         />
       )}
@@ -209,6 +218,7 @@ export default function PatientProfilePage() {
         <BillingSummary
           total={billing.total}
           paid={billing.paid}
+          currency={currency}
           outstanding={billing.outstanding}
         />
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import PatientForm, {
   PatientFormData,
@@ -86,7 +87,7 @@ export default function EditPatientModal({
 
     } catch (error) {
       console.error(error);
-      alert("Failed to update patient.");
+      toast.error("Failed to update patient.");
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Link from "next/link";
 
@@ -11,12 +12,17 @@ import {
   getInvoices,
 } from "@/services/billing";
 
+import { getClinicSettings } from "@/services/settings";
+
 export default function InvoiceListPage() {
   const [loading, setLoading] =
     useState(true);
 
   const [invoices, setInvoices] =
     useState<ClinicInvoice[]>([]);
+
+  const [currency, setCurrency] =
+    useState("KES");
 
   useEffect(() => {
     loadInvoices();
@@ -26,20 +32,35 @@ export default function InvoiceListPage() {
     try {
       setLoading(true);
 
-      const result =
-        await getInvoices();
+      const [result, clinicSettings] =
+        await Promise.all([
+          getInvoices(),
+          getClinicSettings(),
+        ]);
 
       setInvoices(result);
+      setCurrency(
+        clinicSettings.currency || "KES"
+      );
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load invoices."
+      );
     } finally {
       setLoading(false);
     }
   }
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
 
   return (
     <div className="space-y-8">
@@ -103,10 +124,9 @@ export default function InvoiceListPage() {
                   <div className="text-right">
 
                     <p className="font-bold">
-                      KES{" "}
-                      {Number(
-                        invoice.total
-                      ).toLocaleString()}
+                      {formatCurrency(
+                        Number(invoice.total)
+                      )}
                     </p>
 
                     <p

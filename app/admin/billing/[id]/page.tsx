@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
 
 import jsPDF from "jspdf";
 import { toPng } from "html-to-image";
@@ -9,10 +10,32 @@ import { toPng } from "html-to-image";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 
-import { getInvoice } from "@/services/billing";
-import { getClinicSettings } from "@/services/settings";
+import {
+  getInvoice,
+  ClinicInvoice,
+  InvoiceItem,
+  ClinicPayment,
+} from "@/services/billing";
+import {
+  getClinicSettings,
+  ClinicSettings,
+} from "@/services/settings";
 
 import RecordPaymentModal from "@/components/billing/RecordPaymentModal";
+
+interface InvoiceDetail extends ClinicInvoice {
+  patients: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    phone: string;
+    email: string | null;
+  } | null;
+
+  clinic_invoice_items: InvoiceItem[];
+
+  clinic_payments: ClinicPayment[];
+}
 
 export default function InvoicePage() {
   const params = useParams();
@@ -25,10 +48,10 @@ export default function InvoicePage() {
     useState(true);
 
   const [invoice, setInvoice] =
-    useState<any>(null);
+    useState<InvoiceDetail | null>(null);
 
   const [clinic, setClinic] =
-    useState<any>(null);
+    useState<ClinicSettings | null>(null);
 
   const [
     showPaymentModal,
@@ -56,16 +79,18 @@ export default function InvoicePage() {
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load invoice."
+      );
     } finally {
       setLoading(false);
     }
   }
 
 async function downloadPDF() {
-  if (!invoiceRef.current) return;
+  if (!invoiceRef.current || !invoice) return;
 
   try {
     const dataUrl = await toPng(invoiceRef.current, {
@@ -110,7 +135,7 @@ async function downloadPDF() {
     );
   } catch (error) {
     console.error(error);
-    alert("Failed to generate PDF.");
+    toast.error("Failed to generate PDF.");
   }
 }
 
@@ -399,7 +424,7 @@ async function downloadPDF() {
               <tbody>
 
                 {invoice.clinic_invoice_items?.map(
-                  (item: any) => (
+                  (item) => (
 
                     <tr
                       key={item.id}
@@ -450,7 +475,7 @@ async function downloadPDF() {
               <div className="space-y-4">
 
                 {invoice.clinic_payments.map(
-                  (payment: any) => (
+                  (payment) => (
 
                     <div
                       key={payment.id}

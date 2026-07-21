@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -11,6 +12,8 @@ import {
   createInvoice,
   getPendingCharges,
 } from "@/services/billing";
+
+import { getClinicSettings } from "@/services/settings";
 
 export default function BillingPage() {
   const [loading, setLoading] =
@@ -22,6 +25,9 @@ export default function BillingPage() {
   const [selected, setSelected] =
     useState<string[]>([]);
 
+  const [currency, setCurrency] =
+    useState("KES");
+
   useEffect(() => {
     loadCharges();
   }, []);
@@ -30,16 +36,24 @@ export default function BillingPage() {
     try {
       setLoading(true);
 
-      const result =
-        await getPendingCharges();
+      const [result, clinicSettings] =
+        await Promise.all([
+          getPendingCharges(),
+          getClinicSettings(),
+        ]);
 
       setCharges(result);
+      setCurrency(
+        clinicSettings.currency || "KES"
+      );
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load pending charges."
+      );
     } finally {
       setLoading(false);
     }
@@ -59,7 +73,7 @@ export default function BillingPage() {
     ];
 
     if (patientIds.length !== 1) {
-      alert(
+      toast.error(
         "Please select charges for one patient only."
       );
 
@@ -76,17 +90,26 @@ export default function BillingPage() {
 
       await loadCharges();
 
-      alert(
+      toast.success(
         "Invoice created successfully."
       );
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to create invoice."
+      );
     }
   }
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
 
   function toggleCharge(
     chargeId: string
@@ -203,10 +226,9 @@ export default function BillingPage() {
                   </div>
 
                   <p className="font-bold">
-                    KES{" "}
-                    {Number(
-                      charge.amount
-                    ).toLocaleString()}
+                    {formatCurrency(
+                      Number(charge.amount)
+                    )}
                   </p>
 
                 </label>
@@ -242,8 +264,7 @@ export default function BillingPage() {
               </span>
 
               <span className="font-semibold">
-                KES{" "}
-                {subtotal.toLocaleString()}
+                {formatCurrency(subtotal)}
               </span>
 
             </div>
@@ -255,8 +276,7 @@ export default function BillingPage() {
               <span>Total</span>
 
               <span>
-                KES{" "}
-                {subtotal.toLocaleString()}
+                {formatCurrency(subtotal)}
               </span>
 
             </div>

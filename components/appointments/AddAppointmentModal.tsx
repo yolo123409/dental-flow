@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -90,7 +91,7 @@ export default function AddAppointmentModal({
       !form.appointment_date ||
       !form.appointment_time
     ) {
-      alert(
+      toast.error(
         "Please complete all required fields."
       );
       return;
@@ -109,7 +110,7 @@ export default function AddAppointmentModal({
     } catch (error) {
       console.error(error);
 
-      alert(
+      toast.error(
         "Failed to create appointment."
       );
     } finally {

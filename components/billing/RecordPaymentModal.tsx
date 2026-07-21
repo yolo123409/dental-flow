@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 
 import Button from "@/components/ui/Button";
 
@@ -38,7 +39,7 @@ export default function RecordPaymentModal({
 
   async function handleSave() {
     if (!amount) {
-      alert("Enter an amount.");
+      toast.error("Enter an amount.");
       return;
     }
 
@@ -60,12 +61,16 @@ export default function RecordPaymentModal({
       setReference("");
       setNotes("");
       setPaymentMethod("Cash");
+
+      toast.success("Payment recorded.");
     } catch (error) {
       console.error(error);
 
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to record payment."
+      );
     } finally {
       setSaving(false);
     }
