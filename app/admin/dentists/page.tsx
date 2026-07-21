@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Dentist } from "@/types/dentist";
 
@@ -82,7 +83,7 @@ export default function DentistsPage() {
 
     } catch (error) {
       console.error(error);
-      alert("Failed to delete dentist.");
+      toast.error("Failed to delete dentist.");
     } finally {
       setDeleting(false);
     }

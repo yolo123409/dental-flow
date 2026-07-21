@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -71,7 +72,7 @@ export default function EditDentistModal({
 
     } catch (error) {
       console.error(error);
-      alert("Failed to update dentist.");
+      toast.error("Failed to update dentist.");
     } finally {
       setLoading(false);
     }

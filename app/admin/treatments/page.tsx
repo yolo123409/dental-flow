@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import FormInput from "@/components/ui/FormInput";
+import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import EmptyState from "@/components/ui/EmptyState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 import {
   ClinicTreatment,
   getTreatments,
   deleteTreatment,
 } from "@/services/treatments";
+
+import { getClinicSettings } from "@/services/settings";
 
 import TreatmentModal from "@/components/treatments/TreatmentModal";
 
@@ -35,6 +41,12 @@ const [selectedTreatment, setSelectedTreatment] =
 const [deleting, setDeleting] =
   useState(false);
 
+  const [currency, setCurrency] =
+    useState("KES");
+
+  const [showDeleteDialog, setShowDeleteDialog] =
+    useState(false);
+
   useEffect(() => {
     loadTreatments();
   }, []);
@@ -43,17 +55,25 @@ const [deleting, setDeleting] =
     try {
       setLoading(true);
 
-      const data =
-        await getTreatments();
+      const [data, clinicSettings] =
+        await Promise.all([
+          getTreatments(),
+          getClinicSettings(),
+        ]);
 
       setTreatments(data);
+      setCurrency(
+        clinicSettings.currency || "KES"
+      );
     } catch (error) {
-  console.error(error);
+      console.error(error);
 
-  if (error instanceof Error) {
-    alert(error.message);
-  }
-} finally {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load treatments."
+      );
+    } finally {
       setLoading(false);
     }
   }
@@ -74,38 +94,46 @@ function handleEdit(
   setModalOpen(true);
 }
 
-async function handleDelete(
-  treatment: ClinicTreatment
-) {
-  const confirmed =
-    confirm(
-      `Delete "${treatment.name}"?`
-    );
-
-  if (!confirmed) {
-    return;
+  function handleDelete(
+    treatment: ClinicTreatment
+  ) {
+    setSelectedTreatment(treatment);
+    setShowDeleteDialog(true);
   }
 
-  try {
-    setDeleting(true);
+  async function confirmDelete() {
+    if (!selectedTreatment) return;
 
-    await deleteTreatment(
-      treatment.id
-    );
+    try {
+      setDeleting(true);
 
-    await loadTreatments();
-  } catch (error) {
-    console.error(error);
+      await deleteTreatment(
+        selectedTreatment.id
+      );
 
-    if (
-      error instanceof Error
-    ) {
-      alert(error.message);
+      await loadTreatments();
+
+      setShowDeleteDialog(false);
+      setSelectedTreatment(null);
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete treatment."
+      );
+    } finally {
+      setDeleting(false);
     }
-  } finally {
-    setDeleting(false);
   }
-}
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
 
   const filtered =
     treatments.filter((treatment) => {
@@ -134,7 +162,7 @@ async function handleDelete(
           </h1>
 
           <p className="mt-2 text-slate-500">
-            Manage your clinic's
+            Manage your clinic&apos;s
             treatment catalogue.
           </p>
 
@@ -165,25 +193,16 @@ async function handleDelete(
 
         {loading ? (
 
-          <div className="py-20 text-center text-slate-500">
-            Loading treatments...
-          </div>
+          <LoadingSpinner text="Loading treatments..." />
 
         ) : filtered.length === 0 ? (
 
-          <div className="rounded-2xl border border-dashed border-slate-300 py-20 text-center">
-
-            <p className="text-lg font-semibold">
-              No treatments found
-            </p>
-
-            <p className="mt-2 text-slate-500">
-              Click "Add Treatment"
-              to create your first
-              treatment.
-            </p>
-
-          </div>
+          <EmptyState
+            title="No treatments found"
+            description={
+              'Click "Add Treatment" to create your first treatment.'
+            }
+          />
 
         ) : (
 
@@ -239,10 +258,9 @@ async function handleDelete(
                       </td>
 
                       <td className="px-6 py-5 text-right font-semibold">
-                        KES{" "}
-                        {Number(
-                          treatment.default_price
-                        ).toLocaleString()}
+                        {formatCurrency(
+                          Number(treatment.default_price)
+                        )}
                       </td>
 
                       <td className="px-6 py-5 text-center">
@@ -304,6 +322,22 @@ async function handleDelete(
     loadTreatments
   }
 />
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete treatment"
+        description={
+          selectedTreatment
+            ? `Delete "${selectedTreatment.name}"? This cannot be undone.`
+            : undefined
+        }
+        confirmText="Delete"
+        loading={deleting}
+        onCancel={() =>
+          setShowDeleteDialog(false)
+        }
+        onConfirm={confirmDelete}
+      />
 
     </div>
   );

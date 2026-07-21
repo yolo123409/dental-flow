@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -45,7 +46,7 @@ function update(
 
   async function saveDentist() {
     if (!form.full_name.trim()) {
-      alert("Dentist name is required.");
+      toast.error("Dentist name is required.");
       return;
     }
 
@@ -68,7 +69,7 @@ function update(
 
     } catch (error) {
       console.error(error);
-      alert("Failed to create dentist.");
+      toast.error("Failed to create dentist.");
     } finally {
       setLoading(false);
     }

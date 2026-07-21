@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import Button from "@/components/ui/Button";
 import FormInput from "@/components/ui/FormInput";
@@ -83,7 +84,7 @@ export default function TreatmentModal({
 
   async function handleSave() {
     if (!name.trim()) {
-      alert(
+      toast.error(
         "Treatment name is required."
       );
       return;
@@ -113,7 +114,7 @@ export default function TreatmentModal({
     } catch (error) {
       console.error("Failed to save treatment:", error);
 
-      alert(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Unable to save treatment."
