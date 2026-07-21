@@ -371,7 +371,7 @@ begin
   where clinic_id = v_caller_clinic_id
     and lower(email) = v_email
     and accepted_at is null
-    and expires_at < now();
+    and staff_invitations.expires_at < now();
 
   if exists (
     select 1 from public.staff_invitations
