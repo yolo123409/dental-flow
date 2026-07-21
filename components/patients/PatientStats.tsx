@@ -4,10 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getInvoices, calculateBalance } from "@/services/billing";
 import { getClinicSettings } from "@/services/settings";
+import { getNewPatientsThisMonthCount } from "@/services/patients";
+import { getTodaysAppointmentCount } from "@/services/appointments";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 
 export default function PatientStats() {
+  const [newThisMonth, setNewThisMonth] = useState<number | null>(null);
+  const [todaysVisits, setTodaysVisits] = useState<number | null>(null);
   const [outstanding, setOutstanding] = useState<number | null>(null);
   const [currency, setCurrency] = useState("KES");
 
@@ -15,28 +19,42 @@ export default function PatientStats() {
   const [error, setError] = useState<string | null>(null);
 
   const realtimeTables = useMemo(
-    () => ["clinic_invoices", "clinic_payments"],
+    () => [
+      "patients",
+      "appointments",
+      "clinic_invoices",
+      "clinic_payments",
+    ],
     []
   );
 
-  const loadOutstandingBalance = useCallback(async () => {
+  const loadStats = useCallback(async () => {
     try {
       setError(null);
 
-      const [invoices, clinicSettings] = await Promise.all([
+      const [
+        newPatientCount,
+        appointmentCount,
+        invoices,
+        clinicSettings,
+      ] = await Promise.all([
+        getNewPatientsThisMonthCount(),
+        getTodaysAppointmentCount(),
         getInvoices(),
         getClinicSettings(),
       ]);
 
+      setNewThisMonth(newPatientCount);
+      setTodaysVisits(appointmentCount);
       setOutstanding(calculateBalance(invoices).outstanding);
       setCurrency(clinicSettings.currency || "KES");
     } catch (err) {
-      console.error("Failed to load outstanding balance:", err);
+      console.error("Failed to load patient stats:", err);
 
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load balance."
+          : "Failed to load stats."
       );
     } finally {
       setLoading(false);
@@ -44,12 +62,12 @@ export default function PatientStats() {
   }, []);
 
   useEffect(() => {
-    void loadOutstandingBalance();
-  }, [loadOutstandingBalance]);
+    void loadStats();
+  }, [loadStats]);
 
   useRealtimeTables({
     tables: realtimeTables,
-    reload: loadOutstandingBalance,
+    reload: loadStats,
   });
 
   const formattedOutstanding =
@@ -70,9 +88,19 @@ export default function PatientStats() {
           New This Month
         </p>
 
-        <h2 className="mt-2 text-3xl font-bold">
-          18
-        </h2>
+        {loading ? (
+          <h2 className="mt-2 text-3xl font-bold text-slate-300">
+            ...
+          </h2>
+        ) : error ? (
+          <p className="mt-3 text-sm font-semibold text-red-600">
+            Unable to load
+          </p>
+        ) : (
+          <h2 className="mt-2 text-3xl font-bold">
+            {newThisMonth}
+          </h2>
+        )}
 
       </div>
 
@@ -82,9 +110,19 @@ export default function PatientStats() {
           Today&apos;s Visits
         </p>
 
-        <h2 className="mt-2 text-3xl font-bold">
-          12
-        </h2>
+        {loading ? (
+          <h2 className="mt-2 text-3xl font-bold text-slate-300">
+            ...
+          </h2>
+        ) : error ? (
+          <p className="mt-3 text-sm font-semibold text-red-600">
+            Unable to load
+          </p>
+        ) : (
+          <h2 className="mt-2 text-3xl font-bold">
+            {todaysVisits}
+          </h2>
+        )}
 
       </div>
 

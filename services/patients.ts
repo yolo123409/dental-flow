@@ -68,6 +68,36 @@ export async function getPatientCount() {
   return count ?? 0;
 }
 
+export async function getNewPatientsThisMonthCount(): Promise<number> {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const now = new Date();
+
+  const monthStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    1
+  ).toISOString();
+
+  const { count, error } =
+    await supabase
+      .from("patients")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("clinic_id", clinicId)
+      .gte("created_at", monthStart);
+
+  if (error) {
+    console.error(error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
 export async function createPatient(
   patient: Omit<
     Patient,

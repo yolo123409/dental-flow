@@ -106,6 +106,35 @@ export async function getAppointmentCount(): Promise<number> {
   return count ?? 0;
 }
 
+export async function getTodaysAppointmentCount(): Promise<number> {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const today = new Date()
+    .toISOString()
+    .split("T")[0];
+
+  const { count, error } =
+    await supabase
+      .from("appointments")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("clinic_id", clinicId)
+      .eq("appointment_date", today);
+
+  if (error) {
+    console.error(
+      "Failed to count today's appointments:",
+      error
+    );
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
 export async function getTodaysAppointments(): Promise<Appointment[]> {
   const clinicId =
     await getCurrentClinicId();
