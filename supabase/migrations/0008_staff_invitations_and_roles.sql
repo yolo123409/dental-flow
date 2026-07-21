@@ -26,6 +26,37 @@
 create extension if not exists pgcrypto;
 
 -- ============================================================
+-- 0. clinic_users.role has a pre-existing check constraint from before
+--    this repo's tracked migrations began (same "created outside the
+--    migration folder" situation as several other tables/policies found
+--    this session) - invisible to PostgREST introspection, only visible
+--    once it rejected the backfill below with role='Owner'. Find and drop
+--    it by scanning pg_constraint instead of guessing its name, then
+--    apply our own named replacement further down once data is clean.
+-- ============================================================
+
+do $$
+declare
+  r record;
+begin
+  for r in
+    select con.conname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'clinic_users'
+      and con.contype = 'c'
+      and pg_get_constraintdef(con.oid) ilike '%role%'
+  loop
+    execute format(
+      'alter table public.clinic_users drop constraint %I',
+      r.conname
+    );
+  end loop;
+end $$;
+
+-- ============================================================
 -- 1. Owner role: backfill + going-forward RPC change
 -- ============================================================
 
