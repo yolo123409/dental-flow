@@ -2,6 +2,10 @@ import { supabase } from "@/lib/supabase";
 import { ClinicUser } from "@/types/clinicUser";
 
 import { getCurrentClinicId } from "./clinic";
+import {
+  notifyStaffAdded,
+  notifyStaffRoleChanged,
+} from "./notifications";
 
 
 export async function getUsers(): Promise<ClinicUser[]> {
@@ -52,6 +56,8 @@ export async function createUser(
 
   if (error) throw error;
 
+  await notifyStaffAdded(data as ClinicUser);
+
   return data as ClinicUser;
 }
 
@@ -60,6 +66,13 @@ export async function updateUser(
   updates: Partial<ClinicUser>
 ): Promise<ClinicUser> {
   const clinicId = await getCurrentClinicId();
+
+  const { data: existing } = await supabase
+    .from("clinic_users")
+    .select("role")
+    .eq("clinic_id", clinicId)
+    .eq("id", id)
+    .maybeSingle();
 
   const { data, error } = await supabase
     .from("clinic_users")
@@ -70,6 +83,14 @@ export async function updateUser(
     .single();
 
   if (error) throw error;
+
+  if (
+    updates.role !== undefined &&
+    existing &&
+    updates.role !== existing.role
+  ) {
+    await notifyStaffRoleChanged(data as ClinicUser);
+  }
 
   return data as ClinicUser;
 }

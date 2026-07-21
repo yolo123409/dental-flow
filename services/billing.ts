@@ -1,6 +1,10 @@
 import { supabase } from "@/lib/supabase";
 
 import { getCurrentClinicId } from "./clinic";
+import {
+  notifyInvoiceCreated,
+  notifyPaymentRecorded,
+} from "./notifications";
 
 export interface ClinicInvoice {
   id: string;
@@ -320,6 +324,8 @@ export async function createInvoice(
 
   console.log("Step 6");
 
+  await notifyInvoiceCreated(invoice);
+
   return invoice;
 }
 
@@ -492,4 +498,10 @@ export async function recordPayment(
   if (updateError) {
     throw updateError;
   }
+
+  await notifyPaymentRecorded({
+    id: invoice.id,
+    invoice_number: invoice.invoice_number,
+    amount,
+  });
 }

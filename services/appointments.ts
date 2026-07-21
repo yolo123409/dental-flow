@@ -3,6 +3,13 @@ import { Appointment } from "@/types/appointment";
 
 import { getCurrentClinicId } from "@/services/clinic";
 
+import {
+  notifyAppointmentBooked,
+  notifyAppointmentCancelled,
+  notifyAppointmentCompleted,
+  notifyAppointmentRescheduled,
+} from "@/services/notifications";
+
 export async function getAppointments(
   page = 1,
   pageSize = 50
@@ -226,6 +233,8 @@ export async function createAppointment(
     throw error;
   }
 
+  await notifyAppointmentBooked(data);
+
   return data;
 }
 
@@ -235,6 +244,16 @@ export async function updateAppointment(
 ) {
   const clinicId =
     await getCurrentClinicId();
+
+  const { data: existing } =
+    await supabase
+      .from("appointments")
+      .select(
+        "status, appointment_date, appointment_time, treatment"
+      )
+      .eq("id", id)
+      .eq("clinic_id", clinicId)
+      .maybeSingle();
 
   const { error } =
     await supabase
@@ -249,6 +268,52 @@ export async function updateAppointment(
       error
     );
     throw error;
+  }
+
+  if (existing) {
+    const nextStatus =
+      appointment.status ?? existing.status;
+
+    const nextDate =
+      appointment.appointment_date ??
+      existing.appointment_date;
+
+    const nextTime =
+      appointment.appointment_time ??
+      existing.appointment_time;
+
+    const treatment =
+      appointment.treatment ??
+      existing.treatment;
+
+    if (
+      nextStatus !== existing.status &&
+      nextStatus === "Cancelled"
+    ) {
+      await notifyAppointmentCancelled({
+        id,
+        treatment,
+        appointment_date: nextDate,
+      });
+    } else if (
+      nextStatus !== existing.status &&
+      nextStatus === "Completed"
+    ) {
+      await notifyAppointmentCompleted({
+        id,
+        treatment,
+      });
+    } else if (
+      nextStatus === existing.status &&
+      (nextDate !== existing.appointment_date ||
+        nextTime !== existing.appointment_time)
+    ) {
+      await notifyAppointmentRescheduled({
+        id,
+        treatment,
+        appointment_date: nextDate,
+      });
+    }
   }
 }
 

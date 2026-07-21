@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { Patient } from "@/types/patient";
 
 import { getCurrentClinicId } from "./clinic";
+import { notifyPatientRegistered } from "./notifications";
 
 export async function getPatients(): Promise<Patient[]> {
   const clinicId =
@@ -109,17 +110,23 @@ export async function createPatient(
   const clinicId =
     await getCurrentClinicId();
 
-  const { error } =
+  const { data, error } =
     await supabase
       .from("patients")
       .insert({
         ...patient,
         clinic_id: clinicId,
-      });
+      })
+      .select()
+      .single();
 
   if (error) {
     throw error;
   }
+
+  await notifyPatientRegistered(data as Patient);
+
+  return data as Patient;
 }
 
 export async function getPatientById(

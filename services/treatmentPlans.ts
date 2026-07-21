@@ -3,6 +3,10 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { createInvoice, ChargeSelection } from "./billing";
+import {
+  notifyTreatmentPlanCreated,
+  notifyTreatmentCompleted,
+} from "./notifications";
 
 import {
   TreatmentPlan,
@@ -103,7 +107,11 @@ export async function createTreatmentPlan(
     throw error;
   }
 
-  return data as TreatmentPlan;
+  const plan = data as TreatmentPlan;
+
+  await notifyTreatmentPlanCreated(plan);
+
+  return plan;
 }
 
 /* -------------------------------------- */
@@ -213,6 +221,13 @@ export async function updateTreatmentItem(
 ): Promise<TreatmentPlanItem> {
   const clinicId = await getCurrentClinicId();
 
+  const { data: existing } = await supabase
+    .from("treatment_plan_items")
+    .select("status")
+    .eq("clinic_id", clinicId)
+    .eq("id", itemId)
+    .maybeSingle();
+
   const { data, error } = await supabase
     .from("treatment_plan_items")
     .update({
@@ -251,6 +266,25 @@ export async function updateTreatmentItem(
   const item = data as TreatmentPlanItem;
 
   await touchPlan(item.treatment_plan_id, clinicId);
+
+  if (
+    item.status === "Completed" &&
+    existing?.status !== "Completed"
+  ) {
+    const { data: plan } = await supabase
+      .from("treatment_plans")
+      .select("patient_id")
+      .eq("clinic_id", clinicId)
+      .eq("id", item.treatment_plan_id)
+      .maybeSingle();
+
+    if (plan) {
+      await notifyTreatmentCompleted({
+        patient_id: plan.patient_id,
+        procedure: item.procedure,
+      });
+    }
+  }
 
   return item;
 }
