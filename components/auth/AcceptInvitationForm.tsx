@@ -9,6 +9,7 @@ import Input from "@/components/ui/Input";
 import Badge from "@/components/ui/Badge";
 
 import { supabase } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
 import { acceptPendingInvitationIfNeeded } from "@/services/clinic";
 import { getInvitationDetails } from "@/services/staffInvitations";
 import { InvitationDetails } from "@/types/staffInvitation";
@@ -73,7 +74,10 @@ export default function AcceptInvitationForm({
 
         setState({ status: "ready", invitation });
       } catch (error) {
-        console.error(error);
+        logError(
+          "[AcceptInvitationForm] Failed to load invitation:",
+          error
+        );
 
         if (!cancelled) {
           setState({
@@ -140,7 +144,10 @@ export default function AcceptInvitationForm({
         router.push("/auth/login");
       }
     } catch (error: unknown) {
-      console.error(error);
+      logError(
+        "[AcceptInvitationForm] Failed to accept invitation:",
+        error
+      );
 
       toast.error(
         error instanceof Error

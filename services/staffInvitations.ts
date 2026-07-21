@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { generateToken } from "@/lib/generateToken";
 
 import { getCurrentClinicId } from "./clinic";
 import { notifyStaffAdded } from "./notifications";
@@ -63,6 +64,7 @@ export async function createInvitation(
       p_email: input.email.trim(),
       p_full_name: input.full_name.trim(),
       p_role: input.role,
+      p_token: generateToken(),
     }
   );
 
@@ -89,7 +91,10 @@ export async function resendInvitation(
 ): Promise<{ link: string }> {
   const { data, error } = await supabase.rpc(
     "resend_staff_invitation",
-    { p_invitation_id: invitationId }
+    {
+      p_invitation_id: invitationId,
+      p_token: generateToken(),
+    }
   );
 
   if (error) {

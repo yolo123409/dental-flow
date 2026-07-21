@@ -10,6 +10,7 @@ import FormInput from "@/components/ui/FormInput";
 
 import { createInvitation } from "@/services/staffInvitations";
 import { INVITABLE_ROLES, InvitableRole } from "@/lib/permissions";
+import { logError } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -75,7 +76,7 @@ export default function InviteStaffModal({
 
       await onSuccess();
     } catch (error) {
-      console.error(error);
+      logError("[InviteStaffModal] createInvitation failed:", error);
 
       toast.error(
         error instanceof Error
@@ -99,7 +100,7 @@ export default function InviteStaffModal({
 
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error(error);
+      logError("[InviteStaffModal] Failed to copy link:", error);
 
       toast.error("Unable to copy link.");
     }

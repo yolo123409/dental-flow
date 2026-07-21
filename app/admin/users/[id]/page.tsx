@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import PageContainer from "@/components/ui/PageContainer";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
+import { logError } from "@/lib/logError";
 
 import {
   StaffHeader,
@@ -42,11 +43,7 @@ export default function StaffProfilePage() {
 
       setUser(data);
     } catch (error: unknown) {
-      console.error("loadUser failed:", error);
-
-      if (error instanceof Error) {
-        console.error(error.message);
-      }
+      logError("[Staff profile] loadUser failed:", error);
 
       toast.error("Unable to load staff member.");
     } finally {
@@ -82,7 +79,7 @@ export default function StaffProfilePage() {
 
       await loadUser();
     } catch (error) {
-      console.error(error);
+      logError("[Staff profile] Failed to update status:", error);
       toast.error("Unable to update status.");
     }
   }
@@ -103,7 +100,7 @@ export default function StaffProfilePage() {
 
       router.push("/admin/users");
     } catch (error) {
-      console.error(error);
+      logError("[Staff profile] Failed to delete user:", error);
       toast.error("Unable to delete user.");
     }
   }

@@ -28,6 +28,7 @@ import {
 } from "@/components/users";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
+import { logError } from "@/lib/logError";
 
 import {
   suspendUser,
@@ -78,7 +79,7 @@ export default function UsersPage() {
       setUsers(staff);
       setInvitations(pending);
     } catch (error) {
-      console.error("Failed to load staff:", error);
+      logError("[Staff page] Failed to load staff:", error);
 
       toast.error("Unable to load staff.");
     } finally {
@@ -109,7 +110,7 @@ export default function UsersPage() {
 
       await loadAll();
     } catch (error) {
-      console.error(error);
+      logError("[Staff page] Failed to update staff status:", error);
 
       toast.error("Unable to update staff status.");
     }
@@ -129,7 +130,7 @@ export default function UsersPage() {
 
       await loadAll();
     } catch (error) {
-      console.error(error);
+      logError("[Staff page] Failed to remove staff member:", error);
 
       toast.error("Unable to remove staff member.");
     } finally {
@@ -151,7 +152,7 @@ export default function UsersPage() {
 
       await loadAll();
     } catch (error) {
-      console.error(error);
+      logError("[Staff page] Failed to resend invitation:", error);
 
       toast.error(
         error instanceof Error
@@ -177,7 +178,7 @@ export default function UsersPage() {
 
       await loadAll();
     } catch (error) {
-      console.error(error);
+      logError("[Staff page] Failed to cancel invitation:", error);
 
       toast.error("Unable to cancel invitation.");
     } finally {
