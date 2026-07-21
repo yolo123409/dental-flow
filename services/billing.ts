@@ -207,7 +207,7 @@ export async function generateInvoiceNumber() {
 /* Create Invoice                         */
 /* -------------------------------------- */
 
-interface ChargeSelection {
+export interface ChargeSelection {
   id: string;
 
   treatment_name: string;
