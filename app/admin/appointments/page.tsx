@@ -259,8 +259,8 @@ export default function AppointmentsPage() {
       {appointments.length ===
       0 ? (
         <EmptyState
-          title="No Appointments"
-          description="Book your first appointment to get started."
+          title="Your chair schedule is clear"
+          description="Book the first patient visit and Dental Flow will keep every chair, clinician, and treatment in view."
           action={
             <Button
               onClick={() =>

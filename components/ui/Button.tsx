@@ -3,7 +3,7 @@
 import { ButtonHTMLAttributes } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "quiet";
 }
 
 export default function Button({
@@ -14,24 +14,23 @@ export default function Button({
 }: ButtonProps) {
   const styles = {
     primary:
-      "bg-blue-600 hover:bg-blue-700 text-white",
+      "bg-eucalyptus text-white hover:bg-deep-eucalyptus",
 
     secondary:
-      "border border-slate-300 bg-white hover:bg-slate-50 text-slate-900",
+      "border border-sea-glass bg-enamel text-graphite hover:bg-porcelain",
 
     danger:
-      "bg-red-600 hover:bg-red-700 text-white",
+      "bg-clay text-white hover:bg-clay/90",
+    quiet:
+      "bg-transparent text-eucalyptus hover:bg-sea-glass/60",
   };
 
   return (
     <button
       {...props}
       className={`
-        rounded-xl
-        px-6
-        py-3
-        font-semibold
-        transition
+        inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold
+        transition-colors
         disabled:opacity-50
         disabled:cursor-not-allowed
         ${styles[variant]}

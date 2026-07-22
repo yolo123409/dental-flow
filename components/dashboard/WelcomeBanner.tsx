@@ -20,24 +20,24 @@ export default function WelcomeBanner() {
   });
 
   return (
-    <div className="mb-8 overflow-hidden rounded-3xl bg-linear-to-r from-blue-600 via-cyan-500 to-sky-400 p-8 text-white shadow-2xl">
+    <section className="mb-8 overflow-hidden rounded-xl border border-eucalyptus bg-eucalyptus p-6 text-white sm:p-8">
 
       <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
 
         <div>
 
-          <h1 className="text-4xl font-extrabold">
-            {greeting} 👋
+          <h1 className="font-display text-3xl font-bold sm:text-4xl">
+            {greeting}
           </h1>
 
-          <p className="mt-3 max-w-xl text-blue-100 text-lg">
+          <p className="mt-3 max-w-xl text-base text-white/80 sm:text-lg">
             Welcome back to Dental Flow.
             Here&apos;s what&apos;s happening in your clinic today.
           </p>
 
         </div>
 
-        <div className="rounded-2xl bg-white/20 p-5 backdrop-blur-md">
+        <div className="rounded-lg border border-white/20 bg-white/10 p-5">
 
           <div className="flex items-center gap-3">
 
@@ -45,7 +45,7 @@ export default function WelcomeBanner() {
 
             <div>
 
-              <p className="text-sm text-blue-100">
+              <p className="text-sm text-white/70">
                 Today
               </p>
 
@@ -61,6 +61,6 @@ export default function WelcomeBanner() {
 
       </div>
 
-    </div>
+    </section>
   );
 }

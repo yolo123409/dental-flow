@@ -9,7 +9,7 @@ export default function Input({
   return (
     <input
       {...props}
-      className={`w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 ${className}`}
+      className={`min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite placeholder:text-mineral transition-colors hover:border-mineral/50 focus:border-eucalyptus ${className}`}
     />
   );
 }

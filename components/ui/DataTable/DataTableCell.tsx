@@ -11,7 +11,7 @@ export default function DataTableCell({
 }: Props) {
   if (header) {
     return (
-      <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
+      <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
         {children}
       </th>
     );

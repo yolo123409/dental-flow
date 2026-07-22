@@ -6,7 +6,7 @@ interface Props {
 
 export default function DataTable({ children }: Props) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-lg border border-sea-glass bg-enamel">
       <table className="w-full border-collapse text-sm">
         {children}
       </table>

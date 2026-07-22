@@ -1,131 +1,125 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --porcelain: #F6F7F4;
+  --enamel: #FFFFFF;
+  --eucalyptus: #216C68;
+  --deep-eucalyptus: #175552;
+  --graphite: #1D2B2A;
+  --mineral: #687775;
+  --sea-glass: #DCEAE6;
+  --sage: #4D7C68;
+  --ochre: #9A6A27;
+  --clay: #9B5550;
+  --harbor: #3D6B8C;
+  /* 10–12% status tints over Enamel. Text pairs are WCAG AA verified. */
+  --pale-ochre: #F5F0E9;
+  --ochre-ink: #795116;
+  --pale-clay: #F5EEEE;
+  --clay-ink: #86433F;
+  --pale-harbor: #ECEFF2;
+  --pale-sage: #EDF2F0;
+  --sage-ink: #3E6555;
+  --background: var(--porcelain);
+  --foreground: var(--graphite);
+}
+
+[data-theme="dark"] {
+  --porcelain: #202927;
+  --enamel: #2A3532;
+  --graphite: #F1F5F2;
+  --mineral: #B6C3BE;
+  --sea-glass: #465652;
+  --pale-ochre: #45391F;
+  --ochre-ink: #F0CB86;
+  --pale-clay: #492F2E;
+  --clay-ink: #EDB2AC;
+  --pale-harbor: #263B4B;
+  --harbor: #A3C8E0;
+  --pale-sage: #294237;
+  --sage-ink: #B2D5BF;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-porcelain: var(--porcelain);
+  --color-enamel: var(--enamel);
+  --color-eucalyptus: var(--eucalyptus);
+  --color-deep-eucalyptus: var(--deep-eucalyptus);
+  --color-graphite: var(--graphite);
+  --color-mineral: var(--mineral);
+  --color-sea-glass: var(--sea-glass);
+  --color-sage: var(--sage);
+  --color-ochre: var(--ochre);
+  --color-clay: var(--clay);
+  --color-harbor: var(--harbor);
+  --font-sans: var(--font-source-sans);
+  --font-display: var(--font-fraunces);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* { border-color: var(--sea-glass); }
+
+html, body {
+  background: var(--porcelain);
+  color: var(--graphite);
+  font-family: var(--font-source-sans), Arial, sans-serif;
 }
 
-html,
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  color: var(--graphite);
 }
 
-/* ----------------------------- */
-/* Printing                      */
-/* ----------------------------- */
+/* Fraunces remains display-only; Source Sans 3 supplies stable tabular figures for dense metrics. */
+.data-metric { font-family: var(--font-source-sans), Arial, sans-serif; font-variant-numeric: tabular-nums; }
 
-@page {
-  size: A4;
-  margin: 12mm;
+button, a, input, select, textarea, [role="button"] {
+  outline: none;
 }
 
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid var(--eucalyptus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--sea-glass);
+}
+
+.status-scheduled { background: var(--pale-ochre); color: var(--ochre-ink); }
+.status-ongoing { background: var(--pale-harbor); color: var(--harbor); }
+.status-completed { background: var(--pale-sage); color: var(--sage-ink); }
+.status-cancelled { background: var(--pale-clay); color: var(--clay-ink); }
+.care-rail-scheduled { border-left-color: var(--ochre); }
+.care-rail-ongoing { border-left: 3px solid var(--harbor); }
+.care-rail-completed { border-left-color: var(--sage); }
+.care-rail-cancelled { border-left-color: var(--clay); border-left-style: dashed; opacity: .74; }
+
+/* Harmonise legacy utility usage while shared primitives are adopted. */
+.bg-slate-100, .bg-slate-50 { background-color: var(--porcelain) !important; }
+.bg-white { background-color: var(--enamel) !important; }
+.text-slate-500, .text-slate-600, .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--graphite) !important; }
+.text-slate-400 { color: var(--mineral) !important; }
+.border-slate-100, .border-slate-200, .border-slate-300, .border-gray-200 { border-color: var(--sea-glass) !important; }
+.bg-blue-600 { background-color: var(--eucalyptus) !important; }
+.hover\:bg-blue-700:hover { background-color: var(--deep-eucalyptus) !important; }
+.text-blue-600, .text-blue-700 { color: var(--eucalyptus) !important; }
+.bg-blue-100 { background-color: var(--sea-glass) !important; }
+.bg-green-100 { background-color: var(--pale-sage) !important; }
+.text-green-600, .text-green-700 { color: var(--sage-ink) !important; }
+.bg-yellow-100 { background-color: var(--pale-ochre) !important; }
+.text-yellow-600, .text-yellow-700 { color: var(--ochre-ink) !important; }
+.bg-red-100 { background-color: var(--pale-clay) !important; }
+.text-red-600, .text-red-700 { color: var(--clay-ink) !important; }
+.focus\:border-blue-500:focus { border-color: var(--eucalyptus) !important; }
+
+@page { size: A4; margin: 12mm; }
 @media print {
-
-  html,
-  body {
-    background: white !important;
-    color: black !important;
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: auto;
-    overflow: visible;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* Hide application chrome */
-
-  nav,
-  aside,
-  header,
-  footer {
-    display: none !important;
-  }
-
-  /* Hide interactive controls */
-
-  button,
-  input,
-  select,
-  textarea {
-    display: none !important;
-  }
-
-  /* Tailwind print utility */
-
-  .print\:hidden {
-    display: none !important;
-  }
-
-  /* Let invoice use the whole page */
-
-  main {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: white !important;
-  }
-
-  /* Remove decorative effects */
-
-  * {
-    box-shadow: none !important;
-    text-shadow: none !important;
-  }
-
-  /* Prevent awkward page breaks */
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    page-break-inside: auto;
-  }
-
-  thead {
-    display: table-header-group;
-  }
-
-  tfoot {
-    display: table-footer-group;
-  }
-
-  tr {
-    page-break-inside: avoid;
-    page-break-after: auto;
-  }
-
-  img {
-    max-width: 100%;
-    page-break-inside: avoid;
-  }
-
-  .rounded-xl,
-  .rounded-2xl {
-    border-radius: 0 !important;
-  }
-
-  .shadow,
-  .shadow-lg,
-  .shadow-xl,
-  .shadow-2xl {
-    box-shadow: none !important;
-  }
+  html, body { background: white !important; color: black !important; margin: 0; padding: 0; width: 100%; height: auto; overflow: visible; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  nav, aside, header, footer, button, input, select, textarea { display: none !important; }
+  .print\:hidden { display: none !important; }
+  main { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; background: white !important; }
+  * { box-shadow: none !important; text-shadow: none !important; }
+  table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+  thead { display: table-header-group; } tfoot { display: table-footer-group; }
+  tr, img { page-break-inside: avoid; } tr { page-break-after: auto; } img { max-width: 100%; }
 }

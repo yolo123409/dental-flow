@@ -2,6 +2,7 @@
 
 export type AppointmentStatus =
   | "Scheduled"
+  | "Ongoing"
   | "Completed"
   | "Cancelled";
 
@@ -54,7 +55,7 @@ export default function AppointmentForm({
           onChange={(e) =>
             onChange("patient_id", e.target.value)
           }
-          className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite transition-colors hover:border-mineral/50 focus:border-eucalyptus"
         >
           <option value="">
             Select Patient
@@ -83,7 +84,7 @@ export default function AppointmentForm({
           onChange={(e) =>
             onChange("dentist_id", e.target.value)
           }
-          className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite transition-colors hover:border-mineral/50 focus:border-eucalyptus"
         >
           <option value="">
             Select Dentist
@@ -114,7 +115,7 @@ export default function AppointmentForm({
             onChange("treatment", e.target.value)
           }
           placeholder="e.g. Root Canal"
-          className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite placeholder:text-mineral transition-colors hover:border-mineral/50 focus:border-eucalyptus"
         />
       </div>
 
@@ -136,7 +137,7 @@ export default function AppointmentForm({
                 e.target.value
               )
             }
-            className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite transition-colors hover:border-mineral/50 focus:border-eucalyptus"
           />
         </div>
 
@@ -154,7 +155,7 @@ export default function AppointmentForm({
                 e.target.value
               )
             }
-            className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite transition-colors hover:border-mineral/50 focus:border-eucalyptus"
           />
         </div>
 
@@ -174,7 +175,7 @@ export default function AppointmentForm({
             onChange("notes", e.target.value)
           }
           placeholder="Additional appointment notes..."
-          className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite placeholder:text-mineral transition-colors hover:border-mineral/50 focus:border-eucalyptus"
         />
       </div>
 
@@ -190,10 +191,14 @@ export default function AppointmentForm({
           onChange={(e) =>
             onChange("status", e.target.value)
           }
-          className="w-full rounded-xl border p-3 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite transition-colors hover:border-mineral/50 focus:border-eucalyptus"
         >
           <option value="Scheduled">
             Scheduled
+          </option>
+
+          <option value="Ongoing">
+            Ongoing
           </option>
 
           <option value="Completed">

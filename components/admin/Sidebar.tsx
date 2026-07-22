@@ -129,17 +129,17 @@ export default function Sidebar() {
     usePermissions();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r border-slate-200 bg-white shadow-sm">
+    <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r border-sea-glass bg-enamel">
 
       {/* Logo */}
 
-      <div className="border-b border-slate-200 p-8">
+      <div className="border-b border-sea-glass p-8">
 
-        <h1 className="text-3xl font-black text-blue-600">
+        <h1 className="font-display text-3xl font-bold text-eucalyptus">
           Dental Flow
         </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-mineral">
           AI Clinic Platform
         </p>
 
@@ -165,7 +165,7 @@ export default function Sidebar() {
               className="mb-8"
             >
 
-              <p className="mb-3 px-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+              <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-mineral">
                 {section.title}
               </p>
 
@@ -180,10 +180,10 @@ export default function Sidebar() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className={`mb-2 flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-200 ${
+                    className={`mb-2 flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors ${
                       active
-                        ? "bg-blue-600 text-white shadow-lg"
-                        : "text-slate-700 hover:bg-slate-100"
+                        ? "bg-eucalyptus text-white"
+                        : "text-graphite hover:bg-porcelain"
                     }`}
                   >
                     <Icon size={20} />
@@ -204,26 +204,26 @@ export default function Sidebar() {
 
       {/* Footer */}
 
-      <div className="border-t border-slate-200 p-6">
+      <div className="border-t border-sea-glass p-6">
 
-        <div className="rounded-2xl bg-slate-100 p-4">
+        <div className="rounded-lg bg-porcelain p-4">
 
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-mineral">
             Dental Flow v2.0
           </p>
 
-          <p className="mt-2 font-semibold text-slate-800">
-            Built with ❤️ and AI
+          <p className="mt-2 font-semibold text-graphite">
+            Built for clinical flow
           </p>
 
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-mineral">
             Logged in as{" "}
             <span className="font-semibold">
               {profile?.full_name ?? "Loading..."}
             </span>
           </p>
 
-          <p className="text-xs font-semibold text-blue-600">
+          <p className="text-xs font-semibold text-eucalyptus">
             {role}
           </p>
 

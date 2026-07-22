@@ -21,7 +21,7 @@ export default function FormInput({
   return (
     <div>
 
-      <label className="mb-2 block font-medium">
+      <label className="mb-2 block text-sm font-semibold text-graphite">
         {label}
       </label>
 
@@ -32,7 +32,7 @@ export default function FormInput({
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="w-full rounded-xl border border-slate-300 p-3 transition focus:border-blue-500 focus:outline-none"
+        className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite placeholder:text-mineral transition-colors hover:border-mineral/50 focus:border-eucalyptus"
       />
 
     </div>

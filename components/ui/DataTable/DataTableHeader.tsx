@@ -8,7 +8,7 @@ export default function DataTableHeader({
   children,
 }: Props) {
   return (
-    <thead className="bg-slate-50">
+    <thead className="bg-porcelain">
       <tr>{children}</tr>
     </thead>
   );

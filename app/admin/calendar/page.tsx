@@ -14,6 +14,7 @@ import type {
   EventDropArg,
   EventInput,
 } from "@fullcalendar/core";
+import CareRail from "@/components/ui/CareRail";
 
 import {
   getCalendarAppointments,
@@ -133,24 +134,13 @@ export default function CalendarPage() {
                   )
                 : undefined;
 
-            let colour =
-              "#3b82f6";
-
-            if (
-              appointment.status ===
-              "Completed"
-            ) {
-              colour =
-                "#22c55e";
-            }
-
-            if (
-              appointment.status ===
-              "Cancelled"
-            ) {
-              colour =
-                "#ef4444";
-            }
+            const statusColors = {
+              Scheduled: { background: "#F5F0E9", border: "#9A6A27", text: "#795116" },
+              Ongoing: { background: "#ECEFF2", border: "#3D6B8C", text: "#3D6B8C" },
+              Completed: { background: "#EDF2F0", border: "#4D7C68", text: "#3E6555" },
+              Cancelled: { background: "#F5EEEE", border: "#9B5550", text: "#86433F" },
+            } as const;
+            const colour = statusColors[appointment.status] ?? statusColors.Scheduled;
 
             return {
               id: appointment.id,
@@ -164,11 +154,9 @@ export default function CalendarPage() {
 
               end: endDate,
 
-              backgroundColor:
-                colour,
-
-              borderColor:
-                colour,
+              backgroundColor: colour.background,
+              borderColor: colour.border,
+              textColor: colour.text,
 
               extendedProps: {
                 treatment:
@@ -335,7 +323,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow">
+    <div className="rounded-lg border border-sea-glass bg-enamel p-4 sm:p-6">
 
       <FullCalendar
         plugins={[
@@ -401,7 +389,7 @@ export default function CalendarPage() {
               .status;
 
           return (
-            <div className="space-y-1 p-1 text-xs">
+            <CareRail status={status} className="space-y-1 py-1 text-xs" showLabel={false}>
 
               <div className="font-semibold">
                 {eventInfo.timeText}
@@ -423,11 +411,11 @@ export default function CalendarPage() {
                 </div>
               )}
 
-              <div className="text-[10px] uppercase tracking-wide opacity-70">
+              <div className="text-[10px] font-bold uppercase tracking-[0.08em] opacity-80">
                 {status}
               </div>
 
-            </div>
+            </CareRail>
           );
         }}
 
@@ -473,19 +461,24 @@ export default function CalendarPage() {
       />
             <style jsx global>{`
         .fc .fc-toolbar-title {
+          font-family: var(--font-fraunces), Georgia, serif;
           font-size: 1.25rem;
           font-weight: 700;
         }
 
         .fc .fc-button {
-          border-radius: 0.75rem;
+          border-radius: 0.5rem;
+          background: #FFFFFF;
+          border-color: #DCEAE6;
+          color: #1D2B2A;
+          box-shadow: none;
         }
 
         .fc .fc-daygrid-event,
         .fc .fc-timegrid-event {
-          border: none;
-          border-radius: 0.75rem;
-          padding: 2px;
+          border-width: 1px;
+          border-radius: 0.5rem;
+          padding: 4px;
           cursor: pointer;
         }
 
@@ -498,17 +491,17 @@ export default function CalendarPage() {
         }
 
         .fc .fc-highlight {
-          background: rgba(59, 130, 246, 0.15);
+          background: #DCEAE6;
         }
 
         .fc-theme-standard td,
         .fc-theme-standard th,
         .fc-theme-standard .fc-scrollgrid {
-          border-color: #e5e7eb;
+          border-color: #DCEAE6;
         }
 
         .fc .fc-day-today {
-          background: rgba(59, 130, 246, 0.06) !important;
+          background: #F6F7F4 !important;
         }
       `}</style>
 

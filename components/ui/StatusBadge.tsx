@@ -7,6 +7,9 @@ interface StatusBadgeProps {
 export default function StatusBadge({
   status,
 }: StatusBadgeProps) {
+  if (["Scheduled", "Ongoing", "Completed", "Cancelled"].includes(status)) {
+    return <Badge status={status as "Scheduled" | "Ongoing" | "Completed" | "Cancelled"}>{status}</Badge>;
+  }
   switch (status) {
     case "Active":
       return (

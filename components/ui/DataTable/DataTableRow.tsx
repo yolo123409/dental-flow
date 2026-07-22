@@ -8,7 +8,7 @@ export default function DataTableRow({
   children,
 }: Props) {
   return (
-    <tr className="border-t border-slate-100 transition hover:bg-slate-50">
+    <tr className="border-t border-sea-glass transition-colors hover:bg-porcelain">
       {children}
     </tr>
   );

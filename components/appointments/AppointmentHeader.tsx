@@ -17,29 +17,29 @@ export default function AppointmentHeader({
         <div className="flex items-center gap-3">
 
           <CalendarDays
-            className="text-blue-600"
+            className="text-eucalyptus"
             size={36}
           />
 
-          <h1 className="text-4xl font-bold">
+          <h1 className="font-display text-3xl font-bold">
             Appointments
           </h1>
 
         </div>
 
-        <p className="mt-2 text-slate-500">
+        <p className="mt-2 text-sm text-mineral">
           Manage all clinic appointments.
         </p>
 
       </div>
 
-      <div className="rounded-2xl bg-blue-600 px-6 py-4 text-white shadow">
+      <div className="rounded-lg bg-eucalyptus px-6 py-4 text-white">
 
         <p className="text-sm opacity-80">
           Total Appointments
         </p>
 
-        <p className="text-3xl font-bold">
+        <p className="data-metric text-3xl font-bold">
           {total}
         </p>
 

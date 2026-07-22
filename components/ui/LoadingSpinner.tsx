@@ -8,10 +8,10 @@ export default function LoadingSpinner({
   text = "Loading...",
 }: LoadingSpinnerProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+    <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-sea-glass bg-enamel py-16">
+      <div className="h-10 w-10 animate-spin rounded-full border-2 border-sea-glass border-t-eucalyptus" />
 
-      <p className="mt-4 text-slate-500">
+      <p className="mt-4 text-sm text-mineral">
         {text}
       </p>
     </div>

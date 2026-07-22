@@ -17,22 +17,22 @@ export default function StatCard({
   icon,
 }: Props) {
   return (
-    <Card className="group overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+    <Card className="overflow-hidden">
 
       <div className="flex items-start justify-between">
 
         <div>
 
-          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
             {title}
           </p>
 
-          <h2 className="mt-3 text-4xl font-extrabold text-slate-900 transition group-hover:text-blue-600">
+          <h2 className="data-metric mt-3 text-[28px] font-bold text-graphite">
             {value}
           </h2>
 
           {subtitle && (
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-mineral">
               {subtitle}
             </p>
           )}
@@ -40,7 +40,7 @@ export default function StatCard({
         </div>
 
         {icon && (
-          <div className="rounded-2xl bg-blue-100 p-4 text-blue-600 transition-all duration-300 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white">
+          <div className="rounded-lg bg-sea-glass p-3 text-eucalyptus">
             {icon}
           </div>
         )}

@@ -12,6 +12,8 @@ import {
 
 import { Appointment } from "@/types/appointment";
 import { useRouter } from "next/navigation";
+import CareRail from "@/components/ui/CareRail";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 interface Props {
   appointment: Appointment;
@@ -25,12 +27,6 @@ export default function AppointmentCard({
   onEdit,
   onDelete,
 }: Props) {
-  const badgeColor = {
-    Scheduled: "bg-blue-100 text-blue-700",
-    Completed: "bg-green-100 text-green-700",
-    Cancelled: "bg-red-100 text-red-700",
-  }[appointment.status] ?? "bg-slate-100 text-slate-700";
-
   const patientName = appointment.patients
     ? `${appointment.patients.first_name} ${appointment.patients.last_name}`
     : "Unknown Patient";
@@ -54,17 +50,15 @@ export default function AppointmentCard({
   const router = useRouter();
 
   return (
-    <div className="rounded-2xl border bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+    <div className="rounded-lg border border-sea-glass bg-enamel p-6">
 
-      <div className="mb-6 flex items-center justify-between">
+      <CareRail status={appointment.status} showLabel={false}>
 
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeColor}`}
-        >
-          {appointment.status}
-        </span>
+      <div className="mb-6 flex items-center justify-between gap-3">
 
-        <span className="text-sm text-slate-500">
+        <StatusBadge status={appointment.status} />
+
+        <span className="text-sm text-mineral">
           {appointment.duration} min
         </span>
 
@@ -74,17 +68,17 @@ export default function AppointmentCard({
 
         <div className="flex items-center gap-4">
 
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-bold text-white">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-eucalyptus text-lg font-bold text-white">
             {initials}
           </div>
 
           <div>
 
-            <p className="text-xs uppercase tracking-wide text-slate-500">
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
               Patient
             </p>
 
-            <p className="font-semibold text-slate-800">
+            <p className="font-display font-bold text-graphite">
               {patientName}
             </p>
 
@@ -96,12 +90,12 @@ export default function AppointmentCard({
 
           <Stethoscope
             size={18}
-            className="text-blue-600"
+            className="text-eucalyptus"
           />
 
           <div>
 
-            <p className="text-xs uppercase text-slate-500">
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
               Dentist
             </p>
 
@@ -118,7 +112,7 @@ export default function AppointmentCard({
 
           <Calendar
             size={18}
-            className="text-blue-600"
+            className="text-eucalyptus"
           />
 
           <span>{formattedDate}</span>
@@ -129,7 +123,7 @@ export default function AppointmentCard({
 
           <Clock
             size={18}
-            className="text-blue-600"
+            className="text-eucalyptus"
           />
 
           <span>{appointment.appointment_time}</span>
@@ -140,7 +134,7 @@ export default function AppointmentCard({
 
           <FileText
             size={18}
-            className="mt-1 text-blue-600"
+            className="mt-1 text-eucalyptus"
           />
 
           <div>
@@ -149,7 +143,7 @@ export default function AppointmentCard({
               {appointment.treatment}
             </p>
 
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-mineral">
               {appointment.notes || "No notes provided"}
             </p>
 
@@ -159,7 +153,7 @@ export default function AppointmentCard({
 
       </div>
 
-      <div className="mt-8 flex gap-2 border-t pt-5">
+      <div className="mt-8 flex gap-2 border-t border-sea-glass pt-5">
 
         <button
   onClick={() =>
@@ -167,7 +161,7 @@ export default function AppointmentCard({
       `/admin/appointments/${appointment.id}`
     )
   }
-  className="flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition hover:bg-slate-100"
+  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-sea-glass px-3 py-2 text-sm font-semibold transition-colors hover:bg-porcelain"
 >
   <Eye size={16} />
   View
@@ -175,7 +169,7 @@ export default function AppointmentCard({
 
         <button
           onClick={() => onEdit?.(appointment)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-eucalyptus px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-deep-eucalyptus"
         >
           <Pencil size={16} />
           Edit
@@ -183,13 +177,14 @@ export default function AppointmentCard({
 
         <button
           onClick={() => onDelete?.(appointment)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-clay px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-clay/90"
         >
           <Trash2 size={16} />
           Delete
         </button>
 
       </div>
+      </CareRail>
 
     </div>
   );

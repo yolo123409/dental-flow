@@ -94,12 +94,12 @@ export default function RevenueWidget({
                   >
                     <stop
                       offset="5%"
-                      stopColor="#2563eb"
+                      stopColor="#216C68"
                       stopOpacity={0.8}
                     />
                     <stop
                       offset="95%"
-                      stopColor="#2563eb"
+                      stopColor="#216C68"
                       stopOpacity={0.05}
                     />
                   </linearGradient>
@@ -110,7 +110,7 @@ export default function RevenueWidget({
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="#2563eb"
+                  stroke="#216C68"
                   fill="url(#dashboardRevenue)"
                   strokeWidth={2}
                 />

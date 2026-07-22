@@ -18,13 +18,13 @@ export default function AppointmentGrid({
 }: Props) {
   if (appointments.length === 0) {
     return (
-      <div className="rounded-2xl border-2 border-dashed bg-white py-16 text-center">
-        <h2 className="text-2xl font-bold">
-          No appointments
+      <div className="rounded-lg border border-dashed border-sea-glass bg-enamel py-16 text-center">
+        <h2 className="font-display text-2xl font-bold">
+          Your chair schedule is clear
         </h2>
 
-        <p className="mt-2 text-slate-500">
-          Book your first appointment to get started.
+        <p className="mt-2 text-sm text-mineral">
+          The next patient visit will appear here.
         </p>
       </div>
     );

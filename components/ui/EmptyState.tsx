@@ -12,13 +12,13 @@ export default function EmptyState({
   action,
 }: EmptyStateProps) {
   return (
-    <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white py-16 text-center">
+    <div className="rounded-lg border border-dashed border-sea-glass bg-enamel px-6 py-16 text-center">
 
-      <h2 className="text-2xl font-bold">
+      <h2 className="font-display text-2xl font-bold">
         {title}
       </h2>
 
-      <p className="mt-2 text-slate-500">
+      <p className="mx-auto mt-2 max-w-md text-sm text-mineral">
         {description}
       </p>
 

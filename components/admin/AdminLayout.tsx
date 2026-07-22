@@ -12,7 +12,7 @@ export default function AdminLayout({
   children,
 }: Props) {
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-porcelain">
 
       <Sidebar />
 
@@ -20,7 +20,7 @@ export default function AdminLayout({
 
         <Topbar />
 
-        <main className="p-8">
+        <main className="mx-auto max-w-[1440px] p-4 sm:p-6 xl:p-8">
           {children}
         </main>
 

@@ -12,6 +12,9 @@ import {
 
 import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import CareRail from "@/components/ui/CareRail";
+import StatusBadge from "@/components/ui/StatusBadge";
+import Card from "@/components/ui/Card";
 
 export default function AppointmentDetailsPage() {
   const params = useParams();
@@ -90,11 +93,11 @@ export default function AppointmentDetailsPage() {
 
         <div>
 
-          <h1 className="text-4xl font-bold">
+          <h1 className="font-display text-3xl font-bold">
             Appointment Details
           </h1>
 
-          <p className="mt-2 text-slate-500">
+          <p className="mt-2 text-sm text-mineral">
             Appointment ID: {appointment.id}
           </p>
 
@@ -123,17 +126,18 @@ export default function AppointmentDetailsPage() {
 
       </div>
 
-      <div className="rounded-2xl bg-white p-8 shadow">
+      <Card className="p-2">
+        <CareRail status={appointment.status}>
 
         <div className="grid gap-8 md:grid-cols-2">
 
           <div>
 
-            <h2 className="mb-6 text-xl font-bold">
+            <h2 className="font-display mb-6 text-xl font-bold">
               Patient
             </h2>
 
-            <p className="text-lg font-semibold">
+            <p className="font-display text-lg font-bold">
               {appointment.patients
                 ? `${appointment.patients.first_name} ${appointment.patients.last_name}`
                 : "Unknown"}
@@ -143,11 +147,11 @@ export default function AppointmentDetailsPage() {
 
           <div>
 
-            <h2 className="mb-6 text-xl font-bold">
+            <h2 className="font-display mb-6 text-xl font-bold">
               Dentist
             </h2>
 
-            <p className="text-lg font-semibold">
+            <p className="font-display text-lg font-bold">
               {appointment.dentists?.full_name ??
                 "Not Assigned"}
             </p>
@@ -190,17 +194,17 @@ export default function AppointmentDetailsPage() {
               Status
             </h2>
 
-            <p>{appointment.status}</p>
+            <StatusBadge status={appointment.status} />
 
           </div>
 
         </div>
+        </CareRail>
+      </Card>
 
-      </div>
+      <Card className="p-2">
 
-      <div className="rounded-2xl bg-white p-8 shadow">
-
-        <h2 className="text-xl font-bold">
+        <h2 className="font-display text-xl font-bold">
           Treatment
         </h2>
 
@@ -208,11 +212,11 @@ export default function AppointmentDetailsPage() {
           {appointment.treatment}
         </p>
 
-      </div>
+      </Card>
 
-      <div className="rounded-2xl bg-white p-8 shadow">
+      <Card className="p-2">
 
-        <h2 className="text-xl font-bold">
+        <h2 className="font-display text-xl font-bold">
           Notes
         </h2>
 
@@ -220,7 +224,7 @@ export default function AppointmentDetailsPage() {
           {appointment.notes || "No notes"}
         </p>
 
-      </div>
+      </Card>
 
     </div>
   );

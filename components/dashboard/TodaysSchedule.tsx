@@ -5,6 +5,7 @@ import { CalendarDays } from "lucide-react";
 
 import { Appointment } from "@/types/appointment";
 import { getTodaysAppointments } from "@/services/appointments";
+import CareRail from "@/components/ui/CareRail";
 
 export default function TodaysSchedule() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -19,13 +20,13 @@ export default function TodaysSchedule() {
   }, []);
 
   return (
-    <div className="rounded-2xl border bg-white p-6 shadow-sm">
+    <div className="rounded-lg border border-sea-glass bg-enamel p-6">
 
       <div className="mb-5 flex items-center gap-2">
 
-        <CalendarDays className="text-blue-600" />
+        <CalendarDays className="text-eucalyptus" />
 
-        <h2 className="text-xl font-bold">
+        <h2 className="font-display text-xl font-bold">
           Today&apos;s Schedule
         </h2>
 
@@ -33,8 +34,8 @@ export default function TodaysSchedule() {
 
       {appointments.length === 0 ? (
 
-        <p className="text-slate-500">
-          No appointments scheduled today.
+        <p className="text-sm text-mineral">
+          Your chairs are clear today. New visits will appear here as they are booked.
         </p>
 
       ) : (
@@ -43,32 +44,29 @@ export default function TodaysSchedule() {
 
           {appointments.map((appointment) => (
 
-            <div
-              key={appointment.id}
-              className="flex items-center justify-between rounded-xl border p-4"
-            >
+            <CareRail key={appointment.id} status={appointment.status} className="flex items-center justify-between rounded-lg border border-sea-glass bg-enamel p-4" showLabel={false}>
 
               <div>
 
-                <p className="font-semibold">
+                <p className="font-display font-bold">
                   Patient ID: {appointment.patient_id}
                 </p>
 
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-mineral">
                   {appointment.treatment || "General Consultation"}
                 </p>
 
-                <p className="text-xs text-slate-400">
+                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
                   {appointment.status}
                 </p>
 
               </div>
 
-              <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
+              <span className="rounded-full bg-sea-glass px-3 py-1 text-sm font-semibold text-eucalyptus">
                 {appointment.appointment_time}
               </span>
 
-            </div>
+            </CareRail>
 
           ))}
 

@@ -20,19 +20,19 @@ export default function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite/35 p-4">
 
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-2xl rounded-xl border border-sea-glass bg-enamel shadow-xl">
 
-        <div className="flex items-center justify-between border-b p-6">
+        <div className="flex items-center justify-between border-b border-sea-glass p-6">
 
-          <h2 className="text-2xl font-bold">
+          <h2 className="font-display text-2xl font-bold">
             {title}
           </h2>
 
           <button
             onClick={onClose}
-            className="text-2xl text-slate-400 transition hover:text-slate-700"
+            className="rounded-md p-1 text-2xl text-mineral transition-colors hover:bg-porcelain hover:text-graphite"
           >
             ×
           </button>
@@ -44,7 +44,7 @@ export default function Modal({
         </div>
 
         {footer && (
-          <div className="flex justify-end gap-3 border-t p-6">
+          <div className="flex justify-end gap-3 border-t border-sea-glass p-6">
             {footer}
           </div>
         )}
