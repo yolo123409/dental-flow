@@ -190,6 +190,86 @@ interface CreateAppointmentData {
   treatment: string;
   notes?: string;
   status?: string;
+  duration?: number;
+}
+
+const MINIMUM_APPOINTMENT_DURATION_MINUTES = 60;
+
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+export class AppointmentConflictError extends Error {
+  constructor(
+    message = "This dentist already has an appointment within one hour of that time."
+  ) {
+    super(message);
+    this.name = "AppointmentConflictError";
+  }
+}
+
+/**
+ * Returns true if the dentist has another active (non-cancelled) appointment
+ * on the same date whose time range overlaps [startTime, startTime+duration).
+ * excludeId lets updateAppointment ignore the appointment being edited.
+ */
+async function hasDentistConflict(params: {
+  clinicId: string;
+  dentistId: string;
+  date: string;
+  time: string;
+  duration: number;
+  excludeId?: string;
+}): Promise<boolean> {
+  const {
+    clinicId,
+    dentistId,
+    date,
+    time,
+    duration,
+    excludeId,
+  } = params;
+
+  let query = supabase
+    .from("appointments")
+    .select("id, appointment_time, duration, status")
+    .eq("clinic_id", clinicId)
+    .eq("dentist_id", dentistId)
+    .eq("appointment_date", date)
+    .neq("status", "Cancelled");
+
+  if (excludeId) {
+    query = query.neq("id", excludeId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error(
+      "Failed to check appointment conflicts:",
+      error
+    );
+    // Never create an appointment when availability could not be verified.
+    throw error;
+  }
+
+  const newStart = timeToMinutes(time);
+  const newEnd = newStart + duration;
+
+  return (data ?? []).some((existing) => {
+    const existingStart = timeToMinutes(
+      existing.appointment_time
+    );
+    const existingEnd =
+      existingStart +
+      Math.max(
+        existing.duration ?? MINIMUM_APPOINTMENT_DURATION_MINUTES,
+        MINIMUM_APPOINTMENT_DURATION_MINUTES
+      );
+
+    return newStart < existingEnd && existingStart < newEnd;
+  });
 }
 
 export async function createAppointment(
@@ -197,6 +277,23 @@ export async function createAppointment(
 ) {
   const clinicId =
     await getCurrentClinicId();
+
+  const duration = Math.max(
+    appointment.duration ?? MINIMUM_APPOINTMENT_DURATION_MINUTES,
+    MINIMUM_APPOINTMENT_DURATION_MINUTES
+  );
+
+  const conflict = await hasDentistConflict({
+    clinicId,
+    dentistId: appointment.dentist_id,
+    date: appointment.appointment_date,
+    time: appointment.appointment_time,
+    duration,
+  });
+
+  if (conflict) {
+    throw new AppointmentConflictError();
+  }
 
   const payload = {
     clinic_id: clinicId,
@@ -208,7 +305,7 @@ export async function createAppointment(
       appointment.appointment_date,
     appointment_time:
       appointment.appointment_time,
-    duration: 30,
+    duration,
     treatment:
       appointment.treatment,
     notes:
@@ -249,11 +346,56 @@ export async function updateAppointment(
     await supabase
       .from("appointments")
       .select(
-        "status, appointment_date, appointment_time, treatment"
+        "status, appointment_date, appointment_time, treatment, dentist_id, duration"
       )
       .eq("id", id)
       .eq("clinic_id", clinicId)
       .maybeSingle();
+
+  if (existing) {
+    const nextDentistId =
+      appointment.dentist_id ?? existing.dentist_id;
+    const nextDate =
+      appointment.appointment_date ??
+      existing.appointment_date;
+    const nextTime =
+      appointment.appointment_time ??
+      existing.appointment_time;
+    const nextDuration =
+      Math.max(
+        appointment.duration ??
+          existing.duration ??
+          MINIMUM_APPOINTMENT_DURATION_MINUTES,
+        MINIMUM_APPOINTMENT_DURATION_MINUTES
+      );
+    const nextStatusForConflict =
+      appointment.status ?? existing.status;
+
+    const scheduleChanged =
+      nextDentistId !== existing.dentist_id ||
+      nextDate !== existing.appointment_date ||
+      nextTime !== existing.appointment_time ||
+      nextDuration !== existing.duration;
+
+    if (
+      nextDentistId &&
+      nextStatusForConflict !== "Cancelled" &&
+      (scheduleChanged || existing.status === "Cancelled")
+    ) {
+      const conflict = await hasDentistConflict({
+        clinicId,
+        dentistId: nextDentistId,
+        date: nextDate,
+        time: nextTime,
+        duration: nextDuration,
+        excludeId: id,
+      });
+
+      if (conflict) {
+        throw new AppointmentConflictError();
+      }
+    }
+  }
 
   const { error } =
     await supabase

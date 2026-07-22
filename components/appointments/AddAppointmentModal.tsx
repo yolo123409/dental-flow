@@ -10,7 +10,10 @@ import AppointmentForm, {
   AppointmentFormData,
 } from "./AppointmentForm";
 
-import { createAppointment } from "@/services/appointments";
+import {
+  createAppointment,
+  AppointmentConflictError,
+} from "@/services/appointments";
 
 import {
   PatientOption,
@@ -111,7 +114,9 @@ export default function AddAppointmentModal({
       console.error(error);
 
       toast.error(
-        "Failed to create appointment."
+        error instanceof AppointmentConflictError
+          ? error.message
+          : "Failed to create appointment."
       );
     } finally {
       setLoading(false);

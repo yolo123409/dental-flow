@@ -12,7 +12,10 @@ import AppointmentForm, {
 
 import { Appointment } from "@/types/appointment";
 
-import { updateAppointment } from "@/services/appointments";
+import {
+  updateAppointment,
+  AppointmentConflictError,
+} from "@/services/appointments";
 
 import {
   PatientOption,
@@ -133,7 +136,9 @@ export default function EditAppointmentModal({
       console.error(error);
 
       toast.error(
-        "Failed to update appointment."
+        error instanceof AppointmentConflictError
+          ? error.message
+          : "Failed to update appointment."
       );
     } finally {
       setLoading(false);
