@@ -77,6 +77,32 @@ export async function getDentistById(
   return data as Dentist;
 }
 
+export async function getDentistCompletedTreatmentCount(
+  dentistId: string
+): Promise<number> {
+  const clinicId = await getCurrentClinicId();
+
+  const { count, error } = await supabase
+    .from("appointments")
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq("clinic_id", clinicId)
+    .eq("dentist_id", dentistId)
+    .eq("status", "Completed");
+
+  if (error) {
+    console.error(
+      "Failed to count completed dentist treatments:",
+      error
+    );
+    throw error;
+  }
+
+  return count ?? 0;
+}
+
 export async function createDentist(
   dentist: Omit<
     Dentist,

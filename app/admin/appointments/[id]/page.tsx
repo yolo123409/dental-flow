@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Appointment } from "@/types";
-import { getAppointmentById } from "@/services/appointments";
+import {
+  getAppointmentById,
+  updateAppointment,
+} from "@/services/appointments";
 
 import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -20,6 +24,7 @@ export default function AppointmentDetailsPage() {
 
   const [loading, setLoading] =
     useState(true);
+  const [completing, setCompleting] = useState(false);
 
   async function loadAppointment() {
     if (!appointmentId) return;
@@ -42,6 +47,27 @@ export default function AppointmentDetailsPage() {
   useEffect(() => {
     loadAppointment();
   }, [appointmentId]);
+
+  async function markAsCompleted() {
+    if (!appointment) return;
+
+    try {
+      setCompleting(true);
+      await updateAppointment(appointment.id, {
+        status: "Completed",
+      });
+      setAppointment({
+        ...appointment,
+        status: "Completed",
+      });
+      toast.success("Appointment marked as completed.");
+    } catch (error) {
+      console.error("Failed to complete appointment:", error);
+      toast.error("Failed to mark appointment as completed.");
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -74,12 +100,26 @@ export default function AppointmentDetailsPage() {
 
         </div>
 
-        <Button
-          variant="secondary"
-          onClick={() => router.back()}
-        >
-          ← Back
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          {appointment.status === "Scheduled" && (
+            <Button
+              onClick={markAsCompleted}
+              disabled={completing}
+              aria-label="Mark this appointment as completed"
+            >
+              {completing
+                ? "Marking as completed..."
+                : "Mark as Completed"}
+            </Button>
+          )}
+
+          <Button
+            variant="secondary"
+            onClick={() => router.back()}
+          >
+            ← Back
+          </Button>
+        </div>
 
       </div>
 
