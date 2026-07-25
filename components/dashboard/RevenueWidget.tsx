@@ -15,6 +15,7 @@ import { RevenueChartPoint } from "@/services/analytics/charts";
 
 interface RevenueWidgetProps {
   revenue: number;
+  taxCollected: number | null;
   chartData: RevenueChartPoint[];
   currency: string;
   loading: boolean;
@@ -23,6 +24,7 @@ interface RevenueWidgetProps {
 
 export default function RevenueWidget({
   revenue,
+  taxCollected,
   chartData,
   currency,
   loading,
@@ -36,6 +38,18 @@ export default function RevenueWidget({
         maximumFractionDigits: 0,
       }).format(revenue),
     [revenue, currency]
+  );
+
+  const formattedTax = useMemo(
+    () =>
+      taxCollected == null
+        ? null
+        : new Intl.NumberFormat(undefined, {
+            style: "currency",
+            currency,
+            maximumFractionDigits: 0,
+          }).format(taxCollected),
+    [taxCollected, currency]
   );
 
   const hasRevenue = useMemo(
@@ -61,6 +75,12 @@ export default function RevenueWidget({
               ? "—"
               : formattedRevenue}
           </h2>
+
+          {!loading && !error && formattedTax && (
+            <p className="mt-1 text-sm text-slate-500">
+              Tax Collected: {formattedTax}
+            </p>
+          )}
 
         </div>
 

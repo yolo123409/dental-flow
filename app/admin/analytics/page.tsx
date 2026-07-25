@@ -15,7 +15,10 @@ import {
   getDashboardStats,
 } from "@/services/dashboard";
 
-import { getClinicSettings } from "@/services/settings";
+import {
+  ClinicSettings,
+  getClinicSettings,
+} from "@/services/settings";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 
@@ -52,6 +55,11 @@ export default function AnalyticsPage() {
 
   const [currency, setCurrency] =
     useState("KES");
+
+  const [clinicSettings, setClinicSettings] =
+    useState<ClinicSettings | null>(
+      null
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -95,6 +103,8 @@ export default function AnalyticsPage() {
         setCurrency(
           clinicSettings.currency || "KES"
         );
+
+        setClinicSettings(clinicSettings);
       } catch (err) {
         console.error(
           "Analytics Error:",
@@ -158,6 +168,12 @@ export default function AnalyticsPage() {
     maximumFractionDigits: 0,
   }).format(analytics.revenue.totalRevenue);
 
+  const formattedTax = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(analytics.revenue.totalTaxCollected);
+
   return (
     <PageContainer>
       <ReportsHeader
@@ -193,6 +209,18 @@ export default function AnalyticsPage() {
           }
           subtitle={`${analytics.treatments.completedTreatments} completed`}
         />
+
+        {clinicSettings?.tax_enabled && (
+
+          <ReportStatCard
+            title="Tax Collected"
+            value={formattedTax}
+            subtitle={`${clinicSettings.tax_name} · ${Number(
+              clinicSettings.tax_rate
+            )}%`}
+          />
+
+        )}
 
       </div>
 

@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { roundMoney } from "@/lib/currency";
 
 import { getCurrentClinicId } from "./clinic";
+import { getClinicSettings } from "./settings";
 import {
   notifyInvoiceCreated,
   notifyPaymentRecorded,
@@ -31,6 +33,16 @@ export interface ClinicInvoice {
   status: string;
 
   notes: string | null;
+
+  // Snapshot of the clinic's tax config at the moment this invoice was
+  // created - never re-read from live clinic_settings, so a later change
+  // to the clinic's tax rate/name/mode never alters how a past invoice
+  // totals or displays.
+  tax_enabled: boolean;
+  tax_name: string;
+  tax_rate: number;
+  tax_inclusive: boolean;
+  tax_registration_number: string | null;
 
   created_at: string;
 
@@ -215,6 +227,85 @@ export async function generateInvoiceNumber() {
 }
 
 /* -------------------------------------- */
+/* Tax Calculation (single source of truth) */
+/* -------------------------------------- */
+
+export interface TaxSettings {
+  enabled: boolean;
+  name: string;
+  rate: number;
+  inclusive: boolean;
+  registrationNumber: string | null;
+}
+
+export interface InvoiceTotals {
+  subtotal: number;
+  tax: number;
+  total: number;
+}
+
+/**
+ * Turns a gross line-item amount + discount + the clinic's tax config into
+ * Subtotal/Tax/Total, keeping `subtotal + tax === total` in both pricing
+ * modes:
+ *  - Exclusive: tax is added on top of (gross - discount).
+ *  - Inclusive: (gross - discount) already contains tax, so it IS the
+ *    final total; tax is extracted out of it rather than added.
+ * Reused by createInvoice() and by the invoice-creation UIs for a live
+ * preview before the invoice is actually generated.
+ */
+export function calculateInvoiceTotals(
+  grossAmount: number,
+  discount: number,
+  taxSettings: Pick<TaxSettings, "enabled" | "rate" | "inclusive">
+): InvoiceTotals {
+  const afterDiscount = roundMoney(
+    grossAmount - discount
+  );
+
+  if (
+    !taxSettings.enabled ||
+    taxSettings.rate <= 0
+  ) {
+    return {
+      subtotal: afterDiscount,
+      tax: 0,
+      total: afterDiscount,
+    };
+  }
+
+  if (!taxSettings.inclusive) {
+    const tax = roundMoney(
+      afterDiscount *
+        (taxSettings.rate / 100)
+    );
+
+    return {
+      subtotal: afterDiscount,
+      tax,
+      total: roundMoney(
+        afterDiscount + tax
+      ),
+    };
+  }
+
+  const subtotal = roundMoney(
+    afterDiscount /
+      (1 + taxSettings.rate / 100)
+  );
+
+  const tax = roundMoney(
+    afterDiscount - subtotal
+  );
+
+  return {
+    subtotal,
+    tax,
+    total: afterDiscount,
+  };
+}
+
+/* -------------------------------------- */
 /* Create Invoice                         */
 /* -------------------------------------- */
 
@@ -230,26 +321,38 @@ export async function createInvoice(
   patientId: string,
   charges: ChargeSelection[],
   discount = 0,
-  tax = 0,
   notes?: string
 ) {
-  const clinicId =
-    await getCurrentClinicId();
+  const [clinicId, invoiceNumber, clinicSettings] =
+    await Promise.all([
+      getCurrentClinicId(),
+      generateInvoiceNumber(),
+      getClinicSettings(),
+    ]);
 
-  const invoiceNumber =
-    await generateInvoiceNumber();
-
-  const subtotal =
+  const grossAmount =
     charges.reduce(
       (sum, charge) =>
         sum + Number(charge.amount),
       0
     );
 
-  const total =
-    subtotal -
-    discount +
-    tax;
+  const taxSettings: TaxSettings = {
+    enabled: clinicSettings.tax_enabled,
+    name: clinicSettings.tax_name,
+    rate: Number(clinicSettings.tax_rate),
+    inclusive:
+      clinicSettings.prices_include_tax,
+    registrationNumber:
+      clinicSettings.tax_registration_number,
+  };
+
+  const { subtotal, tax, total } =
+    calculateInvoiceTotals(
+      grossAmount,
+      discount,
+      taxSettings
+    );
 
   const balance =
     total;
@@ -271,6 +374,12 @@ export async function createInvoice(
       balance,
       status: "Unpaid",
       notes: notes ?? null,
+      tax_enabled: taxSettings.enabled,
+      tax_name: taxSettings.name,
+      tax_rate: taxSettings.rate,
+      tax_inclusive: taxSettings.inclusive,
+      tax_registration_number:
+        taxSettings.registrationNumber,
     })
     .select()
     .single();
@@ -464,13 +573,15 @@ export async function recordPayment(
   /* Update Invoice                */
   /* ----------------------------- */
 
-  const amountPaid =
+  const amountPaid = roundMoney(
     Number(invoice.amount_paid) +
-    amount;
+      amount
+  );
 
-  const balance =
+  const balance = roundMoney(
     Number(invoice.total) -
-    amountPaid;
+      amountPaid
+  );
 
   let status = "Unpaid";
 

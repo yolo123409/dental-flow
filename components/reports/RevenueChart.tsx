@@ -18,6 +18,7 @@ interface RevenueChartProps {
   data: {
     month: string;
     revenue: number;
+    tax?: number;
   }[];
 }
 
@@ -26,6 +27,11 @@ export default function RevenueChart({
 }: RevenueChartProps) {
   const hasRevenue = useMemo(
     () => data.some((point) => point.revenue > 0),
+    [data]
+  );
+
+  const hasTax = useMemo(
+    () => data.some((point) => (point.tax ?? 0) > 0),
     [data]
   );
 
@@ -59,8 +65,19 @@ export default function RevenueChart({
               <Line
                 type="monotone"
                 dataKey="revenue"
+                stroke="#2563eb"
                 strokeWidth={3}
               />
+
+              {hasTax && (
+                <Line
+                  type="monotone"
+                  dataKey="tax"
+                  name="Tax"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         ) : (

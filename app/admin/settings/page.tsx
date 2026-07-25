@@ -5,6 +5,9 @@ import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import FormInput from "@/components/ui/FormInput";
+import FormTextarea from "@/components/ui/FormTextarea";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import {
   ClinicSettings,
@@ -13,7 +16,7 @@ import {
   uploadClinicLogo,
 } from "@/services/settings";
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const [loading, setLoading] =
     useState(true);
 
@@ -50,8 +53,38 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
+  function validateTaxSettings(
+    current: ClinicSettings
+  ): string | null {
+    if (!current.tax_enabled) return null;
+
+    if (!current.tax_name.trim()) {
+      return "Tax name is required when tax is enabled.";
+    }
+
+    const rate = Number(current.tax_rate);
+
+    if (
+      Number.isNaN(rate) ||
+      rate < 0 ||
+      rate > 100
+    ) {
+      return "Tax rate must be a number between 0 and 100.";
+    }
+
+    return null;
+  }
+
   async function handleSave() {
     if (!settings) return;
+
+    const validationError =
+      validateTaxSettings(settings);
+
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
 
     try {
       setSaving(true);
@@ -372,6 +405,136 @@ export default function SettingsPage() {
 
       </Card>
 
+      <Card title="Tax Settings">
+
+        <label className="flex items-center gap-3">
+
+          <input
+            type="checkbox"
+            checked={settings.tax_enabled}
+            onChange={(e) =>
+              setSettings({
+                ...settings,
+                tax_enabled:
+                  e.target.checked,
+              })
+            }
+          />
+
+          <span className="font-medium">
+            Enable Tax
+          </span>
+
+        </label>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+
+          <FormInput
+            label="Tax Name"
+            value={settings.tax_name}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                tax_name: value,
+              })
+            }
+          />
+
+          <FormInput
+            label="Tax Rate (%)"
+            type="number"
+            value={settings.tax_rate}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                tax_rate:
+                  Number(value),
+              })
+            }
+          />
+
+          <FormInput
+            label="Tax Registration Number (optional)"
+            value={
+              settings.tax_registration_number ??
+              ""
+            }
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                tax_registration_number:
+                  value || null,
+              })
+            }
+          />
+
+          <label className="flex items-center gap-3">
+
+            <input
+              type="checkbox"
+              checked={
+                settings.prices_include_tax
+              }
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  prices_include_tax:
+                    e.target.checked,
+                })
+              }
+            />
+
+            <span>
+              Treatment prices already
+              include tax
+            </span>
+
+          </label>
+
+        </div>
+
+        <div className="mt-6">
+
+          <FormTextarea
+            label="Invoice Footer Tax Note (optional)"
+            value={
+              settings.invoice_footer_tax_note ??
+              ""
+            }
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                invoice_footer_tax_note:
+                  value || null,
+              })
+            }
+          />
+
+        </div>
+
+        <div className="mt-8 flex justify-end">
+
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving
+              ? "Saving..."
+              : "Save Settings"}
+          </Button>
+
+        </div>
+
+      </Card>
+
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <PermissionGuard permission="settings">
+      <SettingsPageContent />
+    </PermissionGuard>
   );
 }

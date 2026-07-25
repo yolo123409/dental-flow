@@ -22,6 +22,13 @@ export interface ClinicSettings {
 
   invoice_prefix: string;
 
+  tax_enabled: boolean;
+  tax_name: string;
+  tax_rate: number;
+  prices_include_tax: boolean;
+  tax_registration_number: string | null;
+  invoice_footer_tax_note: string | null;
+
   created_at?: string;
   updated_at?: string;
 }
@@ -67,6 +74,13 @@ export async function getClinicSettings() {
     currency: "KES",
 
     invoice_prefix: "INV",
+
+    tax_enabled: false,
+    tax_name: "VAT",
+    tax_rate: 0,
+    prices_include_tax: false,
+    tax_registration_number: null,
+    invoice_footer_tax_note: null,
   };
 
   const {

@@ -379,6 +379,25 @@ async function downloadPDF() {
 
                     </div>
 
+                    {invoice.tax_enabled &&
+                      invoice.tax_registration_number && (
+
+                        <div className="flex justify-between">
+
+                          <span>
+                            {invoice.tax_name} Reg. No.
+                          </span>
+
+                          <span>
+                            {
+                              invoice.tax_registration_number
+                            }
+                          </span>
+
+                        </div>
+
+                      )}
+
                   </div>
 
                 </div>
@@ -531,6 +550,22 @@ async function downloadPDF() {
 
             <div className="space-y-5">
 
+              {Number(invoice.discount) > 0 && (
+
+                <div className="flex justify-between">
+
+                  <span>Discount</span>
+
+                  <span className="font-medium">
+                    {formatMoney(
+                      Number(invoice.discount)
+                    )}
+                  </span>
+
+                </div>
+
+              )}
+
               <div className="flex justify-between">
 
                 <span>Subtotal</span>
@@ -543,29 +578,24 @@ async function downloadPDF() {
 
               </div>
 
-              <div className="flex justify-between">
+              {invoice.tax_enabled && (
 
-                <span>Discount</span>
+                <div className="flex justify-between">
 
-                <span className="font-medium">
-                  {formatMoney(
-                    Number(invoice.discount)
-                  )}
-                </span>
+                  <span>
+                    {invoice.tax_name} (
+                    {Number(invoice.tax_rate)}%)
+                  </span>
 
-              </div>
+                  <span className="font-medium">
+                    {formatMoney(
+                      Number(invoice.tax)
+                    )}
+                  </span>
 
-              <div className="flex justify-between">
+                </div>
 
-                <span>Tax</span>
-
-                <span className="font-medium">
-                  {formatMoney(
-                    Number(invoice.tax)
-                  )}
-                </span>
-
-              </div>
+              )}
 
               <hr />
 
@@ -640,6 +670,15 @@ async function downloadPDF() {
           </Card>
 
         </div>
+
+        {invoice.tax_enabled &&
+          clinic.invoice_footer_tax_note && (
+
+            <p className="text-center text-sm text-slate-500">
+              {clinic.invoice_footer_tax_note}
+            </p>
+
+          )}
 
                 {/* Action Buttons */}
 

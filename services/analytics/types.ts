@@ -7,6 +7,13 @@ export interface RevenueAnalytics {
   totalInvoices: number;
   paidInvoices: number;
   unpaidInvoices: number;
+
+  // "Revenue" (`totalRevenue`) is already tax-inclusive - the sum of
+  // `total` on paid invoices. These two are derived from the same query
+  // rather than a separate one: totalTaxCollected sums each invoice's own
+  // `tax`, and revenueExcludingTax is just totalRevenue minus that.
+  totalTaxCollected: number;
+  revenueExcludingTax: number;
 }
 
 export interface PatientAnalytics {

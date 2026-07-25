@@ -8,6 +8,7 @@ import { getDateRange } from "./dateRange";
 export interface RevenueChartPoint {
   month: string;
   revenue: number;
+  tax: number;
 }
 
 type Granularity = "hour" | "day" | "month";
@@ -89,7 +90,7 @@ export async function getRevenueChartData(
 
   let query = supabase
     .from("clinic_invoices")
-    .select("total, created_at")
+    .select("total, tax, created_at")
     .eq("clinic_id", clinicId)
     .eq("status", "Paid");
 
@@ -112,7 +113,10 @@ export async function getRevenueChartData(
     throw toError(error);
   }
 
-  const revenueByBucket = new Map<string, number>();
+  const revenueByBucket = new Map<
+    string,
+    { revenue: number; tax: number }
+  >();
 
   for (const invoice of data ?? []) {
     const key = bucketKey(
@@ -120,11 +124,19 @@ export async function getRevenueChartData(
       granularity
     );
 
-    revenueByBucket.set(
-      key,
-      (revenueByBucket.get(key) ?? 0) +
-        Number(invoice.total ?? 0)
-    );
+    const existing = revenueByBucket.get(key) ?? {
+      revenue: 0,
+      tax: 0,
+    };
+
+    revenueByBucket.set(key, {
+      revenue:
+        existing.revenue +
+        Number(invoice.total ?? 0),
+      tax:
+        existing.tax +
+        Number(invoice.tax ?? 0),
+    });
   }
 
   // Bounded ranges get every bucket zero-filled, so the trend line is
@@ -138,12 +150,14 @@ export async function getRevenueChartData(
       cursor <= end;
       cursor = nextBucket(cursor, granularity)
     ) {
+      const bucket = revenueByBucket.get(
+        bucketKey(cursor, granularity)
+      );
+
       points.push({
         month: bucketLabel(cursor, granularity),
-        revenue:
-          revenueByBucket.get(
-            bucketKey(cursor, granularity)
-          ) ?? 0,
+        revenue: bucket?.revenue ?? 0,
+        tax: bucket?.tax ?? 0,
       });
     }
 
@@ -159,9 +173,12 @@ export async function getRevenueChartData(
 
       const date = new Date(year, month - 1, day ?? 1);
 
+      const bucket = revenueByBucket.get(key);
+
       return {
         month: bucketLabel(date, granularity),
-        revenue: revenueByBucket.get(key) ?? 0,
+        revenue: bucket?.revenue ?? 0,
+        tax: bucket?.tax ?? 0,
       };
     });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -11,6 +11,11 @@ import {
   billTreatmentPlanItems,
   InvoiceScope,
 } from "@/services/treatmentPlans";
+import { calculateInvoiceTotals } from "@/services/billing";
+import {
+  ClinicSettings,
+  getClinicSettings,
+} from "@/services/settings";
 
 import { TreatmentPlanWithItems } from "@/types/treatmentPlan";
 
@@ -40,6 +45,21 @@ export default function CreateInvoiceFromPlanModal({
 
   const [creating, setCreating] = useState(false);
 
+  const [clinicSettings, setClinicSettings] =
+    useState<ClinicSettings | null>(
+      null
+    );
+
+  useEffect(() => {
+    if (!open) return;
+
+    getClinicSettings()
+      .then(setClinicSettings)
+      .catch((error) =>
+        console.error(error)
+      );
+  }, [open]);
+
   const billableItems = useMemo(
     () =>
       (plan?.treatment_plan_items ?? []).filter(
@@ -56,6 +76,50 @@ export default function CreateInvoiceFromPlanModal({
         (item) => item.status === "Completed"
       ),
     [billableItems]
+  );
+
+  const scopedItems = useMemo(() => {
+    if (scope === "completed") return completedItems;
+
+    if (scope === "selected") {
+      return billableItems.filter((item) =>
+        selectedIds.includes(item.id)
+      );
+    }
+
+    return billableItems;
+  }, [scope, billableItems, completedItems, selectedIds]);
+
+  const grossAmount = useMemo(
+    () =>
+      scopedItems.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.estimated_price) *
+            item.quantity,
+        0
+      ),
+    [scopedItems]
+  );
+
+  const totals = useMemo(
+    () =>
+      calculateInvoiceTotals(
+        grossAmount,
+        0,
+        {
+          enabled:
+            clinicSettings?.tax_enabled ??
+            false,
+          rate: Number(
+            clinicSettings?.tax_rate ?? 0
+          ),
+          inclusive:
+            clinicSettings?.prices_include_tax ??
+            false,
+        }
+      ),
+    [grossAmount, clinicSettings]
   );
 
   const formatCurrency = (amount: number) =>
@@ -229,6 +293,32 @@ export default function CreateInvoiceFromPlanModal({
               ))}
             </div>
           )}
+
+          <div className="space-y-2 rounded-xl border border-slate-200 p-4">
+            <div className="flex justify-between text-sm">
+              <span>Subtotal</span>
+              <span className="font-medium">
+                {formatCurrency(totals.subtotal)}
+              </span>
+            </div>
+
+            {clinicSettings?.tax_enabled && (
+              <div className="flex justify-between text-sm">
+                <span>
+                  {clinicSettings.tax_name} (
+                  {Number(clinicSettings.tax_rate)}%)
+                </span>
+                <span className="font-medium">
+                  {formatCurrency(totals.tax)}
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-between border-t pt-2 font-bold">
+              <span>Total</span>
+              <span>{formatCurrency(totals.total)}</span>
+            </div>
+          </div>
         </div>
       )}
     </Modal>

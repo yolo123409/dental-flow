@@ -17,7 +17,7 @@ export async function getRevenueAnalytics(
 
   let revenueQuery = supabase
     .from("clinic_invoices")
-    .select("total")
+    .select("total, tax")
     .eq("clinic_id", clinicId)
     .eq("status", "Paid");
 
@@ -109,13 +109,22 @@ export async function getRevenueAnalytics(
     throw toError(firstError);
   }
 
+  const totalRevenue =
+    revenue.data?.reduce(
+      (sum, invoice) =>
+        sum + Number(invoice.total ?? 0),
+      0
+    ) ?? 0;
+
+  const totalTaxCollected =
+    revenue.data?.reduce(
+      (sum, invoice) =>
+        sum + Number(invoice.tax ?? 0),
+      0
+    ) ?? 0;
+
   return {
-    totalRevenue:
-      revenue.data?.reduce(
-        (sum, invoice) =>
-          sum + Number(invoice.total ?? 0),
-        0
-      ) ?? 0,
+    totalRevenue,
 
     // Uses the same total-minus-paid formula as services/billing.ts's
     // calculateBalance (the per-patient billing summary) - summing full
@@ -133,5 +142,10 @@ export async function getRevenueAnalytics(
 
     unpaidInvoices:
       unpaidInvoices.count ?? 0,
+
+    totalTaxCollected,
+
+    revenueExcludingTax:
+      totalRevenue - totalTaxCollected,
   };
 }

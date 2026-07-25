@@ -9,11 +9,15 @@ import Button from "@/components/ui/Button";
 
 import {
   ClinicCharge,
+  calculateInvoiceTotals,
   createInvoice,
   getPendingCharges,
 } from "@/services/billing";
 
-import { getClinicSettings } from "@/services/settings";
+import {
+  ClinicSettings,
+  getClinicSettings,
+} from "@/services/settings";
 
 export default function BillingPage() {
   const [loading, setLoading] =
@@ -28,6 +32,11 @@ export default function BillingPage() {
   const [currency, setCurrency] =
     useState("KES");
 
+  const [clinicSettings, setClinicSettings] =
+    useState<ClinicSettings | null>(
+      null
+    );
+
   useEffect(() => {
     loadCharges();
   }, []);
@@ -36,7 +45,7 @@ export default function BillingPage() {
     try {
       setLoading(true);
 
-      const [result, clinicSettings] =
+      const [result, settingsResult] =
         await Promise.all([
           getPendingCharges(),
           getClinicSettings(),
@@ -44,8 +53,9 @@ export default function BillingPage() {
 
       setCharges(result);
       setCurrency(
-        clinicSettings.currency || "KES"
+        settingsResult.currency || "KES"
       );
+      setClinicSettings(settingsResult);
     } catch (error) {
       console.error(error);
 
@@ -131,12 +141,28 @@ export default function BillingPage() {
       );
     }, [charges, selected]);
 
-  const subtotal =
+  const grossAmount =
     selectedCharges.reduce(
       (sum, charge) =>
         sum + Number(charge.amount),
       0
     );
+
+  const totals = calculateInvoiceTotals(
+    grossAmount,
+    0,
+    {
+      enabled:
+        clinicSettings?.tax_enabled ??
+        false,
+      rate: Number(
+        clinicSettings?.tax_rate ?? 0
+      ),
+      inclusive:
+        clinicSettings?.prices_include_tax ??
+        false,
+    }
+  );
 
       return (
     <div className="space-y-8">
@@ -264,10 +290,34 @@ export default function BillingPage() {
               </span>
 
               <span className="font-semibold">
-                {formatCurrency(subtotal)}
+                {formatCurrency(
+                  totals.subtotal
+                )}
               </span>
 
             </div>
+
+            {clinicSettings?.tax_enabled && (
+
+              <div className="flex justify-between">
+
+                <span>
+                  {clinicSettings.tax_name} (
+                  {Number(
+                    clinicSettings.tax_rate
+                  )}
+                  %)
+                </span>
+
+                <span className="font-semibold">
+                  {formatCurrency(
+                    totals.tax
+                  )}
+                </span>
+
+              </div>
+
+            )}
 
             <hr />
 
@@ -276,7 +326,9 @@ export default function BillingPage() {
               <span>Total</span>
 
               <span>
-                {formatCurrency(subtotal)}
+                {formatCurrency(
+                  totals.total
+                )}
               </span>
 
             </div>

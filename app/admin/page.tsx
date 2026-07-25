@@ -33,6 +33,10 @@ export default function AdminDashboard() {
 
   const [revenue, setRevenue] = useState(0);
 
+  const [taxCollected, setTaxCollected] = useState<
+    number | null
+  >(null);
+
   const [revenueChart, setRevenueChart] = useState<
     RevenueChartPoint[]
   >([]);
@@ -80,6 +84,12 @@ export default function AdminDashboard() {
       setRevenue(monthRevenue.totalRevenue);
       setRevenueChart(chartData);
       setCurrency(clinicSettings.currency || "KES");
+
+      setTaxCollected(
+        clinicSettings.tax_enabled
+          ? monthRevenue.totalTaxCollected
+          : null
+      );
     } catch (error) {
       logError(
         "[dashboard page] Failed to load revenue widget:",
@@ -129,6 +139,7 @@ export default function AdminDashboard() {
 
       <DashboardWidgets
         revenue={revenue}
+        taxCollected={taxCollected}
         revenueChart={revenueChart}
         currency={currency}
         revenueLoading={revenueLoading}

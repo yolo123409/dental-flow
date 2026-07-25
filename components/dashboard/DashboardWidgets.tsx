@@ -9,6 +9,7 @@ import { RevenueChartPoint } from "@/services/analytics/charts";
 
 interface DashboardWidgetsProps {
   revenue: number;
+  taxCollected: number | null;
   revenueChart: RevenueChartPoint[];
   currency: string;
   revenueLoading: boolean;
@@ -17,6 +18,7 @@ interface DashboardWidgetsProps {
 
 export default function DashboardWidgets({
   revenue,
+  taxCollected,
   revenueChart,
   currency,
   revenueLoading,
@@ -29,6 +31,7 @@ export default function DashboardWidgets({
 
         <RevenueWidget
           revenue={revenue}
+          taxCollected={taxCollected}
           chartData={revenueChart}
           currency={currency}
           loading={revenueLoading}
