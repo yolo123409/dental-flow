@@ -12,12 +12,14 @@ import { ClinicUser } from "@/types/clinicUser";
 
 interface StaffHeaderProps {
   user: ClinicUser;
+  isSelf?: boolean;
   onToggleStatus: () => void;
   onDelete: () => void;
 }
 
 export default function StaffHeader({
   user,
+  isSelf = false,
   onToggleStatus,
   onDelete,
 }: StaffHeaderProps) {
@@ -66,6 +68,11 @@ export default function StaffHeader({
             <p className="text-sm italic text-slate-400">
               Clinic owner - can&apos;t be suspended or
               removed here.
+            </p>
+          ) : isSelf ? (
+            <p className="text-sm italic text-slate-400">
+              This is your own account - it can&apos;t be
+              suspended or removed here.
             </p>
           ) : (
             <div className="flex flex-wrap gap-3">

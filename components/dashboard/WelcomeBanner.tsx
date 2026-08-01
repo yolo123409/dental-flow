@@ -2,7 +2,13 @@
 
 import { CalendarDays } from "lucide-react";
 
-export default function WelcomeBanner() {
+interface Props {
+  clinicName?: string;
+}
+
+export default function WelcomeBanner({
+  clinicName,
+}: Props) {
   const hour = new Date().getHours();
 
   const greeting =
@@ -31,7 +37,7 @@ export default function WelcomeBanner() {
           </h1>
 
           <p className="mt-3 max-w-xl text-base text-white/80 sm:text-lg">
-            Welcome back to Dental Flow.
+            Welcome back to {clinicName || "Dental Flow"}.
             Here&apos;s what&apos;s happening in your clinic today.
           </p>
 

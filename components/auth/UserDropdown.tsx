@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   User,
   Settings,
@@ -12,11 +14,15 @@ import { useAuth } from "@/contexts/AuthContext";
 interface Props {
   loading?: boolean;
   onLogout: () => void;
+  onNavigate: () => void;
+  onChangePassword: () => void;
 }
 
 export default function UserDropdown({
   loading = false,
   onLogout,
+  onNavigate,
+  onChangePassword,
 }: Props) {
   const { profile } = useAuth();
 
@@ -41,23 +47,38 @@ export default function UserDropdown({
 
       <div className="py-2">
 
-        <button className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50">
+        <Link
+          href={
+            profile?.id
+              ? `/admin/users/${profile.id}`
+              : "/admin"
+          }
+          onClick={onNavigate}
+          className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50"
+        >
 
           <User size={18} />
 
           <span>My Profile</span>
 
-        </button>
+        </Link>
 
-        <button className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50">
+        <Link
+          href="/admin/settings"
+          onClick={onNavigate}
+          className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50"
+        >
 
           <Settings size={18} />
 
           <span>Settings</span>
 
-        </button>
+        </Link>
 
-        <button className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50">
+        <button
+          onClick={onChangePassword}
+          className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50"
+        >
 
           <KeyRound size={18} />
 

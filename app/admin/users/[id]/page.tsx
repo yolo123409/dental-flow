@@ -7,6 +7,7 @@ import PageContainer from "@/components/ui/PageContainer";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 import { logError } from "@/lib/logError";
+import { useAuth } from "@/contexts/AuthContext";
 
 import {
   StaffHeader,
@@ -30,7 +31,11 @@ export default function StaffProfilePage() {
   const params = useParams();
   const router = useRouter();
 
+  const { profile } = useAuth();
+
   const id = params.id as string;
+
+  const isSelf = profile?.id === id;
 
   const [user, setUser] = useState<ClinicUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,6 +135,7 @@ export default function StaffProfilePage() {
 
       <StaffHeader
         user={user}
+        isSelf={isSelf}
         onToggleStatus={toggleStatus}
         onDelete={removeUser}
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
@@ -8,13 +8,96 @@ import Button from "@/components/ui/Button";
 import FormInput from "@/components/ui/FormInput";
 import FormTextarea from "@/components/ui/FormTextarea";
 import PermissionGuard from "@/components/auth/PermissionGuard";
+import ClinicLogoUploader from "@/components/settings/ClinicLogoUploader";
 
 import {
   ClinicSettings,
   getClinicSettings,
   saveClinicSettings,
   uploadClinicLogo,
+  removeClinicLogo,
 } from "@/services/settings";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type FieldErrors = Partial<
+  Record<
+    "clinic_name" | "phone" | "email" | "website",
+    string
+  >
+>;
+
+function normalizeWebsite(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) return trimmed;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
+}
+
+function isValidUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateClinicProfile(
+  current: ClinicSettings
+): FieldErrors {
+  const errors: FieldErrors = {};
+
+  if (!current.clinic_name.trim()) {
+    errors.clinic_name = "Clinic name is required.";
+  }
+
+  if (!current.phone?.trim()) {
+    errors.phone = "Phone number is required.";
+  }
+
+  if (!current.email?.trim()) {
+    errors.email = "Email is required.";
+  } else if (!EMAIL_PATTERN.test(current.email.trim())) {
+    errors.email = "Enter a valid email address.";
+  }
+
+  if (
+    current.website?.trim() &&
+    !isValidUrl(normalizeWebsite(current.website))
+  ) {
+    errors.website = "Enter a valid website URL.";
+  }
+
+  return errors;
+}
+
+function validateTaxSettings(
+  current: ClinicSettings
+): string | null {
+  if (!current.tax_enabled) return null;
+
+  if (!current.tax_name.trim()) {
+    return "Tax name is required when tax is enabled.";
+  }
+
+  const rate = Number(current.tax_rate);
+
+  if (
+    Number.isNaN(rate) ||
+    rate < 0 ||
+    rate > 100
+  ) {
+    return "Tax rate must be a number between 0 and 100.";
+  }
+
+  return null;
+}
 
 function SettingsPageContent() {
   const [loading, setLoading] =
@@ -23,10 +106,33 @@ function SettingsPageContent() {
   const [saving, setSaving] =
     useState(false);
 
+  const [justSaved, setJustSaved] =
+    useState(false);
+
+  const [uploadingLogo, setUploadingLogo] =
+    useState(false);
+
+  const [removingLogo, setRemovingLogo] =
+    useState(false);
+
   const [settings, setSettings] =
     useState<ClinicSettings | null>(
       null
     );
+
+  // Last successfully-persisted state, used only to compute whether there
+  // are unsaved changes - not rendered directly.
+  const savedSnapshotRef =
+    useRef<ClinicSettings | null>(null);
+
+  const [fieldErrors, setFieldErrors] =
+    useState<FieldErrors>({});
+
+  const isDirty =
+    settings !== null &&
+    savedSnapshotRef.current !== null &&
+    JSON.stringify(settings) !==
+      JSON.stringify(savedSnapshotRef.current);
 
   async function loadSettings() {
     try {
@@ -36,6 +142,7 @@ function SettingsPageContent() {
         await getClinicSettings();
 
       setSettings(result);
+      savedSnapshotRef.current = result;
     } catch (error) {
       console.error(error);
 
@@ -53,48 +160,79 @@ function SettingsPageContent() {
     loadSettings();
   }, []);
 
-  function validateTaxSettings(
-    current: ClinicSettings
-  ): string | null {
-    if (!current.tax_enabled) return null;
-
-    if (!current.tax_name.trim()) {
-      return "Tax name is required when tax is enabled.";
-    }
-
-    const rate = Number(current.tax_rate);
-
-    if (
-      Number.isNaN(rate) ||
-      rate < 0 ||
-      rate > 100
+  // Warn on tab close/refresh only - intentionally not intercepting
+  // in-app navigation (Link clicks), which would need a more involved
+  // router-event listener than this page's scope warrants.
+  useEffect(() => {
+    function handleBeforeUnload(
+      e: BeforeUnloadEvent
     ) {
-      return "Tax rate must be a number between 0 and 100.";
+      if (!isDirty) return;
+
+      e.preventDefault();
     }
 
-    return null;
+    window.addEventListener(
+      "beforeunload",
+      handleBeforeUnload
+    );
+
+    return () =>
+      window.removeEventListener(
+        "beforeunload",
+        handleBeforeUnload
+      );
+  }, [isDirty]);
+
+  function updateSettings(
+    patch: Partial<ClinicSettings>
+  ) {
+    setJustSaved(false);
+
+    setSettings((current) =>
+      current
+        ? { ...current, ...patch }
+        : current
+    );
   }
 
   async function handleSave() {
-    if (!settings) return;
+    if (!settings || saving) return;
 
-    const validationError =
+    const profileErrors =
+      validateClinicProfile(settings);
+
+    setFieldErrors(profileErrors);
+
+    if (Object.keys(profileErrors).length > 0) {
+      toast.error(
+        "Please fix the highlighted fields."
+      );
+      return;
+    }
+
+    const taxError =
       validateTaxSettings(settings);
 
-    if (validationError) {
-      toast.error(validationError);
+    if (taxError) {
+      toast.error(taxError);
       return;
     }
 
     try {
       setSaving(true);
 
-      const updated =
-        await saveClinicSettings(
-          settings
-        );
+      const updated = await saveClinicSettings({
+        ...settings,
+        website: settings.website?.trim()
+          ? normalizeWebsite(settings.website)
+          : null,
+      });
 
       setSettings(updated);
+      savedSnapshotRef.current = updated;
+
+      setJustSaved(true);
 
       toast.success("Settings saved.");
     } catch (error) {
@@ -110,21 +248,26 @@ function SettingsPageContent() {
     }
   }
 
-  async function handleLogoUpload(
-    file: File
-  ) {
+  async function handleLogoUpload(file: File) {
     try {
-      const logoUrl =
-        await uploadClinicLogo(file);
+      setUploadingLogo(true);
+
+      const logoUrl = await uploadClinicLogo(file);
 
       setSettings((current) =>
         current
-          ? {
-              ...current,
-              logo_url: logoUrl,
-            }
+          ? { ...current, logo_url: logoUrl }
           : current
       );
+
+      if (savedSnapshotRef.current) {
+        savedSnapshotRef.current = {
+          ...savedSnapshotRef.current,
+          logo_url: logoUrl,
+        };
+      }
+
+      toast.success("Logo updated.");
     } catch (error) {
       console.error(error);
 
@@ -133,6 +276,41 @@ function SettingsPageContent() {
           ? error.message
           : "Failed to upload logo."
       );
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
+  async function handleLogoRemove() {
+    try {
+      setRemovingLogo(true);
+
+      await removeClinicLogo();
+
+      setSettings((current) =>
+        current
+          ? { ...current, logo_url: null }
+          : current
+      );
+
+      if (savedSnapshotRef.current) {
+        savedSnapshotRef.current = {
+          ...savedSnapshotRef.current,
+          logo_url: null,
+        };
+      }
+
+      toast.success("Logo removed.");
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to remove logo."
+      );
+    } finally {
+      setRemovingLogo(false);
     }
   }
 
@@ -144,6 +322,12 @@ function SettingsPageContent() {
     );
   }
 
+  const saveLabel = saving
+    ? "Saving..."
+    : justSaved && !isDirty
+    ? "Saved"
+    : "Save Settings";
+
   return (
     <div className="space-y-8">
 
@@ -154,9 +338,10 @@ function SettingsPageContent() {
         </h1>
 
         <p className="mt-2 text-slate-500">
-          Configure your clinic&apos;s
-          branding and contact
-          information.
+          This is your clinic&apos;s identity -
+          it&apos;s used on invoices, receipts,
+          and anywhere else DentalFlow shows
+          your branding.
         </p>
 
       </div>
@@ -167,238 +352,123 @@ function SettingsPageContent() {
 
           <div className="space-y-4">
 
-            <label className="block">
+            <FormInput
+              label="Clinic Name"
+              required
+              value={settings.clinic_name}
+              error={fieldErrors.clinic_name}
+              onChange={(value) =>
+                updateSettings({
+                  clinic_name: value,
+                })
+              }
+            />
 
-              <span className="mb-1 block text-sm font-medium">
-                Clinic Name
-              </span>
+            <FormInput
+              label="Phone"
+              required
+              value={settings.phone ?? ""}
+              error={fieldErrors.phone}
+              onChange={(value) =>
+                updateSettings({ phone: value })
+              }
+            />
 
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.clinic_name
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    clinic_name:
-                      e.target.value,
-                  })
-                }
-              />
+            <FormInput
+              label="Email"
+              required
+              type="email"
+              value={settings.email ?? ""}
+              error={fieldErrors.email}
+              onChange={(value) =>
+                updateSettings({ email: value })
+              }
+            />
 
-            </label>
-
-            <label className="block">
-
-              <span className="mb-1 block text-sm font-medium">
-                Phone
-              </span>
-
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.phone ?? ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    phone:
-                      e.target.value,
-                  })
-                }
-              />
-
-            </label>
-
-            <label className="block">
-
-              <span className="mb-1 block text-sm font-medium">
-                Email
-              </span>
-
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.email ?? ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    email:
-                      e.target.value,
-                  })
-                }
-              />
-
-            </label>
-
-            <label className="block">
-
-              <span className="mb-1 block text-sm font-medium">
-                Website
-              </span>
-
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.website ??
-                  ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    website:
-                      e.target.value,
-                  })
-                }
-              />
-
-            </label>
+            <FormInput
+              label="Website (optional)"
+              value={settings.website ?? ""}
+              error={fieldErrors.website}
+              placeholder="www.yourclinic.com"
+              onChange={(value) =>
+                updateSettings({ website: value })
+              }
+            />
 
           </div>
 
           <div className="space-y-4">
 
-            <label className="block">
+            <FormInput
+              label="Address Line 1"
+              value={
+                settings.address_line_1 ?? ""
+              }
+              onChange={(value) =>
+                updateSettings({
+                  address_line_1: value,
+                })
+              }
+            />
 
-              <span className="mb-1 block text-sm font-medium">
-                Address Line 1
-              </span>
+            <FormInput
+              label="Address Line 2 (optional)"
+              value={
+                settings.address_line_2 ?? ""
+              }
+              onChange={(value) =>
+                updateSettings({
+                  address_line_2: value,
+                })
+              }
+            />
 
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.address_line_1 ??
-                  ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    address_line_1:
-                      e.target.value,
-                  })
-                }
-              />
+            <FormInput
+              label="City"
+              value={settings.city ?? ""}
+              onChange={(value) =>
+                updateSettings({ city: value })
+              }
+            />
 
-            </label>
-
-            <label className="block">
-
-              <span className="mb-1 block text-sm font-medium">
-                Address Line 2
-              </span>
-
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.address_line_2 ??
-                  ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    address_line_2:
-                      e.target.value,
-                  })
-                }
-              />
-
-            </label>
-
-            <label className="block">
-
-              <span className="mb-1 block text-sm font-medium">
-                City
-              </span>
-
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.city ?? ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    city:
-                      e.target.value,
-                  })
-                }
-              />
-
-            </label>
-
-            <label className="block">
-
-              <span className="mb-1 block text-sm font-medium">
-                Country
-              </span>
-
-              <input
-                className="w-full rounded-lg border p-3"
-                value={
-                  settings.country ??
-                  ""
-                }
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    country:
-                      e.target.value,
-                  })
-                }
-              />
-
-            </label>
+            <FormInput
+              label="Country"
+              value={settings.country ?? ""}
+              onChange={(value) =>
+                updateSettings({ country: value })
+              }
+            />
 
           </div>
 
         </div>
 
-        <div className="mt-8 border-t pt-6">
+        <div className="mt-8 border-t border-sea-glass pt-6">
 
-          <label className="block">
-
-            <span className="mb-2 block text-sm font-medium">
-              Clinic Logo
-            </span>
-
-            {settings.logo_url && (
-              <img
-                src={settings.logo_url}
-                alt="Clinic Logo"
-                className="mb-4 h-24 w-24 rounded-lg border object-contain"
-              />
-            )}
-
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file =
-                  e.target.files?.[0];
-
-                if (file) {
-                  handleLogoUpload(
-                    file
-                  );
-                }
-              }}
-            />
-
-          </label>
+          <ClinicLogoUploader
+            logoUrl={settings.logo_url}
+            clinicName={settings.clinic_name}
+            uploading={uploadingLogo}
+            removing={removingLogo}
+            onUpload={handleLogoUpload}
+            onRemove={handleLogoRemove}
+          />
 
         </div>
 
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex items-center justify-end gap-3">
+
+          {isDirty && (
+            <p className="text-sm text-mineral">
+              You have unsaved changes.
+            </p>
+          )}
 
           <Button
             onClick={handleSave}
             disabled={saving}
           >
-            {saving
-              ? "Saving..."
-              : "Save Settings"}
+            {saveLabel}
           </Button>
 
         </div>
@@ -413,10 +483,8 @@ function SettingsPageContent() {
             type="checkbox"
             checked={settings.tax_enabled}
             onChange={(e) =>
-              setSettings({
-                ...settings,
-                tax_enabled:
-                  e.target.checked,
+              updateSettings({
+                tax_enabled: e.target.checked,
               })
             }
           />
@@ -433,8 +501,7 @@ function SettingsPageContent() {
             label="Tax Name"
             value={settings.tax_name}
             onChange={(value) =>
-              setSettings({
-                ...settings,
+              updateSettings({
                 tax_name: value,
               })
             }
@@ -445,10 +512,8 @@ function SettingsPageContent() {
             type="number"
             value={settings.tax_rate}
             onChange={(value) =>
-              setSettings({
-                ...settings,
-                tax_rate:
-                  Number(value),
+              updateSettings({
+                tax_rate: Number(value),
               })
             }
           />
@@ -460,8 +525,7 @@ function SettingsPageContent() {
               ""
             }
             onChange={(value) =>
-              setSettings({
-                ...settings,
+              updateSettings({
                 tax_registration_number:
                   value || null,
               })
@@ -476,8 +540,7 @@ function SettingsPageContent() {
                 settings.prices_include_tax
               }
               onChange={(e) =>
-                setSettings({
-                  ...settings,
+                updateSettings({
                   prices_include_tax:
                     e.target.checked,
                 })
@@ -502,8 +565,7 @@ function SettingsPageContent() {
               ""
             }
             onChange={(value) =>
-              setSettings({
-                ...settings,
+              updateSettings({
                 invoice_footer_tax_note:
                   value || null,
               })
@@ -512,15 +574,19 @@ function SettingsPageContent() {
 
         </div>
 
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex items-center justify-end gap-3">
+
+          {isDirty && (
+            <p className="text-sm text-mineral">
+              You have unsaved changes.
+            </p>
+          )}
 
           <Button
             onClick={handleSave}
             disabled={saving}
           >
-            {saving
-              ? "Saving..."
-              : "Save Settings"}
+            {saveLabel}
           </Button>
 
         </div>

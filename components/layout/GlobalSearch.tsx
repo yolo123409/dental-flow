@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 
 import {
@@ -10,8 +11,13 @@ import {
 } from "@/services/search";
 
 export default function GlobalSearch() {
+  const pathname = usePathname();
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -27,8 +33,59 @@ export default function GlobalSearch() {
     return () => clearTimeout(timeout);
   }, [query]);
 
+  // GlobalSearch lives in the persistent admin Topbar, not inside any
+  // individual page, so it never unmounts on navigation - its query/
+  // results state would otherwise survive from the old route onto the
+  // new one. Close (and fully reset) on every pathname change so it
+  // never overlays whatever page just loaded, no matter how navigation
+  // was triggered (result click, back/forward, another nav link, etc).
+  useEffect(() => {
+    setQuery("");
+    setResults([]);
+  }, [pathname]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setResults([]);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setResults([]);
+        inputRef.current?.blur();
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  function handleSelectResult() {
+    // Navigation itself is handled by the Link - this just makes sure
+    // the dropdown/query are gone immediately rather than waiting on the
+    // pathname-change effect, which only fires once the new route has
+    // actually loaded and would otherwise leave the dropdown briefly
+    // overlaying the destination page.
+    setQuery("");
+    setResults([]);
+    inputRef.current?.blur();
+  }
+
   return (
-    <div className="relative w-full max-w-md">
+    <div
+      ref={containerRef}
+      className="relative w-full max-w-md"
+    >
 
       <Search
         size={18}
@@ -36,6 +93,7 @@ export default function GlobalSearch() {
       />
 
       <input
+        ref={inputRef}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search patients or dentists..."
@@ -49,6 +107,7 @@ export default function GlobalSearch() {
             <Link
               key={`${result.type}-${result.id}`}
               href={result.href}
+              onClick={handleSelectResult}
               className="block border-b px-5 py-4 hover:bg-slate-50"
             >
               <p className="font-semibold">

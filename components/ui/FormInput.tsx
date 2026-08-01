@@ -5,6 +5,8 @@ interface Props {
   value: string | number;
   type?: string;
   placeholder?: string;
+  required?: boolean;
+  error?: string | null;
 
   onChange: (
     value: string
@@ -16,6 +18,8 @@ export default function FormInput({
   value,
   type = "text",
   placeholder,
+  required = false,
+  error = null,
   onChange,
 }: Props) {
   return (
@@ -23,6 +27,9 @@ export default function FormInput({
 
       <label className="mb-2 block text-sm font-semibold text-graphite">
         {label}
+        {required && (
+          <span className="ml-1 text-clay">*</span>
+        )}
       </label>
 
       <input
@@ -32,8 +39,18 @@ export default function FormInput({
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite placeholder:text-mineral transition-colors hover:border-mineral/50 focus:border-eucalyptus"
+        className={`min-h-11 w-full rounded-lg border bg-enamel px-3 py-2.5 text-sm text-graphite placeholder:text-mineral transition-colors focus:outline-none ${
+          error
+            ? "border-clay focus:border-clay"
+            : "border-sea-glass hover:border-mineral/50 focus:border-eucalyptus"
+        }`}
       />
+
+      {error && (
+        <p className="mt-1.5 text-xs font-medium text-clay">
+          {error}
+        </p>
+      )}
 
     </div>
   );

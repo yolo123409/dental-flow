@@ -43,6 +43,10 @@ export default function AdminDashboard() {
 
   const [currency, setCurrency] = useState("KES");
 
+  const [clinicName, setClinicName] = useState<
+    string | undefined
+  >(undefined);
+
   const [loading, setLoading] = useState(true);
   const [revenueLoading, setRevenueLoading] = useState(true);
 
@@ -84,6 +88,7 @@ export default function AdminDashboard() {
       setRevenue(monthRevenue.totalRevenue);
       setRevenueChart(chartData);
       setCurrency(clinicSettings.currency || "KES");
+      setClinicName(clinicSettings.clinic_name);
 
       setTaxCollected(
         clinicSettings.tax_enabled
@@ -129,7 +134,7 @@ export default function AdminDashboard() {
 
   return (
     <PageContainer>
-      <WelcomeBanner />
+      <WelcomeBanner clinicName={clinicName} />
 
       <DashboardStats
         patients={stats.patients}

@@ -50,58 +50,19 @@ export async function getClinicSettings() {
     throw toError(error);
   }
 
-  if (data) {
-    return data as ClinicSettings;
-  }
-
-  const defaults = {
-    clinic_id: clinicId,
-
-    clinic_name:
-      "My Dental Clinic",
-
-    phone: null,
-    email: null,
-    website: null,
-
-    address_line_1: null,
-    address_line_2: null,
-    city: null,
-    country: null,
-
-    logo_url: null,
-
-    currency: "KES",
-
-    invoice_prefix: "INV",
-
-    tax_enabled: false,
-    tax_name: "VAT",
-    tax_rate: 0,
-    prices_include_tax: false,
-    tax_registration_number: null,
-    invoice_footer_tax_note: null,
-  };
-
-  const {
-    data: inserted,
-    error: insertError,
-  } = await supabase
-    .from("clinic_settings")
-    .insert(defaults)
-    .select()
-    .single();
-
-  if (insertError) {
-    logError(
-      "[settings] Failed to insert default clinic settings:",
-      insertError
+  // Every clinic gets its clinic_settings row transactionally inside the
+  // create_clinic_with_admin RPC at signup - there is no RLS insert policy
+  // for this table (writes only happen through that RPC, same convention
+  // as staff_invitations), so a missing row here means something is
+  // actually wrong rather than a normal first-load case to silently paper
+  // over.
+  if (!data) {
+    throw new Error(
+      "Clinic settings are missing for this clinic. Please contact support."
     );
-
-    throw toError(insertError);
   }
 
-  return inserted as ClinicSettings;
+  return data as ClinicSettings;
 }
 
 export async function saveClinicSettings(
@@ -133,9 +94,34 @@ export async function saveClinicSettings(
   return data as ClinicSettings;
 }
 
+// Kept in sync with the clinic-assets bucket's own allowed_mime_types /
+// file_size_limit (supabase/migrations/0010_clinic_profile_hardening.sql) -
+// this is a fast, clear client-side check; the bucket-level constraint is
+// the check that actually can't be bypassed by a modified client.
+export const CLINIC_LOGO_ALLOWED_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/svg+xml",
+];
+
+export const CLINIC_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
 export async function uploadClinicLogo(
   file: File
 ) {
+  if (!CLINIC_LOGO_ALLOWED_TYPES.includes(file.type)) {
+    throw new Error(
+      "Please upload a PNG, JPG, WEBP, or SVG image."
+    );
+  }
+
+  if (file.size > CLINIC_LOGO_MAX_BYTES) {
+    throw new Error(
+      "Logo must be smaller than 2MB."
+    );
+  }
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -165,9 +151,58 @@ export async function uploadClinicLogo(
     .from("clinic-assets")
     .getPublicUrl(path);
 
+  // The storage path is stable across re-uploads (upsert:true overwrites
+  // the same object), so without a cache-busting suffix every consumer
+  // (invoice header, dashboard, this settings page in another tab) would
+  // keep showing a browser/CDN-cached copy of the OLD logo after "Change
+  // Logo". Persisting the busted URL itself means every future reader
+  // gets the fresh image, not just this session's local state.
+  const bustedUrl =
+    `${data.publicUrl}?v=${Date.now()}`;
+
   await saveClinicSettings({
-    logo_url: data.publicUrl,
+    logo_url: bustedUrl,
   });
 
-  return data.publicUrl;
+  return bustedUrl;
+}
+
+export async function removeClinicLogo() {
+  const clinicId =
+    await getCurrentClinicId();
+
+  const {
+    data: files,
+    error: listError,
+  } = await supabase.storage
+    .from("clinic-assets")
+    .list(clinicId);
+
+  if (listError) {
+    logError("[settings] removeClinicLogo (list) failed:", listError);
+
+    throw toError(listError);
+  }
+
+  if (files && files.length > 0) {
+    const paths = files.map(
+      (file) => `${clinicId}/${file.name}`
+    );
+
+    const {
+      error: removeError,
+    } = await supabase.storage
+      .from("clinic-assets")
+      .remove(paths);
+
+    if (removeError) {
+      logError("[settings] removeClinicLogo (remove) failed:", removeError);
+
+      throw toError(removeError);
+    }
+  }
+
+  await saveClinicSettings({
+    logo_url: null,
+  });
 }

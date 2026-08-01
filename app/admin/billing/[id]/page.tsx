@@ -22,6 +22,7 @@ import {
 } from "@/services/settings";
 
 import RecordPaymentModal from "@/components/billing/RecordPaymentModal";
+import ClinicBrandingHeader from "@/components/branding/ClinicBrandingHeader";
 
 interface InvoiceDetail extends ClinicInvoice {
   patients: {
@@ -217,77 +218,9 @@ async function downloadPDF() {
 
               <div className="flex justify-between">
 
-                <div>
-
-                  {clinic.logo_url && (
-
-                    <img
-                      src={
-                        clinic.logo_url
-                      }
-                      alt={
-                        clinic.clinic_name
-                      }
-                      className="mb-4 h-20 object-contain"
-                    />
-
-                  )}
-
-                  <h2 className="text-3xl font-bold">
-                    {
-                      clinic.clinic_name
-                    }
-                  </h2>
-
-                  {clinic.address_line_1 && (
-                    <p className="mt-2 text-slate-500">
-                      {
-                        clinic.address_line_1
-                      }
-                    </p>
-                  )}
-
-                  {clinic.address_line_2 && (
-                    <p className="text-slate-500">
-                      {
-                        clinic.address_line_2
-                      }
-                    </p>
-                  )}
-
-                  {(clinic.city ||
-                    clinic.country) && (
-                    <p className="text-slate-500">
-                      {[
-                        clinic.city,
-                        clinic.country,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </p>
-                  )}
-
-                  {clinic.phone && (
-                    <p className="text-slate-500">
-                      {clinic.phone}
-                    </p>
-                  )}
-
-                  {clinic.email && (
-                    <p className="text-slate-500">
-                      {clinic.email}
-                    </p>
-                  )}
-
-                  {clinic.website && (
-                    <p className="text-slate-500">
-                      {
-                        clinic.website
-                      }
-                    </p>
-                  )}
-
-                </div>
+                <ClinicBrandingHeader
+                  clinic={clinic}
+                />
 
                 <div className="text-right">
 
