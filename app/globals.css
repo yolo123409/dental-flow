@@ -89,10 +89,12 @@ textarea:focus-visible, [role="button"]:focus-visible {
 .status-ongoing { background: var(--pale-harbor); color: var(--harbor); }
 .status-completed { background: var(--pale-sage); color: var(--sage-ink); }
 .status-cancelled { background: var(--pale-clay); color: var(--clay-ink); }
+.status-missed { background: var(--pale-clay); color: var(--clay-ink); }
 .care-rail-scheduled { border-left-color: var(--ochre); }
 .care-rail-ongoing { border-left: 3px solid var(--harbor); }
 .care-rail-completed { border-left-color: var(--sage); }
 .care-rail-cancelled { border-left-color: var(--clay); border-left-style: dashed; opacity: .74; }
+.care-rail-missed { border-left: 3px solid var(--clay); }
 
 /* Harmonise legacy utility usage while shared primitives are adopted. */
 .bg-slate-100, .bg-slate-50 { background-color: var(--porcelain) !important; }

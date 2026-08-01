@@ -139,6 +139,11 @@ export default function CalendarPage() {
               Ongoing: { background: "#ECEFF2", border: "#3D6B8C", text: "#3D6B8C" },
               Completed: { background: "#EDF2F0", border: "#4D7C68", text: "#3E6555" },
               Cancelled: { background: "#F5EEEE", border: "#9B5550", text: "#86433F" },
+              // Same clay/red family the app already uses for "did not
+              // happen as planned" outcomes, kept visually distinguishable
+              // from Cancelled via a solid (not implied-dashed) full-
+              // opacity treatment plus the MISSED label text itself.
+              Missed: { background: "#F5EEEE", border: "#9B5550", text: "#86433F" },
             } as const;
             const colour = statusColors[appointment.status] ?? statusColors.Scheduled;
 

@@ -9,6 +9,7 @@ describe("StatusBadge", () => {
     ["Ongoing", "status-ongoing"],
     ["Completed", "status-completed"],
     ["Cancelled", "status-cancelled"],
+    ["Missed", "status-missed"],
   ])("renders %s with its semantic token", (status, expectedClass) => {
     render(<StatusBadge status={status} />);
 

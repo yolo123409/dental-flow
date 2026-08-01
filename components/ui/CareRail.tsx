@@ -1,13 +1,14 @@
 import { Check, Clock3, X } from "lucide-react";
 import type { ReactNode } from "react";
 
-export type CareStatus = "Scheduled" | "Ongoing" | "Completed" | "Cancelled";
+export type CareStatus = "Scheduled" | "Ongoing" | "Completed" | "Cancelled" | "Missed";
 
 const config: Record<CareStatus, { className: string; label: string; icon: typeof Clock3 }> = {
   Scheduled: { className: "care-rail-scheduled", label: "Scheduled", icon: Clock3 },
   Ongoing: { className: "care-rail-ongoing", label: "In chair", icon: Clock3 },
   Completed: { className: "care-rail-completed", label: "Completed", icon: Check },
   Cancelled: { className: "care-rail-cancelled", label: "Cancelled", icon: X },
+  Missed: { className: "care-rail-missed", label: "Missed", icon: X },
 };
 
 export function statusClass(status: string) {

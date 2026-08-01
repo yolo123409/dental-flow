@@ -9,6 +9,7 @@ describe("CareRail", () => {
     ["Ongoing", "In chair", "care-rail-ongoing"],
     ["Completed", "Completed", "care-rail-completed"],
     ["Cancelled", "Cancelled", "care-rail-cancelled"],
+    ["Missed", "Missed", "care-rail-missed"],
   ] as const)("renders an accessible %s workflow cue", (status, label, railClass) => {
     render(<CareRail status={status}><p>Appointment content</p></CareRail>);
 

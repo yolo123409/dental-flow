@@ -4,7 +4,8 @@ export type AppointmentStatus =
   | "Scheduled"
   | "Ongoing"
   | "Completed"
-  | "Cancelled";
+  | "Cancelled"
+  | "Missed";
 
 export interface AppointmentFormData {
   patient_id: string;
@@ -207,6 +208,10 @@ export default function AppointmentForm({
 
           <option value="Cancelled">
             Cancelled
+          </option>
+
+          <option value="Missed">
+            Missed
           </option>
         </select>
       </div>

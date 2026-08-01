@@ -24,6 +24,11 @@ export async function getCalendarAppointments(
     .eq("clinic_id", clinicId)
     .gte("appointment_date", startDate)
     .lte("appointment_date", endDate)
+    // Completed appointments stay in the database (patient history,
+    // billing, analytics, etc. all still read them via getAppointments/
+    // getAppointmentById) - they're just excluded from the calendar view
+    // itself, which is what this function is dedicated to.
+    .neq("status", "Completed")
     .order("appointment_date")
     .order("appointment_time");
 

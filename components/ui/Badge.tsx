@@ -12,7 +12,7 @@ interface BadgeProps {
     | "gray"
     | "purple";
   className?: string;
-  status?: "Scheduled" | "Ongoing" | "Completed" | "Cancelled";
+  status?: "Scheduled" | "Ongoing" | "Completed" | "Cancelled" | "Missed";
 }
 
 const colors = {
