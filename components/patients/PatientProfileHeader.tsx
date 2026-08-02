@@ -1,17 +1,41 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
 import Card from "@/components/ui/Card";
 import Avatar from "@/components/ui/Avatar";
 
-import { Patient } from "@/types";
+import WhatsAppReminderButton from "@/components/appointments/WhatsAppReminderButton";
+import WhatsAppReminderModal from "@/components/appointments/WhatsAppReminderModal";
+
+import { Patient, Appointment } from "@/types";
+
+const REMINDER_ELIGIBLE_STATUSES: Appointment["status"][] = [
+  "Scheduled",
+  "Ongoing",
+];
 
 interface Props {
   patient: Patient;
+  appointments: Appointment[];
 }
 
 export default function PatientProfileHeader({
   patient,
+  appointments,
 }: Props) {
+  const [reminderOpen, setReminderOpen] = useState(false);
+
+  const hasUpcomingAppointment = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+
+    return appointments.some(
+      (appointment) =>
+        REMINDER_ELIGIBLE_STATUSES.includes(appointment.status) &&
+        appointment.appointment_date >= today
+    );
+  }, [appointments]);
+
   return (
     <Card>
 
@@ -43,7 +67,23 @@ export default function PatientProfileHeader({
 
         </div>
 
+        <WhatsAppReminderButton
+          onClick={() => setReminderOpen(true)}
+          disabled={!hasUpcomingAppointment}
+          disabledReason={
+            hasUpcomingAppointment
+              ? undefined
+              : "No upcoming appointment"
+          }
+        />
+
       </div>
+
+      <WhatsAppReminderModal
+        open={reminderOpen}
+        patientId={patient.id}
+        onClose={() => setReminderOpen(false)}
+      />
 
     </Card>
   );

@@ -10,12 +10,20 @@ import AppointmentForm, {
   AppointmentFormData,
 } from "./AppointmentForm";
 
+import WhatsAppReminderButton from "./WhatsAppReminderButton";
+import WhatsAppReminderModal from "./WhatsAppReminderModal";
+
 import { Appointment } from "@/types/appointment";
 
 import {
   updateAppointment,
   AppointmentConflictError,
 } from "@/services/appointments";
+
+const REMINDER_ELIGIBLE_STATUSES: Appointment["status"][] = [
+  "Scheduled",
+  "Ongoing",
+];
 
 import {
   PatientOption,
@@ -60,6 +68,11 @@ export default function EditAppointmentModal({
     useState<AppointmentFormData>(
       EMPTY_FORM
     );
+
+  const [reminderTarget, setReminderTarget] = useState<{
+    patientId: string;
+    appointmentId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -153,40 +166,71 @@ export default function EditAppointmentModal({
     onClose();
   }
 
-  return (
-    <Modal
-      open={open}
-      title="Edit Appointment"
-      onClose={handleClose}
-      footer={
-        <>
-          <Button
-            variant="secondary"
-            onClick={handleClose}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
+  function handleOpenReminder() {
+    if (!appointment) return;
 
-          <Button
-            onClick={
-              saveChanges
-            }
-            disabled={loading}
-          >
-            {loading
-              ? "Saving..."
-              : "Save Changes"}
-          </Button>
-        </>
-      }
-    >
-      <AppointmentForm
-        form={form}
-        patients={patients}
-        dentists={dentists}
-        onChange={update}
+    setReminderTarget({
+      patientId: appointment.patient_id,
+      appointmentId: appointment.id,
+    });
+
+    handleClose();
+  }
+
+  const canRemindAppointment =
+    appointment != null &&
+    REMINDER_ELIGIBLE_STATUSES.includes(appointment.status);
+
+  return (
+    <>
+      <Modal
+        open={open}
+        title="Edit Appointment"
+        onClose={handleClose}
+        footer={
+          <>
+            {canRemindAppointment && (
+              <WhatsAppReminderButton
+                className="mr-auto"
+                onClick={handleOpenReminder}
+              />
+            )}
+
+            <Button
+              variant="secondary"
+              onClick={handleClose}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              onClick={
+                saveChanges
+              }
+              disabled={loading}
+            >
+              {loading
+                ? "Saving..."
+                : "Save Changes"}
+            </Button>
+          </>
+        }
+      >
+        <AppointmentForm
+          form={form}
+          patients={patients}
+          dentists={dentists}
+          onChange={update}
+        />
+      </Modal>
+
+      <WhatsAppReminderModal
+        open={reminderTarget !== null}
+        patientId={reminderTarget?.patientId ?? ""}
+        appointmentId={reminderTarget?.appointmentId}
+        onClose={() => setReminderTarget(null)}
       />
-    </Modal>
+    </>
   );
 }

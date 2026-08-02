@@ -89,6 +89,55 @@ export async function getAppointmentById(
   return data as Appointment;
 }
 
+/**
+ * Upcoming, reminder-eligible appointments for a single patient - status
+ * Scheduled/Ongoing only, today or later. Used to decide whether a
+ * WhatsApp reminder button should be enabled and, when there's more than
+ * one, to let the receptionist pick which appointment to remind about
+ * instead of silently guessing.
+ */
+export async function getUpcomingAppointmentsForPatient(
+  patientId: string
+): Promise<Appointment[]> {
+  const clinicId = await getCurrentClinicId();
+
+  const today = new Date()
+    .toISOString()
+    .split("T")[0];
+
+  const { data, error } =
+    await supabase
+      .from("appointments")
+      .select(
+        `
+        *,
+        patients (
+          first_name,
+          last_name
+        ),
+        dentists (
+          full_name
+        )
+      `
+      )
+      .eq("clinic_id", clinicId)
+      .eq("patient_id", patientId)
+      .in("status", ["Scheduled", "Ongoing"])
+      .gte("appointment_date", today)
+      .order("appointment_date", { ascending: true })
+      .order("appointment_time", { ascending: true });
+
+  if (error) {
+    console.error(
+      "Failed to fetch upcoming appointments for patient:",
+      error
+    );
+    return [];
+  }
+
+  return (data as Appointment[]) ?? [];
+}
+
 export async function getAppointmentCount(): Promise<number> {
   const clinicId =
     await getCurrentClinicId();

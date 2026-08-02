@@ -144,6 +144,7 @@ export default function PatientProfilePage() {
 
       <PatientProfileHeader
         patient={patient}
+        appointments={appointments}
       />
 
       <PatientTabs

@@ -4,6 +4,7 @@ import Card from "@/components/ui/Card";
 
 import {
   CalendarDays,
+  MessageCircle,
   Receipt,
   Stethoscope,
 } from "lucide-react";
@@ -37,7 +38,13 @@ export default function PatientTimeline({
               className="relative mb-8 ml-8"
             >
 
-              <div className="absolute -left-12 top-1 rounded-full bg-blue-600 p-2 text-white">
+              <div
+                className={`absolute -left-12 top-1 rounded-full p-2 text-white ${
+                  item.type === "reminder"
+                    ? "bg-green-600"
+                    : "bg-blue-600"
+                }`}
+              >
 
                 {item.type === "appointment" && (
                   <CalendarDays size={18} />
@@ -49,6 +56,10 @@ export default function PatientTimeline({
 
                 {item.type === "invoice" && (
                   <Receipt size={18} />
+                )}
+
+                {item.type === "reminder" && (
+                  <MessageCircle size={18} />
                 )}
 
               </div>

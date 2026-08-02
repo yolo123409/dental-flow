@@ -23,6 +23,13 @@ interface InvoiceRow {
   created_at: string;
 }
 
+interface ReminderRow {
+  id: string;
+  created_at: string;
+  appointments: { treatment: string } | null;
+  clinic_users: { full_name: string } | null;
+}
+
 export async function getPatientTimeline(
   patientId: string
 ): Promise<TimelineItem[]> {
@@ -32,6 +39,7 @@ export async function getPatientTimeline(
     appointments,
     charges,
     invoices,
+    reminders,
   ] = await Promise.all([
     supabase
       .from("appointments")
@@ -50,6 +58,14 @@ export async function getPatientTimeline(
     supabase
       .from("clinic_invoices")
       .select("id, total, created_at")
+      .eq("clinic_id", clinicId)
+      .eq("patient_id", patientId),
+
+    supabase
+      .from("clinic_whatsapp_reminders")
+      .select(
+        "id, created_at, appointments(treatment), clinic_users(full_name)"
+      )
       .eq("clinic_id", clinicId)
       .eq("patient_id", patientId),
   ]);
@@ -91,6 +107,27 @@ export async function getPatientTimeline(
         description: `KSh ${invoice.total}`,
         created_at: invoice.created_at,
         type: "invoice",
+      });
+    }
+  );
+
+  (reminders.data as ReminderRow[] | null)?.forEach(
+    (reminder) => {
+      const treatment =
+        reminder.appointments?.treatment ?? "Appointment";
+
+      const initiator =
+        reminder.clinic_users?.full_name;
+
+      items.push({
+        id: reminder.id,
+        patient_id: patientId,
+        title: "WhatsApp reminder opened",
+        description: initiator
+          ? `${treatment} · Opened by ${initiator}`
+          : treatment,
+        created_at: reminder.created_at,
+        type: "reminder",
       });
     }
   );

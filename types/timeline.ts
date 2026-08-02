@@ -1,7 +1,8 @@
 export type TimelineType =
   | "appointment"
   | "treatment"
-  | "invoice";
+  | "invoice"
+  | "reminder";
 
 export interface TimelineItem {
   id: string;
