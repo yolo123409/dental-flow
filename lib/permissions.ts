@@ -22,6 +22,8 @@ export type Permission =
   | "documents"
   | "billing"
   | "payments"
+  | "inventory"
+  | "inventory_manage"
   | "users"
   | "analytics"
   | "settings";
@@ -47,6 +49,8 @@ export const permissions: Record<UserRole, ("*" | Permission)[]> = {
     "calendar",
     "billing",
     "payments",
+    "inventory",
+    "inventory_manage",
   ],
 };
 

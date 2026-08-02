@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
+  Boxes,
   ShoppingCart,
   Users,
   UserRound,
@@ -21,6 +22,7 @@ import { Permission } from "@/lib/permissions";
 
 import { useAuth } from "@/contexts/AuthContext";
 import usePermissions from "@/hooks/usePermissions";
+import useInventoryAttentionCount from "@/hooks/useInventoryAttentionCount";
 
 interface SidebarLink {
   name: string;
@@ -86,6 +88,12 @@ const sections: SidebarSection[] = [
         icon: Package,
         permission: "patients",
       },
+      {
+        name: "Inventory",
+        href: "/admin/inventory",
+        icon: Boxes,
+        permission: "inventory",
+      },
     ],
   },
 
@@ -127,6 +135,9 @@ export default function Sidebar() {
 
   const { hasPermission, role } =
     usePermissions();
+
+  const { count: attentionCount } =
+    useInventoryAttentionCount();
 
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r border-sea-glass bg-enamel">
@@ -191,6 +202,21 @@ export default function Sidebar() {
                     <span className="font-medium">
                       {link.name}
                     </span>
+
+                    {link.name === "Inventory" &&
+                      attentionCount > 0 && (
+                        <span
+                          className={`ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+                            active
+                              ? "bg-white/20 text-white"
+                              : "bg-red-500 text-white"
+                          }`}
+                        >
+                          {attentionCount > 9
+                            ? "9+"
+                            : attentionCount}
+                        </span>
+                      )}
 
                   </Link>
                 );
