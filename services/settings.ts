@@ -29,6 +29,9 @@ export interface ClinicSettings {
   tax_registration_number: string | null;
   invoice_footer_tax_note: string | null;
 
+  // NULL = not configured yet - must never be treated as 0.
+  monthly_break_even_revenue: number | null;
+
   created_at?: string;
   updated_at?: string;
 }

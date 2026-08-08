@@ -22,7 +22,13 @@ import {
   getMovementHistory,
   getStockStatus,
   getExpiryStatus,
+  calculateMarkupFromPrices,
+  calculateGrossMargin,
+  calculateGrossProfitPerUnit,
+  calculateSellingPriceFromMarkup,
+  updateInventoryItemPricing,
 } from "@/services/inventory";
+import { getClinicSettings, ClinicSettings } from "@/services/settings";
 
 type Tab = "overview" | "history" | "details";
 
@@ -54,6 +60,8 @@ function MaterialDetailPage() {
   const [material, setMaterial] =
     useState<ClinicInventoryItem | null>(null);
 
+  const [clinic, setClinic] = useState<ClinicSettings | null>(null);
+
   const [history, setHistory] = useState<
     InventoryMovement[]
   >([]);
@@ -67,19 +75,23 @@ function MaterialDetailPage() {
   const [stockModalOpen, setStockModalOpen] =
     useState(false);
 
+  const [applyingMarkup, setApplyingMarkup] = useState(false);
+
   const loadMaterial = useCallback(async () => {
     if (!id) return;
 
     try {
       setLoading(true);
 
-      const [item, movements] = await Promise.all([
+      const [item, movements, clinicSettings] = await Promise.all([
         getInventoryItem(id),
         getMovementHistory(id),
+        getClinicSettings(),
       ]);
 
       setMaterial(item);
       setHistory(movements);
+      setClinic(clinicSettings);
     } catch (error) {
       console.error(error);
 
@@ -100,9 +112,42 @@ function MaterialDetailPage() {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "KES",
+      currency: clinic?.currency ?? "KES",
       maximumFractionDigits: 0,
     }).format(amount);
+
+  async function handleApplyMarkup() {
+    if (!material || material.target_markup_percent == null) return;
+
+    try {
+      setApplyingMarkup(true);
+
+      const suggested = calculateSellingPriceFromMarkup(
+        Number(material.cost_per_unit),
+        material.target_markup_percent
+      );
+
+      await updateInventoryItemPricing(material.id, {
+        selling_price: suggested,
+        target_markup_percent: material.target_markup_percent,
+        priced_at_cost: Number(material.cost_per_unit),
+      });
+
+      toast.success("Selling price updated.");
+
+      await loadMaterial();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to update selling price."
+      );
+    } finally {
+      setApplyingMarkup(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -294,6 +339,149 @@ function MaterialDetailPage() {
           </Card>
 
         </div>
+
+      )}
+
+      {tab === "overview" && (
+
+        <Card title="Pricing">
+
+          {(() => {
+            const sellingPrice = material.selling_price;
+            const currentMarkup =
+              sellingPrice != null
+                ? calculateMarkupFromPrices(costPerUnit, sellingPrice)
+                : null;
+            const grossMargin =
+              sellingPrice != null
+                ? calculateGrossMargin(costPerUnit, sellingPrice)
+                : null;
+            const grossProfit =
+              sellingPrice != null
+                ? calculateGrossProfitPerUnit(costPerUnit, sellingPrice)
+                : null;
+
+            const costChanged =
+              material.priced_at_cost != null &&
+              Number(material.priced_at_cost) !== costPerUnit;
+
+            const oldMarkup =
+              costChanged && sellingPrice != null
+                ? calculateMarkupFromPrices(
+                    Number(material.priced_at_cost),
+                    sellingPrice
+                  )
+                : null;
+
+            const suggestedPrice =
+              material.target_markup_percent != null
+                ? calculateSellingPriceFromMarkup(
+                    costPerUnit,
+                    material.target_markup_percent
+                  )
+                : null;
+
+            return (
+              <div className="space-y-6">
+
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-mineral">
+                      Latest Cost
+                    </p>
+                    <p className="mt-2 text-lg font-semibold">
+                      {formatCurrency(costPerUnit)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-mineral">
+                      Selling Price
+                    </p>
+                    <p className="mt-2 text-lg font-semibold">
+                      {sellingPrice != null
+                        ? formatCurrency(sellingPrice)
+                        : "Not set"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-mineral">
+                      Markup
+                    </p>
+                    <p className="mt-2 text-lg font-semibold">
+                      {currentMarkup != null ? `${currentMarkup}%` : "—"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-mineral">
+                      Gross Margin
+                    </p>
+                    <p className="mt-2 text-lg font-semibold">
+                      {grossMargin != null ? `${grossMargin}%` : "—"}
+                    </p>
+                  </div>
+
+                </div>
+
+                {grossProfit != null && (
+                  <p className="text-sm text-mineral">
+                    Potential Gross Profit / Unit:{" "}
+                    <span className="font-semibold text-graphite">
+                      {formatCurrency(grossProfit)}
+                    </span>
+                  </p>
+                )}
+
+                {costChanged && sellingPrice != null && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-700">
+                      Cost {Number(material.priced_at_cost) < costPerUnit
+                        ? "increased"
+                        : "decreased"}{" "}
+                      — review selling price
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">
+                      Previous cost {formatCurrency(Number(material.priced_at_cost))}
+                      {oldMarkup != null && ` (${oldMarkup}% markup)`} → Current
+                      cost {formatCurrency(costPerUnit)}
+                      {currentMarkup != null && ` (${currentMarkup}% markup)`}.
+                      Selling price is unchanged at{" "}
+                      {formatCurrency(sellingPrice)}.
+                    </p>
+
+                    {canManage && suggestedPrice != null && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <p className="text-xs text-amber-700">
+                          Suggested selling price at{" "}
+                          {material.target_markup_percent}% markup:{" "}
+                          <span className="font-semibold">
+                            {formatCurrency(suggestedPrice)}
+                          </span>
+                        </p>
+
+                        <Button
+                          variant="secondary"
+                          className="px-3 py-1.5 text-xs"
+                          disabled={applyingMarkup}
+                          onClick={handleApplyMarkup}
+                        >
+                          {applyingMarkup
+                            ? "Updating..."
+                            : `Apply ${material.target_markup_percent}% Markup`}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            );
+          })()}
+
+        </Card>
 
       )}
 

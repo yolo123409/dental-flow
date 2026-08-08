@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import PaymentMethodField from "@/components/billing/PaymentMethodField";
 
 import {
   ClinicCharge,
@@ -28,6 +29,12 @@ export default function BillingPage() {
 
   const [selected, setSelected] =
     useState<string[]>([]);
+
+  const [paymentMethod, setPaymentMethod] =
+    useState<string | null>(null);
+
+  const [insuranceProviderId, setInsuranceProviderId] =
+    useState<string | null>(null);
 
   const [currency, setCurrency] =
     useState("KES");
@@ -93,10 +100,16 @@ export default function BillingPage() {
     try {
       await createInvoice(
         patientIds[0],
-        selectedCharges
+        selectedCharges,
+        0,
+        undefined,
+        paymentMethod,
+        insuranceProviderId
       );
 
       setSelected([]);
+      setPaymentMethod(null);
+      setInsuranceProviderId(null);
 
       await loadCharges();
 
@@ -332,6 +345,13 @@ export default function BillingPage() {
               </span>
 
             </div>
+
+            <PaymentMethodField
+              paymentMethod={paymentMethod}
+              onPaymentMethodChange={setPaymentMethod}
+              insuranceProviderId={insuranceProviderId}
+              onInsuranceProviderChange={setInsuranceProviderId}
+            />
 
             <Button
               className="w-full"

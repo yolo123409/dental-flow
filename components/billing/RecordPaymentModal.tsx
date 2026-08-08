@@ -1,14 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import Button from "@/components/ui/Button";
 
 import { recordPayment } from "@/services/billing";
+import { getClinicInsuranceProviders } from "@/services/insurance";
+import { logError } from "@/lib/logError";
+import {
+  BASE_PAYMENT_METHODS,
+  PAYMENT_METHODS_WITH_INSURANCE,
+} from "@/lib/paymentMethods";
+
+import { InsuranceProvider } from "@/types/insurance";
 
 interface Props {
   invoiceId: string;
+
+  // The invoice's own billing arrangement (WHO is responsible) - drives
+  // this modal's defaults, but never determines HOW an individual
+  // payment was actually received: the receptionist can still record a
+  // Cash/M-Pesa/Card/Bank Transfer payment against an insurance invoice
+  // (e.g. a patient copay), and doing so never changes the invoice's own
+  // insurance_provider_id.
+  invoicePaymentMethod: string | null;
+  invoiceInsuranceProviderId: string | null;
+  invoiceInsuranceProviderName: string | null;
+
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -16,15 +35,30 @@ interface Props {
 
 export default function RecordPaymentModal({
   invoiceId,
+  invoicePaymentMethod,
+  invoiceInsuranceProviderId,
+  invoiceInsuranceProviderName,
   open,
   onClose,
   onSuccess,
 }: Props) {
+  const isInsuranceInvoice = invoicePaymentMethod === "Insurance";
+
   const [amount, setAmount] =
     useState("");
 
   const [paymentMethod, setPaymentMethod] =
     useState("Cash");
+
+  // Only used for the legacy fallback case: an insurance invoice that
+  // somehow has no insurance_provider_id set. The normal case never
+  // needs this - the invoice's own provider is used directly.
+  const [fallbackProviders, setFallbackProviders] = useState<
+    InsuranceProvider[]
+  >([]);
+  const [fallbackProviderId, setFallbackProviderId] = useState<
+    string | null
+  >(null);
 
   const [reference, setReference] =
     useState("");
@@ -35,11 +69,49 @@ export default function RecordPaymentModal({
   const [saving, setSaving] =
     useState(false);
 
+  useEffect(() => {
+    if (!open) return;
+
+    setAmount("");
+    setReference("");
+    setNotes("");
+    setFallbackProviderId(null);
+
+    // Default to Insurance for an insurance invoice - the receptionist
+    // can still switch to a normal method for a patient copay.
+    setPaymentMethod(isInsuranceInvoice ? "Insurance" : "Cash");
+
+    if (isInsuranceInvoice && !invoiceInsuranceProviderId) {
+      getClinicInsuranceProviders()
+        .then(setFallbackProviders)
+        .catch((error) => {
+          logError(
+            "[RecordPaymentModal] Failed to load clinic insurance providers:",
+            error
+          );
+        });
+    }
+  }, [open, isInsuranceInvoice, invoiceInsuranceProviderId]);
+
   if (!open) return null;
+
+  const availableMethods = isInsuranceInvoice
+    ? PAYMENT_METHODS_WITH_INSURANCE
+    : BASE_PAYMENT_METHODS;
+
+  const resolvedInsuranceProviderId =
+    paymentMethod === "Insurance"
+      ? invoiceInsuranceProviderId ?? fallbackProviderId
+      : null;
 
   async function handleSave() {
     if (!amount) {
       toast.error("Enter an amount.");
+      return;
+    }
+
+    if (paymentMethod === "Insurance" && !resolvedInsuranceProviderId) {
+      toast.error("Select an insurance provider.");
       return;
     }
 
@@ -51,16 +123,12 @@ export default function RecordPaymentModal({
         Number(amount),
         paymentMethod,
         reference,
-        notes
+        notes,
+        resolvedInsuranceProviderId
       );
 
       onSuccess();
       onClose();
-
-      setAmount("");
-      setReference("");
-      setNotes("");
-      setPaymentMethod("Cash");
 
       toast.success("Payment recorded.");
     } catch (error) {
@@ -104,11 +172,40 @@ export default function RecordPaymentModal({
               setPaymentMethod(e.target.value)
             }
           >
-            <option>Cash</option>
-            <option>M-Pesa</option>
-            <option>Card</option>
-            <option>Bank Transfer</option>
+            {availableMethods.map((method) => (
+              <option key={method}>{method}</option>
+            ))}
           </select>
+
+          {paymentMethod === "Insurance" && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-600">
+                Insurance Provider
+              </label>
+
+              {invoiceInsuranceProviderId ? (
+                <p className="rounded-lg border bg-slate-50 p-3 text-slate-700">
+                  {invoiceInsuranceProviderName ?? "Unknown provider"}
+                </p>
+              ) : (
+                <select
+                  className="w-full rounded-lg border p-3"
+                  value={fallbackProviderId ?? ""}
+                  onChange={(e) =>
+                    setFallbackProviderId(e.target.value || null)
+                  }
+                >
+                  <option value="">Select a provider</option>
+
+                  {fallbackProviders.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
 
           <input
             className="w-full rounded-lg border p-3"

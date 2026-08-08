@@ -9,6 +9,7 @@ import {
   RevenueChartPoint,
 } from "@/services/analytics/charts";
 import { getClinicSettings } from "@/services/settings";
+import { getExpenseSummary } from "@/services/expenses";
 import useRealtimeDashboard from "@/hooks/useRealtimeDashboard";
 import { logError } from "@/lib/logError";
 
@@ -42,6 +43,12 @@ export default function AdminDashboard() {
   >([]);
 
   const [currency, setCurrency] = useState("KES");
+
+  const [breakEven, setBreakEven] = useState<number | null>(null);
+
+  const [moneyOut, setMoneyOut] = useState(0);
+  const [moneyOutLoading, setMoneyOutLoading] = useState(true);
+  const [moneyOutError, setMoneyOutError] = useState<string | null>(null);
 
   const [clinicName, setClinicName] = useState<
     string | undefined
@@ -89,6 +96,7 @@ export default function AdminDashboard() {
       setRevenueChart(chartData);
       setCurrency(clinicSettings.currency || "KES");
       setClinicName(clinicSettings.clinic_name);
+      setBreakEven(clinicSettings.monthly_break_even_revenue);
 
       setTaxCollected(
         clinicSettings.tax_enabled
@@ -108,6 +116,30 @@ export default function AdminDashboard() {
       );
     } finally {
       setRevenueLoading(false);
+    }
+
+    // Isolated in its own try/catch, matching the revenue block above -
+    // a Money Out failure shouldn't take down the rest of the dashboard.
+    try {
+      setMoneyOutLoading(true);
+      setMoneyOutError(null);
+
+      const summary = await getExpenseSummary("This Month");
+
+      setMoneyOut(summary.total);
+    } catch (error) {
+      logError(
+        "[dashboard page] Failed to load Money Out widget:",
+        error
+      );
+
+      setMoneyOutError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load Money Out."
+      );
+    } finally {
+      setMoneyOutLoading(false);
     }
   }, []);
 
@@ -145,6 +177,10 @@ export default function AdminDashboard() {
       <DashboardWidgets
         revenue={revenue}
         taxCollected={taxCollected}
+        breakEven={breakEven}
+        moneyOut={moneyOut}
+        moneyOutLoading={moneyOutLoading}
+        moneyOutError={moneyOutError}
         revenueChart={revenueChart}
         currency={currency}
         revenueLoading={revenueLoading}

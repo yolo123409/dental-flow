@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
@@ -9,6 +10,8 @@ import FormInput from "@/components/ui/FormInput";
 import FormTextarea from "@/components/ui/FormTextarea";
 import PermissionGuard from "@/components/auth/PermissionGuard";
 import ClinicLogoUploader from "@/components/settings/ClinicLogoUploader";
+import ExpenseCategoriesManager from "@/components/settings/ExpenseCategoriesManager";
+import InsuranceProviderChecklist from "@/components/insurance/InsuranceProviderChecklist";
 
 import {
   ClinicSettings,
@@ -17,6 +20,14 @@ import {
   uploadClinicLogo,
   removeClinicLogo,
 } from "@/services/settings";
+import {
+  getInsuranceProviders,
+  getClinicInsuranceProviders,
+  updateClinicInsuranceProviders,
+} from "@/services/insurance";
+import { getCurrentClinicId } from "@/services/clinic";
+
+import { InsuranceProvider } from "@/types/insurance";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -128,6 +139,81 @@ function SettingsPageContent() {
   const [fieldErrors, setFieldErrors] =
     useState<FieldErrors>({});
 
+  const [clinicId, setClinicId] =
+    useState<string | null>(null);
+
+  const [insuranceProviders, setInsuranceProviders] =
+    useState<InsuranceProvider[]>([]);
+
+  const [selectedInsuranceIds, setSelectedInsuranceIds] =
+    useState<string[]>([]);
+
+  const [savingInsurance, setSavingInsurance] =
+    useState(false);
+
+  // Deliberately separate from the shared `settings`/isDirty machinery
+  // above (same reasoning as Insurance Providers' own local state) - it
+  // has its own Save button, so folding it into the combined Clinic
+  // Profile/Tax dirty-check would leave "unsaved changes" stuck on after
+  // a successful save here.
+  const [breakEvenInput, setBreakEvenInput] = useState("");
+  const [savingBreakEven, setSavingBreakEven] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setBreakEvenInput(
+        settings.monthly_break_even_revenue == null
+          ? ""
+          : String(settings.monthly_break_even_revenue)
+      );
+    }
+  }, [settings]);
+
+  async function handleSaveBreakEven() {
+    if (savingBreakEven) return;
+
+    const trimmed = breakEvenInput.trim();
+
+    let value: number | null = null;
+
+    if (trimmed) {
+      value = Number(trimmed);
+
+      if (Number.isNaN(value)) {
+        toast.error("Enter a valid number.");
+        return;
+      }
+
+      if (value < 0) {
+        toast.error("Monthly break-even revenue cannot be negative.");
+        return;
+      }
+    }
+
+    try {
+      setSavingBreakEven(true);
+
+      const updated = await saveClinicSettings({
+        monthly_break_even_revenue: value,
+      });
+
+      setSettings(updated);
+      savedSnapshotRef.current = updated;
+
+      toast.success("Financial target saved.");
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save financial target."
+      );
+    } finally {
+      setSavingBreakEven(false);
+    }
+  }
+
   const isDirty =
     settings !== null &&
     savedSnapshotRef.current !== null &&
@@ -158,7 +244,67 @@ function SettingsPageContent() {
 
   useEffect(() => {
     loadSettings();
+    loadInsurance();
   }, []);
+
+  async function loadInsurance() {
+    try {
+      const id = await getCurrentClinicId();
+
+      setClinicId(id);
+
+      const [master, accepted] = await Promise.all([
+        getInsuranceProviders(),
+        getClinicInsuranceProviders(id),
+      ]);
+
+      setInsuranceProviders(master);
+      setSelectedInsuranceIds(
+        accepted.map((provider) => provider.id)
+      );
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load insurance providers."
+      );
+    }
+  }
+
+  function toggleInsuranceProvider(providerId: string) {
+    setSelectedInsuranceIds((prev) =>
+      prev.includes(providerId)
+        ? prev.filter((id) => id !== providerId)
+        : [...prev, providerId]
+    );
+  }
+
+  async function handleSaveInsurance() {
+    if (!clinicId || savingInsurance) return;
+
+    try {
+      setSavingInsurance(true);
+
+      await updateClinicInsuranceProviders(
+        clinicId,
+        selectedInsuranceIds
+      );
+
+      toast.success("Insurance providers updated.");
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to update insurance providers."
+      );
+    } finally {
+      setSavingInsurance(false);
+    }
+  }
 
   // Warn on tab close/refresh only - intentionally not intercepting
   // in-app navigation (Link clicks), which would need a more involved
@@ -590,6 +736,89 @@ function SettingsPageContent() {
           </Button>
 
         </div>
+
+      </Card>
+
+      <div id="financial-targets" className="scroll-mt-8">
+        <Card title="Financial Targets">
+
+          <h3 className="mb-1 font-semibold text-graphite">
+            Monthly Break-Even Revenue
+          </h3>
+
+          <p className="mb-4 text-sm text-mineral">
+            Set the minimum monthly revenue your clinic needs to cover its
+            operating costs. DentalFlow will compare this against your
+            monthly revenue on the Dashboard.
+          </p>
+
+          <div className="max-w-xs">
+            <FormInput
+              label={`Monthly Break-Even Revenue (${settings?.currency ?? "KES"})`}
+              type="number"
+              value={breakEvenInput}
+              placeholder="e.g. 500000"
+              onChange={setBreakEvenInput}
+            />
+          </div>
+
+          <div className="mt-6 flex items-center justify-end gap-3">
+
+            <Button
+              onClick={handleSaveBreakEven}
+              disabled={savingBreakEven}
+            >
+              {savingBreakEven ? "Saving..." : "Save"}
+            </Button>
+
+          </div>
+
+        </Card>
+      </div>
+
+      <Card title="Expense Categories">
+        <ExpenseCategoriesManager />
+      </Card>
+
+      <Card title="Insurance Providers">
+
+        <p className="mb-4 text-sm text-mineral">
+          Choose the insurance providers your clinic currently
+          accepts.
+        </p>
+
+        <InsuranceProviderChecklist
+          providers={insuranceProviders}
+          selectedIds={selectedInsuranceIds}
+          onToggle={toggleInsuranceProvider}
+        />
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+
+          <Button
+            onClick={handleSaveInsurance}
+            disabled={savingInsurance}
+          >
+            {savingInsurance ? "Saving..." : "Save Changes"}
+          </Button>
+
+        </div>
+
+      </Card>
+
+      <Card title="Procurement Templates">
+
+        <p className="mb-4 text-sm text-mineral">
+          Customize your Purchase Order and Goods Received Note document
+          prefixes, headers, footers, and custom fields.
+        </p>
+
+        <Link
+          href="/admin/inventory/settings"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-sea-glass bg-enamel px-4 py-2.5 text-sm font-semibold text-graphite transition-colors hover:bg-porcelain"
+        >
+          Open Procurement Settings
+        </Link>
 
       </Card>
 

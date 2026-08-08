@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
+import PaymentMethodField from "@/components/billing/PaymentMethodField";
 
 import {
   billTreatmentPlanItems,
@@ -43,6 +44,12 @@ export default function CreateInvoiceFromPlanModal({
     string[]
   >([]);
 
+  const [paymentMethod, setPaymentMethod] =
+    useState<string | null>(null);
+
+  const [insuranceProviderId, setInsuranceProviderId] =
+    useState<string | null>(null);
+
   const [creating, setCreating] = useState(false);
 
   const [clinicSettings, setClinicSettings] =
@@ -52,6 +59,9 @@ export default function CreateInvoiceFromPlanModal({
 
   useEffect(() => {
     if (!open) return;
+
+    setPaymentMethod(null);
+    setInsuranceProviderId(null);
 
     getClinicSettings()
       .then(setClinicSettings)
@@ -151,7 +161,11 @@ export default function CreateInvoiceFromPlanModal({
       const invoice = await billTreatmentPlanItems(
         plan,
         scope,
-        selectedIds
+        selectedIds,
+        0,
+        undefined,
+        paymentMethod,
+        insuranceProviderId
       );
 
       await onInvoiced();
@@ -319,6 +333,13 @@ export default function CreateInvoiceFromPlanModal({
               <span>{formatCurrency(totals.total)}</span>
             </div>
           </div>
+
+          <PaymentMethodField
+            paymentMethod={paymentMethod}
+            onPaymentMethodChange={setPaymentMethod}
+            insuranceProviderId={insuranceProviderId}
+            onInsuranceProviderChange={setInsuranceProviderId}
+          />
         </div>
       )}
     </Modal>

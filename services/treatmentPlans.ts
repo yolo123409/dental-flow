@@ -394,7 +394,9 @@ export async function billTreatmentPlanItems(
   scope: InvoiceScope,
   selectedItemIds: string[] = [],
   discount = 0,
-  notes?: string
+  notes?: string,
+  paymentMethod?: string | null,
+  insuranceProviderId?: string | null
 ) {
   const clinicId = await getCurrentClinicId();
 
@@ -460,7 +462,9 @@ export async function billTreatmentPlanItems(
     plan.patient_id,
     charges,
     discount,
-    notes
+    notes,
+    paymentMethod,
+    insuranceProviderId
   );
 }
 

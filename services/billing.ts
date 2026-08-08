@@ -34,6 +34,17 @@ export interface ClinicInvoice {
 
   notes: string | null;
 
+  // Billing arrangement - who/how this invoice is billed, chosen once at
+  // creation time. Independent of clinic_payments.payment_method (actual
+  // money received, possibly across several payments over time).
+  payment_method: string | null;
+
+  insurance_provider_id: string | null;
+
+  // Joined display name for insurance_provider_id - present whenever the
+  // select list requests it (getInvoices/getInvoice both do).
+  insurance_provider?: { name: string } | null;
+
   // Snapshot of the clinic's tax config at the moment this invoice was
   // created - never re-read from live clinic_settings, so a later change
   // to the clinic's tax rate/name/mode never alters how a past invoice
@@ -76,6 +87,13 @@ export interface ClinicPayment {
 
   payment_method: string;
 
+  // How THIS payment was received - independent of the invoice's own
+  // insurance_provider_id (an invoice can have several payments, e.g. an
+  // Insurance payment plus a separate M-Pesa patient copay).
+  insurance_provider_id: string | null;
+
+  insurance_provider?: { name: string } | null;
+
   reference: string | null;
 
   notes: string | null;
@@ -116,7 +134,7 @@ export async function getInvoices() {
   const { data, error } =
     await supabase
       .from("clinic_invoices")
-      .select("*")
+      .select("*, insurance_provider:insurance_providers(name)")
       .eq("clinic_id", clinicId)
       .order("created_at", {
         ascending: false,
@@ -177,6 +195,9 @@ export async function getInvoice(
       .from("clinic_invoices")
       .select(`
         *,
+        insurance_provider:insurance_providers (
+          name
+        ),
         patients (
           id,
           first_name,
@@ -188,7 +209,10 @@ export async function getInvoice(
           *
         ),
         clinic_payments (
-          *
+          *,
+          insurance_provider:insurance_providers (
+            name
+          )
         )
       `)
       .eq("clinic_id", clinicId)
@@ -321,8 +345,19 @@ export async function createInvoice(
   patientId: string,
   charges: ChargeSelection[],
   discount = 0,
-  notes?: string
+  notes?: string,
+  paymentMethod?: string | null,
+  insuranceProviderId?: string | null
 ) {
+  // Mirrors the DB's clinic_invoices_insurance_provider_requires_method
+  // constraint - checked here too so a missing provider produces a clear
+  // toast instead of a raw constraint-violation message reaching the UI.
+  if (paymentMethod === "Insurance" && !insuranceProviderId) {
+    throw new Error(
+      "Select an insurance provider to bill this invoice through insurance."
+    );
+  }
+
   const [clinicId, invoiceNumber, clinicSettings] =
     await Promise.all([
       getCurrentClinicId(),
@@ -374,6 +409,11 @@ export async function createInvoice(
       balance,
       status: "Unpaid",
       notes: notes ?? null,
+      payment_method: paymentMethod ?? null,
+      insurance_provider_id:
+        paymentMethod === "Insurance"
+          ? insuranceProviderId
+          : null,
       tax_enabled: taxSettings.enabled,
       tax_name: taxSettings.name,
       tax_rate: taxSettings.rate,
@@ -509,8 +549,18 @@ export async function recordPayment(
   amount: number,
   paymentMethod: string,
   reference?: string,
-  notes?: string
+  notes?: string,
+  insuranceProviderId?: string | null
 ) {
+  // Mirrors clinic_payments_insurance_provider_requires_method - checked
+  // here too so a missing provider produces a clear toast instead of a
+  // raw constraint-violation message.
+  if (paymentMethod === "Insurance" && !insuranceProviderId) {
+    throw new Error(
+      "Select an insurance provider to record this payment as insurance."
+    );
+  }
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -555,6 +605,11 @@ export async function recordPayment(
 
       payment_method:
         paymentMethod,
+
+      insurance_provider_id:
+        paymentMethod === "Insurance"
+          ? insuranceProviderId
+          : null,
 
       reference:
         reference ?? null,

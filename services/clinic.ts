@@ -28,24 +28,49 @@ interface CreateClinicWithAdminInput {
   fullName: string;
   email: string;
   phone?: string;
+  organizationId?: string;
+  insuranceProviderIds?: string[];
 }
 
 export async function createClinicWithAdmin(
   input: CreateClinicWithAdminInput
 ) {
+  // Fail fast, before the RPC call: p_owner_full_name/p_owner_email have
+  // no default on the database side, and a JS `undefined` value here would
+  // be silently dropped from the outgoing JSON body entirely (JSON.stringify
+  // omits undefined-valued keys, unlike null) rather than sent as null -
+  // PostgREST then reports "could not find the function" with those
+  // parameter names simply missing, which is confusing to debug from the
+  // error alone.
+  if (!input.fullName || !input.fullName.trim()) {
+    throw new Error(
+      "Missing owner full name - cannot create clinic without it."
+    );
+  }
+
+  if (!input.email || !input.email.trim()) {
+    throw new Error(
+      "Missing owner email - cannot create clinic without it."
+    );
+  }
+
+  const rpcParams = {
+    p_clinic_name: input.clinicName,
+    p_owner_full_name: input.fullName,
+    p_owner_email: input.email,
+    p_owner_phone: input.phone ?? null,
+    p_organization_id: input.organizationId ?? null,
+    p_insurance_provider_ids: input.insuranceProviderIds ?? [],
+  };
+
   console.log(
-    "[onboarding] calling supabase.rpc('create_clinic_with_admin')",
-    input
+    "[onboarding] calling supabase.rpc('create_clinic_with_admin') with params:",
+    rpcParams
   );
 
   const { data, error } = await supabase.rpc(
     "create_clinic_with_admin",
-    {
-      p_clinic_name: input.clinicName,
-      p_owner_full_name: input.fullName,
-      p_owner_email: input.email,
-      p_owner_phone: input.phone ?? null,
-    }
+    rpcParams
   );
 
   if (error) {
@@ -91,6 +116,9 @@ export async function provisionPendingClinicIfNeeded() {
   const pendingFullName = user.user_metadata
     ?.pending_full_name as string | undefined;
 
+  const pendingInsuranceProviderIds = user.user_metadata
+    ?.pending_insurance_provider_ids as string[] | undefined;
+
   if (!pendingClinicName || !pendingFullName) {
     console.log(
       "[onboarding] provisionPendingClinicIfNeeded: no pending clinic metadata on this user, skipping"
@@ -119,6 +147,7 @@ export async function provisionPendingClinicIfNeeded() {
       clinicName: pendingClinicName,
       fullName: pendingFullName,
       email: user.email ?? "",
+      insuranceProviderIds: pendingInsuranceProviderIds ?? [],
     });
   } catch (error) {
     // A concurrent call (e.g. the signup form's direct call racing with

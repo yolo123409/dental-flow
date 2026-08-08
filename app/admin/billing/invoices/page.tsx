@@ -145,6 +145,13 @@ export default function InvoiceListPage() {
                       }
                     </p>
 
+                    {invoice.payment_method === "Insurance" &&
+                      invoice.insurance_provider?.name && (
+                        <p className="text-xs text-slate-500">
+                          Insurance · {invoice.insurance_provider.name}
+                        </p>
+                      )}
+
                   </div>
 
                 </Link>

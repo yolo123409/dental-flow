@@ -40,6 +40,7 @@ import {
   getStockStatus,
   getExpiryStatus,
   getRecentMovements,
+  calculateMarkupFromPrices,
 } from "@/services/inventory";
 
 type StatusFilter =
@@ -837,6 +838,14 @@ function InventoryPageContent() {
                   </th>
 
                   <th className="px-6 py-4 text-right text-sm font-semibold">
+                    Markup
+                  </th>
+
+                  <th className="px-6 py-4 text-right text-sm font-semibold">
+                    Selling Price
+                  </th>
+
+                  <th className="px-6 py-4 text-right text-sm font-semibold">
                     Inventory Value
                   </th>
 
@@ -917,6 +926,27 @@ function InventoryPageContent() {
                         {formatCurrency(
                           costPerUnit
                         )}
+                      </td>
+
+                      <td className="px-6 py-5 text-right">
+                        {(() => {
+                          if (item.selling_price == null) return "—";
+
+                          const impliedMarkup = calculateMarkupFromPrices(
+                            costPerUnit,
+                            item.selling_price
+                          );
+
+                          return impliedMarkup != null
+                            ? `${impliedMarkup}%`
+                            : "—";
+                        })()}
+                      </td>
+
+                      <td className="px-6 py-5 text-right">
+                        {item.selling_price != null
+                          ? formatCurrency(item.selling_price)
+                          : "—"}
                       </td>
 
                       <td className="px-6 py-5 text-right font-semibold">

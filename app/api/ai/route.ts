@@ -31,10 +31,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // A user can now have more than one clinic_users row (organization
+    // members who've switched into multiple branches) - .limit(1) avoids
+    // a hard crash on 2+ rows. This route has no concept of "which branch
+    // is active" (it's a stateless API route, not the browser session
+    // that tracks that), so for a multi-branch user it may pick a
+    // different branch than the one they're actively working in - low
+    // severity for this AI-receptionist config lookup (wrong branch's
+    // persona, not a cross-tenant leak), not fully solved here.
     const { data: clinicUser } = await supabaseAdmin
       .from("clinic_users")
       .select("clinic_id")
       .eq("auth_user_id", user.id)
+      .limit(1)
       .maybeSingle();
 
     if (!clinicUser?.clinic_id) {

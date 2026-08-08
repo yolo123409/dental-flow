@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { roundMoney } from "@/lib/currency";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
@@ -27,9 +28,63 @@ export interface ClinicInventoryItem {
 
   notes: string | null;
 
+  // Pricing (all nullable - NULL means not configured yet, never treated as 0).
+  selling_price: number | null;
+  target_markup_percent: number | null;
+  priced_at_cost: number | null;
+
   created_at: string;
 
   updated_at: string;
+}
+
+/**
+ * Rounds a percentage to one decimal place - matches the precision shown
+ * throughout the spec ("28.6%", "33.3%"). Money uses roundMoney (2dp)
+ * everywhere else in this module.
+ */
+function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * Pure pricing math, deliberately kept in one place and reused by the
+ * item form, the list page, and the detail page - no DB access here.
+ * "Current markup"/gross margin are ALWAYS computed live from
+ * cost_per_unit/selling_price, never read from a stored percentage
+ * (target_markup_percent is a separate, intentionally stale "what the
+ * clinic last intended" value - see services/inventory.ts callers).
+ */
+export function calculateSellingPriceFromMarkup(
+  cost: number,
+  markupPercent: number
+): number {
+  return roundMoney(cost * (1 + markupPercent / 100));
+}
+
+export function calculateMarkupFromPrices(
+  cost: number,
+  sellingPrice: number
+): number | null {
+  if (cost <= 0) return null;
+
+  return roundPercent(((sellingPrice - cost) / cost) * 100);
+}
+
+export function calculateGrossMargin(
+  cost: number,
+  sellingPrice: number
+): number | null {
+  if (sellingPrice <= 0) return null;
+
+  return roundPercent(((sellingPrice - cost) / sellingPrice) * 100);
+}
+
+export function calculateGrossProfitPerUnit(
+  cost: number,
+  sellingPrice: number
+): number {
+  return roundMoney(sellingPrice - cost);
 }
 
 export type StockStatus =
@@ -219,6 +274,9 @@ export interface InventoryItemInput {
   batch_number: string | null;
   expiry_date: string | null;
   notes: string | null;
+  selling_price?: number | null;
+  target_markup_percent?: number | null;
+  priced_at_cost?: number | null;
 }
 
 export async function createInventoryItem(
@@ -252,6 +310,10 @@ export async function createInventoryItem(
 
         notes:
           input.notes?.trim() || null,
+
+        selling_price: input.selling_price ?? null,
+        target_markup_percent: input.target_markup_percent ?? null,
+        priced_at_cost: input.priced_at_cost ?? null,
       })
       .select()
       .single();
@@ -319,6 +381,10 @@ export async function updateInventoryItem(
         notes:
           input.notes?.trim() || null,
 
+        selling_price: input.selling_price ?? null,
+        target_markup_percent: input.target_markup_percent ?? null,
+        priced_at_cost: input.priced_at_cost ?? null,
+
         updated_at:
           new Date().toISOString(),
       })
@@ -327,6 +393,40 @@ export async function updateInventoryItem(
 
   if (error) {
     logError("[inventory] updateInventoryItem failed:", error);
+
+    throw toError(error);
+  }
+}
+
+/**
+ * Pricing-only update, used by the detail page's standalone "Apply
+ * Markup" action (and any other quick-price interaction) that doesn't
+ * have the rest of the item's metadata loaded into an edit form - mirrors
+ * updateInventoryItem's clinic-scoped update shape exactly.
+ */
+export async function updateInventoryItemPricing(
+  id: string,
+  input: {
+    selling_price: number | null;
+    target_markup_percent: number | null;
+    priced_at_cost: number | null;
+  }
+): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
+  const { error } = await supabase
+    .from("clinic_inventory_items")
+    .update({
+      selling_price: input.selling_price,
+      target_markup_percent: input.target_markup_percent,
+      priced_at_cost: input.priced_at_cost,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("clinic_id", clinicId)
+    .eq("id", id);
+
+  if (error) {
+    logError("[inventory] updateInventoryItemPricing failed:", error);
 
     throw toError(error);
   }

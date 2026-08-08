@@ -11,9 +11,9 @@ export interface RevenueChartPoint {
   tax: number;
 }
 
-type Granularity = "hour" | "day" | "month";
+export type Granularity = "hour" | "day" | "month";
 
-function granularityFor(range: string): Granularity {
+export function granularityFor(range: string): Granularity {
   if (range === "Today") return "hour";
 
   if (range === "7 Days" || range === "30 Days") return "day";

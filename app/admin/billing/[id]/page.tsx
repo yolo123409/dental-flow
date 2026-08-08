@@ -312,6 +312,39 @@ async function downloadPDF() {
 
                     </div>
 
+                    {invoice.payment_method && (
+
+                      <div className="flex justify-between">
+
+                        <span>
+                          Payment Method
+                        </span>
+
+                        <span className="font-medium">
+                          {invoice.payment_method}
+                        </span>
+
+                      </div>
+
+                    )}
+
+                    {invoice.payment_method === "Insurance" &&
+                      invoice.insurance_provider?.name && (
+
+                        <div className="flex justify-between">
+
+                          <span>
+                            Insurance Provider
+                          </span>
+
+                          <span className="font-medium">
+                            {invoice.insurance_provider.name}
+                          </span>
+
+                        </div>
+
+                      )}
+
                     {invoice.tax_enabled &&
                       invoice.tax_registration_number && (
 
@@ -436,9 +469,21 @@ async function downloadPDF() {
 
                       <div>
 
-                        <p className="font-medium">
-                          {payment.payment_method}
-                        </p>
+                        {payment.payment_method === "Insurance" &&
+                        payment.insurance_provider?.name ? (
+                          <>
+                            <p className="font-medium">
+                              {payment.insurance_provider.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Insurance
+                            </p>
+                          </>
+                        ) : (
+                          <p className="font-medium">
+                            {payment.payment_method}
+                          </p>
+                        )}
 
                         <p className="text-sm text-slate-500">
                           {new Date(
@@ -651,6 +696,11 @@ async function downloadPDF() {
 
       <RecordPaymentModal
         invoiceId={invoice.id}
+        invoicePaymentMethod={invoice.payment_method}
+        invoiceInsuranceProviderId={invoice.insurance_provider_id}
+        invoiceInsuranceProviderName={
+          invoice.insurance_provider?.name ?? null
+        }
         open={showPaymentModal}
         onClose={() =>
           setShowPaymentModal(false)
