@@ -5,6 +5,7 @@ import { ChevronDown, Search, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { setStoredActiveClinicId } from "@/services/clinicUsers";
 
 import {
   getMyOrganization,
@@ -112,6 +113,16 @@ export default function BranchSwitcher() {
 
   function handleSelectAllBranches() {
     setOpen(false);
+
+    // Without this, AuthContext.loadProfile() re-resolves the stale
+    // stored clinic on the reload below (getCurrentClinicUser() still
+    // finds it) and sets `profile` right back to it - "All Branches"
+    // mode is only entered when nothing is stored (see the
+    // `if (orgData && !getStoredActiveClinicId())` check in
+    // contexts/AuthContext.tsx), so clearing here is what actually makes
+    // the mode switch stick instead of silently reverting to whichever
+    // branch was active before.
+    setStoredActiveClinicId(null);
 
     window.location.href = "/admin/organization/overview";
   }

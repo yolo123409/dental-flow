@@ -65,6 +65,8 @@ export async function updateExpenseCategory(
   id: string,
   input: ExpenseCategoryInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_expense_categories")
     .update({
@@ -72,7 +74,8 @@ export async function updateExpenseCategory(
       description: input.description ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[expenseCategories] updateExpenseCategory failed:", error);
@@ -82,10 +85,13 @@ export async function updateExpenseCategory(
 }
 
 export async function archiveExpenseCategory(id: string): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_expense_categories")
     .update({ active: false, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[expenseCategories] archiveExpenseCategory failed:", error);
@@ -95,10 +101,13 @@ export async function archiveExpenseCategory(id: string): Promise<void> {
 }
 
 export async function reactivateExpenseCategory(id: string): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_expense_categories")
     .update({ active: true, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[expenseCategories] reactivateExpenseCategory failed:", error);

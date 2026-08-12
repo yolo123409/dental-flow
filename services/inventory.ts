@@ -327,13 +327,13 @@ export async function createInventoryItem(
   const item = data as ClinicInventoryItem;
 
   if (input.quantity > 0) {
-    await recordMovement({
+    await recordInitialStockMovement({
       clinicId,
       inventoryItemId: item.id,
-      quantityChange: input.quantity,
-      quantityBefore: 0,
-      quantityAfter: input.quantity,
-      reason: "Initial Stock",
+      quantity: input.quantity,
+      batchNumber: input.batch_number,
+      expiryDate: input.expiry_date,
+      unitCost: input.cost_per_unit,
     });
   }
 
@@ -433,7 +433,8 @@ export async function updateInventoryItemPricing(
 }
 
 /* -------------------------------------- */
-/* Adjust Stock                           */
+/* Adjust Stock (atomic - see migration   */
+/* 0042/adjust_inventory_stock)           */
 /* -------------------------------------- */
 
 export type MovementReason =
@@ -442,13 +443,33 @@ export type MovementReason =
   | "Damaged"
   | "Expired"
   | "Correction"
+  | "Returned to Supplier"
   | "Other";
 
+export interface AdjustStockExtras {
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  supplierId?: string | null;
+  patientId?: string | null;
+  treatmentId?: string | null;
+  reference?: string | null;
+}
+
+/**
+ * Every non-GRN stock change (manual adjustments, consumption, damage,
+ * returns to supplier) goes through this one RPC, which updates the
+ * item's quantity and inserts its movement row in a single transaction -
+ * closing the two-network-call gap the previous version of this function
+ * had (see migration 0042's header comment). The public signature is
+ * unchanged for existing callers (AdjustStockModal); `extras` is new and
+ * optional.
+ */
 export async function adjustStock(
   id: string,
   delta: number,
   reason: MovementReason,
-  notes?: string
+  notes?: string,
+  extras: AdjustStockExtras = {}
 ): Promise<ClinicInventoryItem> {
   if (delta === 0) {
     throw new Error(
@@ -456,68 +477,84 @@ export async function adjustStock(
     );
   }
 
-  const clinicId =
-    await getCurrentClinicId();
-
-  const {
-    data: current,
-    error: fetchError,
-  } = await supabase
-    .from("clinic_inventory_items")
-    .select("quantity")
-    .eq("clinic_id", clinicId)
-    .eq("id", id)
-    .single();
-
-  if (fetchError) {
-    logError("[inventory] adjustStock (load item) failed:", fetchError);
-
-    throw toError(fetchError);
-  }
-
-  const quantityBefore = Number(
-    current.quantity
+  const { data, error } = await supabase.rpc(
+    "adjust_inventory_stock",
+    {
+      p_item_id: id,
+      p_delta: delta,
+      p_reason: reason,
+      p_notes: notes ?? null,
+      p_batch_number: extras.batchNumber ?? null,
+      p_expiry_date: extras.expiryDate ?? null,
+      p_supplier_id: extras.supplierId ?? null,
+      p_patient_id: extras.patientId ?? null,
+      p_treatment_id: extras.treatmentId ?? null,
+      p_reference: extras.reference ?? null,
+    }
   );
 
-  const newQuantity = quantityBefore + delta;
-
-  if (newQuantity < 0) {
-    throw new Error(
-      `Cannot remove more than the current stock (${quantityBefore} available).`
-    );
-  }
-
-  const { data, error } =
-    await supabase
-      .from("clinic_inventory_items")
-      .update({
-        quantity: newQuantity,
-
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq("clinic_id", clinicId)
-      .eq("id", id)
-      .select()
-      .single();
-
   if (error) {
-    logError("[inventory] adjustStock (update) failed:", error);
+    logError("[inventory] adjustStock failed:", error);
 
     throw toError(error);
   }
 
-  await recordMovement({
-    clinicId,
-    inventoryItemId: id,
-    quantityChange: delta,
-    quantityBefore,
-    quantityAfter: newQuantity,
-    reason,
-    notes,
-  });
-
   return data as ClinicInventoryItem;
+}
+
+/**
+ * Record material used on a patient/treatment - always a decrease, reason
+ * fixed to "Used". Patient and treatment are both optional per the spec
+ * (section 11): this must work identically with neither selected.
+ */
+export async function recordConsumption(
+  id: string,
+  quantity: number,
+  options: {
+    notes?: string;
+    patientId?: string | null;
+    treatmentId?: string | null;
+    batchNumber?: string | null;
+  } = {}
+): Promise<ClinicInventoryItem> {
+  if (quantity <= 0) {
+    throw new Error("Enter a quantity greater than 0.");
+  }
+
+  return adjustStock(id, -quantity, "Used", options.notes, {
+    patientId: options.patientId,
+    treatmentId: options.treatmentId,
+    batchNumber: options.batchNumber,
+  });
+}
+
+/**
+ * Record stock physically sent back to a supplier - a supplier is
+ * required (unlike consumption/damage), matching spec section 12.
+ */
+export async function returnToSupplier(
+  id: string,
+  quantity: number,
+  supplierId: string,
+  options: {
+    reference?: string;
+    notes?: string;
+    batchNumber?: string | null;
+  } = {}
+): Promise<ClinicInventoryItem> {
+  if (quantity <= 0) {
+    throw new Error("Enter a quantity greater than 0.");
+  }
+
+  if (!supplierId) {
+    throw new Error("Select a supplier.");
+  }
+
+  return adjustStock(id, -quantity, "Returned to Supplier", options.notes, {
+    supplierId,
+    reference: options.reference,
+    batchNumber: options.batchNumber,
+  });
 }
 
 /* -------------------------------------- */
@@ -567,6 +604,15 @@ export interface InventoryMovement {
 
   notes: string | null;
 
+  unit_cost: number | null;
+  batch_number: string | null;
+  expiry_date: string | null;
+  supplier_id: string | null;
+  patient_id: string | null;
+  treatment_id: string | null;
+  reference: string | null;
+  grn_id: string | null;
+
   created_by: string | null;
 
   created_at: string;
@@ -579,16 +625,37 @@ export interface InventoryMovement {
     name: string;
     unit: string;
   } | null;
+
+  clinic_suppliers?: {
+    name: string;
+  } | null;
+
+  patients?: {
+    first_name: string;
+    last_name: string;
+  } | null;
+
+  clinic_treatments?: {
+    name: string;
+  } | null;
 }
 
-async function recordMovement(params: {
+/**
+ * Used only by createInventoryItem for the one-time "Initial Stock" entry
+ * created alongside a brand-new item - every other movement (adjustments,
+ * consumption, damage, returns, GRN receipts) goes through the atomic
+ * adjust_inventory_stock/confirm_grn_receipt RPCs instead. There's no
+ * existing quantity to race against here (the item row was just created
+ * in the previous call with its initial quantity already set), so this
+ * stays a plain insert rather than needing its own RPC.
+ */
+async function recordInitialStockMovement(params: {
   clinicId: string;
   inventoryItemId: string;
-  quantityChange: number;
-  quantityBefore: number;
-  quantityAfter: number;
-  reason: string;
-  notes?: string;
+  quantity: number;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  unitCost: number;
 }) {
   const actor = await getCurrentClinicUser();
 
@@ -596,61 +663,92 @@ async function recordMovement(params: {
     .from("clinic_inventory_movements")
     .insert({
       clinic_id: params.clinicId,
-
-      inventory_item_id:
-        params.inventoryItemId,
-
-      movement_type:
-        params.quantityChange > 0
-          ? "Increase"
-          : "Decrease",
-
-      quantity_change:
-        params.quantityChange,
-
-      quantity_before:
-        params.quantityBefore,
-      quantity_after:
-        params.quantityAfter,
-
-      reason: params.reason,
-      notes: params.notes?.trim() || null,
-
+      inventory_item_id: params.inventoryItemId,
+      movement_type: "Increase",
+      quantity_change: params.quantity,
+      quantity_before: 0,
+      quantity_after: params.quantity,
+      reason: "Initial Stock",
+      batch_number: params.batchNumber?.trim() || null,
+      expiry_date: params.expiryDate || null,
+      unit_cost: params.unitCost,
       created_by: actor?.id ?? null,
     });
 
   if (error) {
-    logError("[inventory] recordMovement failed:", error);
+    logError("[inventory] recordInitialStockMovement failed:", error);
 
     throw toError(error);
   }
 }
 
+const MOVEMENT_DETAIL_SELECT = `
+  *,
+  clinic_users ( full_name ),
+  clinic_suppliers ( name ),
+  patients ( first_name, last_name ),
+  clinic_treatments ( name )
+`;
+
+export interface MovementHistoryFilters {
+  // Widened to string (rather than MovementReason) because the ledger can
+  // also contain "Initial Stock", a system-recorded reason that isn't one
+  // of the user-selectable adjustment reasons in MovementReason.
+  reason?: string;
+  batchNumber?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface MovementHistoryPage {
+  rows: InventoryMovement[];
+  count: number;
+}
+
+const DEFAULT_HISTORY_PAGE_SIZE = 25;
+
+/**
+ * Paginated + filterable, per spec section 27/28 - never fetches an
+ * item's entire history into the browser at once. Filters are applied
+ * server-side (not client-side over an already-fetched page).
+ */
 export async function getMovementHistory(
-  inventoryItemId: string
-): Promise<InventoryMovement[]> {
+  inventoryItemId: string,
+  filters: MovementHistoryFilters = {}
+): Promise<MovementHistoryPage> {
   const clinicId =
     await getCurrentClinicId();
 
-  const { data, error } =
-    await supabase
-      .from("clinic_inventory_movements")
-      .select(
-        `
-        *,
-        clinic_users (
-          full_name
-        )
-      `
-      )
-      .eq("clinic_id", clinicId)
-      .eq(
-        "inventory_item_id",
-        inventoryItemId
-      )
-      .order("created_at", {
-        ascending: false,
-      });
+  const limit = filters.limit ?? DEFAULT_HISTORY_PAGE_SIZE;
+  const offset = filters.offset ?? 0;
+
+  let query = supabase
+    .from("clinic_inventory_movements")
+    .select(MOVEMENT_DETAIL_SELECT, { count: "exact" })
+    .eq("clinic_id", clinicId)
+    .eq("inventory_item_id", inventoryItemId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (filters.reason) {
+    query = query.eq("reason", filters.reason);
+  }
+
+  if (filters.batchNumber) {
+    query = query.eq("batch_number", filters.batchNumber);
+  }
+
+  if (filters.fromDate) {
+    query = query.gte("created_at", filters.fromDate);
+  }
+
+  if (filters.toDate) {
+    query = query.lte("created_at", filters.toDate);
+  }
+
+  const { data, error, count } = await query;
 
   if (error) {
     logError("[inventory] getMovementHistory failed:", error);
@@ -658,9 +756,10 @@ export async function getMovementHistory(
     throw toError(error);
   }
 
-  return (
-    data ?? []
-  ) as InventoryMovement[];
+  return {
+    rows: (data ?? []) as InventoryMovement[],
+    count: count ?? 0,
+  };
 }
 
 export async function getRecentMovements(
@@ -699,4 +798,147 @@ export async function getRecentMovements(
   return (
     data ?? []
   ) as InventoryMovement[];
+}
+
+/* -------------------------------------- */
+/* Batches (derived from the movement     */
+/* ledger - not a second mutable table,   */
+/* see migration 0042's header comment)   */
+/* -------------------------------------- */
+
+export interface InventoryBatch {
+  batchNumber: string | null;
+  quantityRemaining: number;
+  unitCost: number | null;
+  expiryDate: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  grnId: string | null;
+  receivedAt: string | null;
+}
+
+/**
+ * Groups a material's full movement history by batch_number and nets each
+ * group's quantity_change to a remaining quantity - the running-balance
+ * property of the ledger (section 14) applied per batch instead of per
+ * item. A null batch_number groups into "Unbatched". Only the columns
+ * needed for aggregation are selected (not full joined rows), keeping
+ * this lighter than the paginated detail history query even though it
+ * has to read every movement for the item to net out correctly.
+ */
+export async function getInventoryBatches(
+  inventoryItemId: string
+): Promise<InventoryBatch[]> {
+  const clinicId = await getCurrentClinicId();
+
+  const { data, error } = await supabase
+    .from("clinic_inventory_movements")
+    .select(
+      "batch_number, quantity_change, unit_cost, expiry_date, supplier_id, grn_id, created_at, clinic_suppliers(name)"
+    )
+    .eq("clinic_id", clinicId)
+    .eq("inventory_item_id", inventoryItemId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    logError("[inventory] getInventoryBatches failed:", error);
+
+    throw toError(error);
+  }
+
+  interface Row {
+    batch_number: string | null;
+    quantity_change: number;
+    unit_cost: number | null;
+    expiry_date: string | null;
+    supplier_id: string | null;
+    grn_id: string | null;
+    created_at: string;
+    clinic_suppliers: { name: string } | null;
+  }
+
+  const groups = new Map<string, InventoryBatch>();
+
+  for (const row of (data ?? []) as unknown as Row[]) {
+    const key = row.batch_number ?? "";
+
+    const existing = groups.get(key) ?? {
+      batchNumber: row.batch_number,
+      quantityRemaining: 0,
+      unitCost: null,
+      expiryDate: null,
+      supplierId: null,
+      supplierName: null,
+      grnId: null,
+      receivedAt: null,
+    };
+
+    existing.quantityRemaining = roundMoney(
+      existing.quantityRemaining + Number(row.quantity_change)
+    );
+
+    // Latest non-null values win, so a later re-receipt of the same batch
+    // number (or a later movement that happens to carry updated metadata)
+    // is reflected - rows are read oldest-first above.
+    if (row.unit_cost != null) existing.unitCost = Number(row.unit_cost);
+    if (row.expiry_date != null) existing.expiryDate = row.expiry_date;
+    if (row.supplier_id != null) {
+      existing.supplierId = row.supplier_id;
+      existing.supplierName = row.clinic_suppliers?.name ?? null;
+    }
+    if (row.grn_id != null) existing.grnId = row.grn_id;
+    if (existing.receivedAt == null && Number(row.quantity_change) > 0) {
+      existing.receivedAt = row.created_at;
+    }
+
+    groups.set(key, existing);
+  }
+
+  return Array.from(groups.values())
+    .filter((batch) => batch.quantityRemaining > 0)
+    .sort((a, b) => {
+      // Batches with an expiry date first (soonest first), then
+      // unbatched/no-expiry stock last.
+      if (a.expiryDate && b.expiryDate) {
+        return a.expiryDate.localeCompare(b.expiryDate);
+      }
+      if (a.expiryDate) return -1;
+      if (b.expiryDate) return 1;
+      return 0;
+    });
+}
+
+/**
+ * Stock Value = current quantity x cost - never selling price (spec
+ * section 16). When batch-level unit costs exist, values each batch at
+ * its own received cost instead of the item's single blended
+ * cost_per_unit, falling back to cost_per_unit for whatever portion of
+ * the quantity isn't accounted for by a costed batch (e.g. legacy stock
+ * received before this feature, or a batch whose cost was never
+ * recorded) - the two always sum to the item's real total quantity.
+ */
+export function calculateStockValue(
+  item: Pick<ClinicInventoryItem, "quantity" | "cost_per_unit">,
+  batches: InventoryBatch[]
+): number {
+  const costedBatches = batches.filter((batch) => batch.unitCost != null);
+
+  const costedQuantity = costedBatches.reduce(
+    (sum, batch) => sum + batch.quantityRemaining,
+    0
+  );
+
+  const costedValue = costedBatches.reduce(
+    (sum, batch) => sum + batch.quantityRemaining * (batch.unitCost ?? 0),
+    0
+  );
+
+  const remainingQuantity = Math.max(
+    0,
+    Number(item.quantity) - costedQuantity
+  );
+
+  return roundMoney(
+    costedValue + remainingQuantity * Number(item.cost_per_unit)
+  );
 }

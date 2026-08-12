@@ -6,9 +6,10 @@ import { getCurrentOrganizationUser } from "./organizations";
 
 import {
   CreateOrganizationInvitationInput,
-  CreatedOrganizationInvitation,
+  CreateOrganizationInvitationResult,
   OrganizationInvitation,
   OrganizationInvitationDetails,
+  ResendOrganizationInvitationResult,
 } from "@/types/organizationInvitation";
 
 /* -------------------------------------- */
@@ -24,14 +25,10 @@ export async function getPendingOrganizationInvitations(): Promise<
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("organization_invitations")
-    .select(
-      "id, organization_id, email, role, branch_access, invited_by, accepted_at, expires_at, created_at"
-    )
-    .eq("organization_id", organizationUser.organization_id)
-    .is("accepted_at", null)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc(
+    "get_organization_pending_invitations",
+    { p_organization_id: organizationUser.organization_id }
+  );
 
   if (error) {
     logError(
@@ -58,35 +55,80 @@ function buildOrganizationInviteLink(token: string): string {
   return `${origin}/org-invite/${token}`;
 }
 
-export async function createOrganizationInvitation(
-  input: CreateOrganizationInvitationInput
-): Promise<{ invitation: CreatedOrganizationInvitation; link: string }> {
-  const { data, error } = await supabase.rpc(
-    "create_organization_invitation",
-    {
-      p_email: input.email.trim(),
-      p_role: input.role,
-      p_branch_access: input.branchAccess,
-      p_branch_ids:
-        input.branchAccess === "selected" ? input.branchIds ?? [] : null,
-      p_token: generateToken(),
-    }
-  );
+async function getAccessTokenOrThrow(): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (error) {
-    logError(
-      "[organizationInvitations] createOrganizationInvitation failed:",
-      error
-    );
-
-    throw toError(error);
+  if (!session?.access_token) {
+    throw new Error("Not authenticated.");
   }
 
-  const invitation = data[0] as CreatedOrganizationInvitation;
+  return session.access_token;
+}
+
+/**
+ * Account creation (for brand-new invitees) needs the service-role key, so
+ * this now goes through app/api/organization-invitations instead of
+ * calling create_organization_invitation directly - see that route for the
+ * full flow. The RPC itself, and all of its validation, is unchanged.
+ */
+export async function createOrganizationInvitation(
+  input: CreateOrganizationInvitationInput
+): Promise<CreateOrganizationInvitationResult> {
+  const accessToken = await getAccessTokenOrThrow();
+  const token = generateToken();
+
+  const response = await fetch("/api/organization-invitations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      email: input.email.trim(),
+      role: input.role,
+      branchAccess: input.branchAccess,
+      branchIds:
+        input.branchAccess === "selected" ? input.branchIds ?? [] : null,
+      token,
+      fullName: input.fullName.trim(),
+      message: input.message?.trim() || null,
+      organizationName: input.organizationName,
+      branchNames: input.branchNames,
+    }),
+  });
+
+  const body = await response.json();
+
+  if (!response.ok) {
+    logError(
+      "[organizationInvitations] createOrganizationInvitation failed:",
+      body
+    );
+
+    throw toError(body);
+  }
+
+  const link = buildOrganizationInviteLink(token);
+
+  if (body.mode === "new_account") {
+    return {
+      mode: "new_account",
+      invitation: body.invitation,
+      credentials: body.credentials,
+      link,
+      emailStatus: body.emailStatus,
+      emailError: body.emailError,
+    };
+  }
 
   return {
-    invitation,
-    link: buildOrganizationInviteLink(invitation.token),
+    mode: "existing_account",
+    invitation: body.invitation,
+    link,
+    emailStatus: body.emailStatus,
+    emailError: body.emailError,
   };
 }
 
@@ -94,53 +136,103 @@ export async function createOrganizationInvitation(
 /* Resend invitation                      */
 /* -------------------------------------- */
 
+/**
+ * organizationName/role/branchNames/invitedByName come from the caller's
+ * already-loaded OrganizationInvitation record (Pending Invitations table)
+ * rather than a second server-side lookup - the client already has them.
+ */
 export async function resendOrganizationInvitation(
-  invitationId: string
-): Promise<{ link: string }> {
-  const { data, error } = await supabase.rpc(
-    "resend_organization_invitation",
+  invitation: Pick<
+    OrganizationInvitation,
+    "id" | "role" | "branch_names" | "invited_by_name"
+  >,
+  organizationName: string
+): Promise<ResendOrganizationInvitationResult> {
+  const accessToken = await getAccessTokenOrThrow();
+  const token = generateToken();
+
+  const response = await fetch(
+    `/api/organization-invitations/${invitation.id}/resend`,
     {
-      p_invitation_id: invitationId,
-      p_token: generateToken(),
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        token,
+        organizationName,
+        role: invitation.role,
+        branchNames: invitation.branch_names,
+        invitedByName: invitation.invited_by_name,
+      }),
     }
   );
 
-  if (error) {
+  const body = await response.json();
+
+  if (!response.ok) {
     logError(
       "[organizationInvitations] resendOrganizationInvitation failed:",
-      error
+      body
     );
 
-    throw toError(error);
+    throw toError(body);
   }
 
-  const result = data[0] as {
-    token: string;
-    expires_at: string;
-  };
+  const link = buildOrganizationInviteLink(token);
 
-  return { link: buildOrganizationInviteLink(result.token) };
+  if (body.mode === "new_account") {
+    return {
+      mode: "new_account",
+      credentials: body.credentials,
+      link,
+      emailStatus: body.emailStatus,
+      emailError: body.emailError,
+    };
+  }
+
+  return {
+    mode: "link_only",
+    link,
+    emailStatus: body.emailStatus,
+    emailError: body.emailError,
+  };
 }
 
 /* -------------------------------------- */
 /* Cancel invitation                      */
 /* -------------------------------------- */
 
+/**
+ * Goes through app/api/organization-invitations/[id]/cancel rather than
+ * calling the RPC directly - a brand-new invitee's dormant pre-created
+ * account (never activated) needs deleting via the admin API alongside the
+ * invitation row, or its stale credentials become a permanent "Invitation
+ * not found" trap for anyone who later signs into it.
+ */
 export async function cancelOrganizationInvitation(
   invitationId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("organization_invitations")
-    .delete()
-    .eq("id", invitationId);
+  const accessToken = await getAccessTokenOrThrow();
 
-  if (error) {
+  const response = await fetch(
+    `/api/organization-invitations/${invitationId}/cancel`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+
     logError(
       "[organizationInvitations] cancelOrganizationInvitation failed:",
-      error
+      body
     );
 
-    throw toError(error);
+    throw toError(body);
   }
 }
 
@@ -203,6 +295,37 @@ export async function acceptOrganizationInvitation(
   }
 
   return data[0] as AcceptedOrganizationInvitation;
+}
+
+/* -------------------------------------- */
+/* Existing-account detection             */
+/* -------------------------------------- */
+
+/**
+ * Whether the invited email already has a DentalFlow auth account. Derives
+ * the email from the invitation's own token server-side - never accepts a
+ * client-supplied email - so this can't be used to enumerate arbitrary
+ * accounts. Used by the accept-invitation flow to decide whether to show a
+ * sign-up form or a sign-in form.
+ */
+export async function checkInvitationEmailHasAccount(
+  token: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc(
+    "check_invitation_email_has_account",
+    { p_token: token }
+  );
+
+  if (error) {
+    logError(
+      "[organizationInvitations] checkInvitationEmailHasAccount failed:",
+      error
+    );
+
+    throw toError(error);
+  }
+
+  return Boolean(data);
 }
 
 /**

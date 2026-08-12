@@ -6,17 +6,23 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  Line,
   XAxis,
   Tooltip,
+  Legend,
 } from "recharts";
 
 import Card from "@/components/ui/Card";
 
 import { granularityFor } from "@/services/analytics/charts";
-import { OrganizationRevenueTrendPoint } from "@/services/organizationAnalytics";
+import {
+  OrganizationRevenueTrendPoint,
+  OrganizationExpenseTrendPoint,
+} from "@/services/organizationAnalytics";
 
 interface Props {
   data: OrganizationRevenueTrendPoint[];
+  expenseData?: OrganizationExpenseTrendPoint[];
   range: string;
   currency: string;
   loading: boolean;
@@ -46,22 +52,44 @@ function bucketLabel(bucket: string, range: string): string {
 
 export default function OrganizationRevenueTrendChart({
   data,
+  expenseData = [],
   range,
   currency,
   loading,
   error,
 }: Props) {
-  const chartData = useMemo(
-    () =>
-      data.map((point) => ({
-        label: bucketLabel(point.bucket, range),
-        revenue: point.revenue,
-      })),
-    [data, range]
-  );
+  // Merged by bucket key (not by array index) since revenue and expense
+  // buckets can differ - a period with revenue but no expenses (or vice
+  // versa) shouldn't drop a point or misalign the two series.
+  const chartData = useMemo(() => {
+    const expenseByBucket = new Map(
+      expenseData.map((point) => [point.bucket, point.total])
+    );
+
+    const buckets = new Set([
+      ...data.map((point) => point.bucket),
+      ...expenseData.map((point) => point.bucket),
+    ]);
+
+    return Array.from(buckets)
+      .sort()
+      .map((bucket) => {
+        const revenue =
+          data.find((point) => point.bucket === bucket)?.revenue ?? 0;
+        const moneyOut = expenseByBucket.get(bucket) ?? 0;
+
+        return {
+          bucket,
+          label: bucketLabel(bucket, range),
+          revenue,
+          moneyOut,
+          netPosition: revenue - moneyOut,
+        };
+      });
+  }, [data, expenseData, range]);
 
   const hasRevenue = useMemo(
-    () => chartData.some((point) => point.revenue > 0),
+    () => chartData.some((point) => point.revenue > 0 || point.moneyOut > 0),
     [chartData]
   );
 
@@ -73,15 +101,15 @@ export default function OrganizationRevenueTrendChart({
     }).format(value);
 
   return (
-    <Card title="Organization Revenue Trend">
+    <Card title="Organization Financial Trend">
       <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-sea-glass">
         {loading ? (
-          <p className="text-mineral">Loading revenue trend...</p>
+          <p className="text-mineral">Loading financial trend...</p>
         ) : error ? (
-          <p className="text-red-500">Unable to load revenue trend.</p>
+          <p className="text-red-500">Unable to load financial trend.</p>
         ) : !hasRevenue ? (
           <p className="text-mineral">
-            No revenue yet for this date range.
+            No revenue or expenses yet for this date range.
           </p>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -113,12 +141,34 @@ export default function OrganizationRevenueTrendChart({
                 formatter={(value) => formatCurrency(Number(value))}
               />
 
+              <Legend />
+
               <Area
                 type="monotone"
                 dataKey="revenue"
+                name="Revenue"
                 stroke="#216C68"
                 fill="url(#organizationRevenue)"
                 strokeWidth={2}
+              />
+
+              <Line
+                type="monotone"
+                dataKey="moneyOut"
+                name="Money Out"
+                stroke="#B45309"
+                strokeWidth={2}
+                dot={false}
+              />
+
+              <Line
+                type="monotone"
+                dataKey="netPosition"
+                name="Net Position"
+                stroke="#1D4ED8"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                dot={false}
               />
             </AreaChart>
           </ResponsiveContainer>

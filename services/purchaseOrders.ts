@@ -66,10 +66,13 @@ export async function getPurchaseOrders(
 export async function getPurchaseOrder(
   id: string
 ): Promise<PurchaseOrderWithItems> {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("clinic_purchase_orders")
     .select(PO_DETAIL_SELECT)
     .eq("id", id)
+    .eq("clinic_id", clinicId)
     .single();
 
   if (error) {
@@ -139,6 +142,8 @@ export async function updatePurchaseOrderHeader(
   id: string,
   input: PurchaseOrderHeaderInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_purchase_orders")
     .update({
@@ -150,7 +155,8 @@ export async function updatePurchaseOrderHeader(
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[purchaseOrders] updatePurchaseOrderHeader failed:", error);
@@ -206,6 +212,8 @@ export async function updatePurchaseOrderItem(
   poId: string,
   input: PurchaseOrderItemInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const lineTotal = Math.round(input.quantity * input.unit_price * 100) / 100;
 
   const { error } = await supabase
@@ -219,7 +227,8 @@ export async function updatePurchaseOrderItem(
       line_total: lineTotal,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[purchaseOrders] updatePurchaseOrderItem failed:", error);
@@ -234,10 +243,13 @@ export async function removePurchaseOrderItem(
   itemId: string,
   poId: string
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_purchase_order_items")
     .delete()
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[purchaseOrders] removePurchaseOrderItem failed:", error);

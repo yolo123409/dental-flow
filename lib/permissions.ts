@@ -30,7 +30,9 @@ export type Permission =
   | "money_out_manage"
   | "users"
   | "analytics"
-  | "settings";
+  | "settings"
+  | "treatment_profitability"
+  | "treatment_profitability_manage";
 
 export const permissions: Record<UserRole, ("*" | Permission)[]> = {
   Owner: ["*"],

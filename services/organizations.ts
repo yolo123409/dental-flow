@@ -320,24 +320,62 @@ export async function switchActiveBranch(clinicId: string): Promise<void> {
 /**
  * Soft-removes an organization member's access - sets status to
  * 'Removed' rather than deleting the row (keeps history, matches "do not
- * delete the Supabase account"). is_organization_member/is_organization_ceo
- * both filter on status = 'Active', so access is cut immediately.
- * Permitted directly by RLS (organization_users_update_ceo_only), no RPC
- * needed.
+ * delete the Supabase account"). Routed through the remove_organization_member
+ * RPC (not a direct client update - RLS no longer permits that transition,
+ * see migration 0033) so the removal and its cascade (hard-deleting any
+ * clinic_users rows this member was lazily provisioned into) and audit-log
+ * write all happen atomically.
  */
 export async function removeOrganizationMember(
   organizationUserId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("organization_users")
-    .update({
-      status: "Removed",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", organizationUserId);
+  const { error } = await supabase.rpc("remove_organization_member", {
+    p_organization_user_id: organizationUserId,
+  });
 
   if (error) {
     logError("[organizations] removeOrganizationMember failed:", error);
+
+    throw toError(error);
+  }
+}
+
+/**
+ * Suspends an organization member: blocks their org-level access
+ * immediately (is_organization_member/is_organization_ceo both filter
+ * status = 'Active') and hard-deletes any clinic_users rows they were
+ * lazily provisioned into via switch_active_branch - see migration 0033's
+ * header comment for why a status-flip alone would not actually revoke
+ * that access. Reversible via reactivateOrganizationMember.
+ */
+export async function suspendOrganizationMember(
+  organizationUserId: string
+): Promise<void> {
+  const { error } = await supabase.rpc("suspend_organization_member", {
+    p_organization_user_id: organizationUserId,
+  });
+
+  if (error) {
+    logError("[organizations] suspendOrganizationMember failed:", error);
+
+    throw toError(error);
+  }
+}
+
+/**
+ * Reverses suspendOrganizationMember. No clinic_users restore step is
+ * needed - switch_active_branch re-provisions a fresh row automatically
+ * the next time this person switches into a branch.
+ */
+export async function reactivateOrganizationMember(
+  organizationUserId: string
+): Promise<void> {
+  const { error } = await supabase.rpc("reactivate_organization_member", {
+    p_organization_user_id: organizationUserId,
+  });
+
+  if (error) {
+    logError("[organizations] reactivateOrganizationMember failed:", error);
 
     throw toError(error);
   }
@@ -394,20 +432,15 @@ export async function getOrganizationUserBranches(
 }
 
 /**
- * Edits an existing active member's role/branch access. Permitted
- * directly by RLS (organization_users_update_ceo_only - whose
- * "role <> 'CEO'" check, on both the pre- and post-update row, is what
- * actually prevents this from ever being used to escalate someone to
- * CEO; organization_user_branches_insert_ceo_only/_delete_ceo_only for
- * the branch rows), no RPC needed.
- *
- * Branch rows: inserts the new set before deleting the stale set (not
- * delete-then-insert) - organization_user_branches gates real
- * switch_active_branch access, so if the two calls below don't complete
- * as a unit (network drop, closed tab), this ordering leaves the member
- * with a temporary superset of their old and new branches rather than
- * zero branches. Extra access is immediately correctable by re-editing;
- * a lockout would not be self-healing.
+ * Edits an existing active member's role/branch access. Routed through the
+ * update_organization_member RPC (rather than the three raw client calls
+ * this used to make directly via RLS) so the role edit, the branch-row
+ * diff, and up to two resulting audit-log entries (role changed / branches
+ * changed) all happen atomically in one transaction - see migration 0033.
+ * The RPC preserves the same insert-before-delete branch-diff ordering
+ * this function used to do client-side (avoids a transient lockout window
+ * if the request doesn't complete as a unit). Signature unchanged, so
+ * EditOrganizationMemberModal.tsx needs no changes.
  */
 export async function updateOrganizationMember(
   organizationUserId: string,
@@ -417,86 +450,17 @@ export async function updateOrganizationMember(
     branchIds: string[];
   }
 ): Promise<void> {
-  const { error: updateError } = await supabase
-    .from("organization_users")
-    .update({
-      role: updates.role,
-      branch_access: updates.branchAccess,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", organizationUserId);
+  const { error } = await supabase.rpc("update_organization_member", {
+    p_organization_user_id: organizationUserId,
+    p_role: updates.role,
+    p_branch_access: updates.branchAccess,
+    p_branch_ids:
+      updates.branchAccess === "selected" ? updates.branchIds : null,
+  });
 
-  if (updateError) {
-    logError(
-      "[organizations] updateOrganizationMember failed:",
-      updateError
-    );
+  if (error) {
+    logError("[organizations] updateOrganizationMember failed:", error);
 
-    throw toError(updateError);
-  }
-
-  if (updates.branchAccess === "all") {
-    const { error: deleteError } = await supabase
-      .from("organization_user_branches")
-      .delete()
-      .eq("organization_user_id", organizationUserId);
-
-    if (deleteError) {
-      logError(
-        "[organizations] updateOrganizationMember branch cleanup failed:",
-        deleteError
-      );
-
-      throw toError(deleteError);
-    }
-
-    return;
-  }
-
-  const current = await getOrganizationUserBranches(organizationUserId);
-
-  const toAdd = updates.branchIds.filter(
-    (id) => !current.includes(id)
-  );
-
-  const toRemove = current.filter(
-    (id) => !updates.branchIds.includes(id)
-  );
-
-  if (toAdd.length > 0) {
-    const { error: insertError } = await supabase
-      .from("organization_user_branches")
-      .insert(
-        toAdd.map((clinicId) => ({
-          organization_user_id: organizationUserId,
-          clinic_id: clinicId,
-        }))
-      );
-
-    if (insertError) {
-      logError(
-        "[organizations] updateOrganizationMember branch insert failed:",
-        insertError
-      );
-
-      throw toError(insertError);
-    }
-  }
-
-  if (toRemove.length > 0) {
-    const { error: deleteError } = await supabase
-      .from("organization_user_branches")
-      .delete()
-      .eq("organization_user_id", organizationUserId)
-      .in("clinic_id", toRemove);
-
-    if (deleteError) {
-      logError(
-        "[organizations] updateOrganizationMember branch removal failed:",
-        deleteError
-      );
-
-      throw toError(deleteError);
-    }
+    throw toError(error);
   }
 }

@@ -2,7 +2,7 @@ export type OrganizationRole = "CEO" | "Partner" | "Manager" | "Viewer";
 
 export type OrganizationBranchAccess = "all" | "selected";
 
-export type OrganizationUserStatus = "Active" | "Removed";
+export type OrganizationUserStatus = "Active" | "Suspended" | "Removed";
 
 export interface Organization {
   id: string;

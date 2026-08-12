@@ -40,10 +40,13 @@ export async function getSuppliers(
 export async function getSupplier(
   id: string
 ): Promise<SupplierWithContacts> {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("clinic_suppliers")
     .select("*, clinic_supplier_contacts(*)")
     .eq("id", id)
+    .eq("clinic_id", clinicId)
     .single();
 
   if (error) {
@@ -84,6 +87,8 @@ export async function updateSupplier(
   id: string,
   input: SupplierInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_suppliers")
     .update({
@@ -92,7 +97,8 @@ export async function updateSupplier(
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[suppliers] updateSupplier failed:", error);
@@ -102,10 +108,13 @@ export async function updateSupplier(
 }
 
 export async function archiveSupplier(id: string): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_suppliers")
     .update({ active: false, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[suppliers] archiveSupplier failed:", error);
@@ -115,10 +124,13 @@ export async function archiveSupplier(id: string): Promise<void> {
 }
 
 export async function reactivateSupplier(id: string): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_suppliers")
     .update({ active: true, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[suppliers] reactivateSupplier failed:", error);
@@ -163,6 +175,8 @@ export async function updateSupplierContact(
   id: string,
   input: SupplierContactInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_supplier_contacts")
     .update({
@@ -176,7 +190,8 @@ export async function updateSupplierContact(
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[suppliers] updateSupplierContact failed:", error);
@@ -186,6 +201,8 @@ export async function updateSupplierContact(
 }
 
 export async function archiveSupplierContact(id: string): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_supplier_contacts")
     .update({
@@ -193,7 +210,8 @@ export async function archiveSupplierContact(id: string): Promise<void> {
       is_primary: false,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[suppliers] archiveSupplierContact failed:", error);
@@ -214,10 +232,13 @@ export async function setPrimaryContact(
   supplierId: string,
   contactId: string
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error: unsetError } = await supabase
     .from("clinic_supplier_contacts")
     .update({ is_primary: false, updated_at: new Date().toISOString() })
     .eq("supplier_id", supplierId)
+    .eq("clinic_id", clinicId)
     .eq("is_primary", true);
 
   if (unsetError) {
@@ -232,7 +253,8 @@ export async function setPrimaryContact(
   const { error: setError } = await supabase
     .from("clinic_supplier_contacts")
     .update({ is_primary: true, updated_at: new Date().toISOString() })
-    .eq("id", contactId);
+    .eq("id", contactId)
+    .eq("clinic_id", clinicId);
 
   if (setError) {
     logError("[suppliers] setPrimaryContact (set new) failed:", setError);

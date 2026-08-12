@@ -74,10 +74,13 @@ export async function getGRNs(
 }
 
 export async function getGRN(id: string): Promise<GRNWithItems> {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("clinic_goods_received_notes")
     .select(GRN_DETAIL_SELECT)
     .eq("id", id)
+    .eq("clinic_id", clinicId)
     .single();
 
   if (error) {
@@ -227,6 +230,8 @@ export async function updateGRNHeader(
   id: string,
   input: GRNHeaderInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_goods_received_notes")
     .update({
@@ -235,7 +240,8 @@ export async function updateGRNHeader(
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[grns] updateGRNHeader failed:", error);
@@ -279,6 +285,8 @@ export async function updateGRNItem(
   itemId: string,
   input: GRNItemInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_grn_items")
     .update({
@@ -292,7 +300,8 @@ export async function updateGRNItem(
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[grns] updateGRNItem failed:", error);
@@ -302,10 +311,13 @@ export async function updateGRNItem(
 }
 
 export async function removeGRNItem(itemId: string): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_grn_items")
     .delete()
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[grns] removeGRNItem failed:", error);

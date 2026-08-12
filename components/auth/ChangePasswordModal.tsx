@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
 import { supabase } from "@/lib/supabase";
+import { validatePassword } from "@/lib/passwordPolicy";
 
 interface Props {
   open: boolean;
@@ -40,8 +41,10 @@ export default function ChangePasswordModal({
       return;
     }
 
-    if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters.");
+    const policy = validatePassword(newPassword);
+
+    if (!policy.valid) {
+      toast.error(policy.message);
       return;
     }
 
@@ -130,6 +133,11 @@ export default function ChangePasswordModal({
             }
           />
         </div>
+
+        <p className="text-xs text-slate-500">
+          At least 8 characters, with an uppercase letter, a lowercase
+          letter, and a number.
+        </p>
       </div>
     </Modal>
   );

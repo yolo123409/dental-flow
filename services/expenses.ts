@@ -100,10 +100,13 @@ export async function getExpenses(
 }
 
 export async function getExpense(id: string): Promise<Expense> {
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase
     .from("clinic_expenses")
     .select(EXPENSE_SELECT)
     .eq("id", id)
+    .eq("clinic_id", clinicId)
     .single();
 
   if (error) {
@@ -150,6 +153,8 @@ export async function updateExpense(
   id: string,
   input: ExpenseInput
 ): Promise<void> {
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase
     .from("clinic_expenses")
     .update({
@@ -164,7 +169,8 @@ export async function updateExpense(
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[expenses] updateExpense failed:", error);
@@ -189,7 +195,8 @@ export async function voidExpense(
       void_reason: reason,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
 
   if (error) {
     logError("[expenses] voidExpense failed:", error);

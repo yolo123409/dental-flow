@@ -5,15 +5,18 @@ import { ArrowUpDown, TrendingUp, AlertTriangle } from "lucide-react";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import Badge from "@/components/ui/Badge";
 
 import { OrganizationBranchPerformance } from "@/services/organizationAnalytics";
 
 type SortKey =
   | "clinic_name"
   | "revenue"
+  | "money_out"
   | "outstanding_balance"
   | "patient_count"
-  | "appointment_count";
+  | "appointment_count"
+  | "inventory_value";
 
 interface Column {
   key: SortKey;
@@ -23,9 +26,11 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: "clinic_name", label: "Branch" },
   { key: "revenue", label: "Revenue" },
+  { key: "money_out", label: "Money Out" },
   { key: "outstanding_balance", label: "Outstanding" },
   { key: "patient_count", label: "Patients" },
   { key: "appointment_count", label: "Appointments" },
+  { key: "inventory_value", label: "Inventory Value" },
 ];
 
 interface Props {
@@ -121,6 +126,9 @@ export default function BranchPerformanceTable({
                 </th>
               ))}
 
+              <th className="py-2 pr-4">Net Position</th>
+              <th className="py-2 pr-4">Status</th>
+
               {canSwitch && <th className="py-2 pr-4" />}
             </tr>
           </thead>
@@ -134,6 +142,12 @@ export default function BranchPerformanceTable({
               const isTopPerformer = topPerformerIds.has(
                 branch.clinic_id
               );
+
+              // Same sign-based classification as
+              // components/dashboard/NetPositionWidget.tsx - not a new
+              // definition of "healthy," just the branch-table view of it.
+              const netPosition = branch.revenue - branch.money_out;
+              const isHealthy = netPosition >= 0;
 
               return (
                 <tr
@@ -167,6 +181,10 @@ export default function BranchPerformanceTable({
                   </td>
 
                   <td className="py-3 pr-4 text-graphite">
+                    {formatCurrency(branch.money_out)}
+                  </td>
+
+                  <td className="py-3 pr-4 text-graphite">
                     {formatCurrency(branch.outstanding_balance)}
                   </td>
 
@@ -176,6 +194,25 @@ export default function BranchPerformanceTable({
 
                   <td className="py-3 pr-4 text-graphite">
                     {branch.appointment_count}
+                  </td>
+
+                  <td className="py-3 pr-4 text-graphite">
+                    {formatCurrency(branch.inventory_value)}
+                  </td>
+
+                  <td
+                    className={`py-3 pr-4 font-medium ${
+                      isHealthy ? "text-eucalyptus" : "text-clay"
+                    }`}
+                  >
+                    {netPosition >= 0 ? "+" : ""}
+                    {formatCurrency(netPosition)}
+                  </td>
+
+                  <td className="py-3 pr-4">
+                    <Badge color={isHealthy ? "green" : "red"}>
+                      {isHealthy ? "Healthy" : "Attention"}
+                    </Badge>
                   </td>
 
                   {canSwitch && (

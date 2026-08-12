@@ -11,9 +11,25 @@ import { RevenueAnalytics } from "./types";
 export async function getRevenueAnalytics(
   range: string
 ): Promise<RevenueAnalytics> {
-  const clinicId = await getCurrentClinicId();
-
   const { start, end } = getDateRange(range);
+
+  return getRevenueAnalyticsForPeriod(start, end);
+}
+
+/**
+ * Date-parameterized core, extracted so a Custom Range (an explicit
+ * start/end the Reports Center's date picker produces, which has no
+ * corresponding named-range string for getDateRange to resolve) can reuse
+ * the exact same revenue calculation as every named range - there is
+ * still exactly one place "revenue" is computed, just two entry points
+ * into it. getRevenueAnalytics(range) above is unchanged for every
+ * existing caller.
+ */
+export async function getRevenueAnalyticsForPeriod(
+  start: Date | null,
+  end: Date | null
+): Promise<RevenueAnalytics> {
+  const clinicId = await getCurrentClinicId();
 
   let revenueQuery = supabase
     .from("clinic_invoices")

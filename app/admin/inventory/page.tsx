@@ -272,6 +272,7 @@ function InventoryPageContent() {
     let low = 0;
     let outOfStock = 0;
     let expiringSoon = 0;
+    let expired = 0;
 
     for (const item of items) {
       const quantity = Number(item.quantity);
@@ -291,11 +292,16 @@ function InventoryPageContent() {
       if (status === "Out of Stock")
         outOfStock += 1;
 
-      if (
-        getExpiryStatus(item.expiry_date) ===
-        "Expiring Soon"
-      ) {
+      const expiry = getExpiryStatus(
+        item.expiry_date
+      );
+
+      if (expiry === "Expiring Soon") {
         expiringSoon += 1;
+      }
+
+      if (expiry === "Expired") {
+        expired += 1;
       }
     }
 
@@ -305,6 +311,7 @@ function InventoryPageContent() {
       low,
       outOfStock,
       expiringSoon,
+      expired,
     };
   }, [items]);
 
@@ -558,7 +565,7 @@ function InventoryPageContent() {
 
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-6">
 
         <StatCard
           title="Total Materials"
@@ -608,6 +615,19 @@ function InventoryPageContent() {
             title="Expiring Soon"
             value={totals.expiringSoon}
             icon={<CalendarClock size={20} />}
+          />
+        </button>
+
+        <button
+          onClick={() =>
+            applyFilterAndScroll("Expired")
+          }
+          className="text-left transition hover:-translate-y-0.5"
+        >
+          <StatCard
+            title="Expired Items"
+            value={totals.expired}
+            icon={<XCircle size={20} />}
           />
         </button>
 

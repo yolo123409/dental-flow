@@ -13,6 +13,7 @@ import { logError } from "@/lib/logError";
 import {
   getOrganizationInvitationDetails,
   acceptOrganizationInvitation,
+  checkInvitationEmailHasAccount,
 } from "@/services/organizationInvitations";
 import { OrganizationInvitationDetails } from "@/types/organizationInvitation";
 
@@ -33,6 +34,12 @@ export default function AcceptOrganizationInvitationForm({
   const [state, setState] = useState<LoadState>({
     status: "loading",
   });
+
+  // Whether the invited email already has a DentalFlow account - null
+  // while still checking. When true, the form below swaps to a sign-in
+  // branch instead of supabase.auth.signUp(), which cannot succeed for an
+  // email that already has an account.
+  const [hasAccount, setHasAccount] = useState<boolean | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
@@ -76,6 +83,29 @@ export default function AcceptOrganizationInvitationForm({
         }
 
         setState({ status: "ready", invitation });
+
+        // Pre-fills the inviter's hint, but the invitee can still change
+        // it - this is never treated as authoritative (see
+        // resolve_organization_user_identity, migration 0034).
+        if (invitation.full_name) {
+          setFullName(invitation.full_name);
+        }
+
+        checkInvitationEmailHasAccount(token)
+          .then((result) => {
+            if (!cancelled) setHasAccount(result);
+          })
+          .catch((error) => {
+            logError(
+              "[AcceptOrganizationInvitationForm] Failed to check for an existing account:",
+              error
+            );
+
+            // Fail open to the ordinary signup form - a false negative
+            // here just means signUp() surfaces its own "already
+            // registered" error, which is a worse but still safe outcome.
+            if (!cancelled) setHasAccount(false);
+          });
       } catch (error) {
         logError(
           "[AcceptOrganizationInvitationForm] Failed to load invitation:",
@@ -110,18 +140,60 @@ export default function AcceptOrganizationInvitationForm({
       return;
     }
 
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters.");
-      return;
-    }
+    if (hasAccount) {
+      if (!password) {
+        toast.error("Please enter your password.");
+        return;
+      }
+    } else {
+      if (password.length < 6) {
+        toast.error("Password must be at least 6 characters.");
+        return;
+      }
 
-    if (password !== confirmPassword) {
-      toast.error("Passwords do not match.");
-      return;
+      if (password !== confirmPassword) {
+        toast.error("Passwords do not match.");
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
+
+      if (hasAccount) {
+        // The existing account must authenticate as itself, not be
+        // silently signed into by this flow - signInWithPassword is the
+        // only door in. acceptOrganizationInvitation already works from
+        // any authenticated session whose JWT email matches the
+        // invitation, regardless of how that session was established.
+        const { error: signInError } = await supabase.auth.signInWithPassword(
+          {
+            email: state.invitation.email,
+            password,
+          }
+        );
+
+        if (signInError) throw signInError;
+
+        // organization_users has no full_name/email columns of its own -
+        // identity is resolved server-side from clinic_users, falling back
+        // to this exact auth metadata key (see
+        // resolve_organization_user_identity, migration 0034). The signup
+        // branch already gets this via supabase.auth.signUp()'s options.data;
+        // an existing account signing in here needs it set explicitly.
+        await supabase.auth.updateUser({
+          data: { pending_full_name: fullName.trim() },
+        });
+
+        await acceptOrganizationInvitation(token, fullName.trim());
+
+        toast.success(`Welcome to ${state.invitation.organization_name}!`);
+
+        router.push("/admin");
+        router.refresh();
+
+        return;
+      }
 
       const { data, error } = await supabase.auth.signUp({
         email: state.invitation.email,
@@ -161,6 +233,8 @@ export default function AcceptOrganizationInvitationForm({
       toast.error(
         error instanceof Error
           ? error.message
+          : hasAccount
+          ? "Incorrect password, or unable to accept this invitation."
           : "Unable to accept this invitation."
       );
     } finally {
@@ -233,6 +307,19 @@ export default function AcceptOrganizationInvitationForm({
         </div>
       </div>
 
+      {invitation.message && (
+        <p className="rounded-xl bg-slate-50 p-4 text-sm italic text-slate-600">
+          &ldquo;{invitation.message}&rdquo;
+        </p>
+      )}
+
+      {hasAccount && (
+        <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">
+          An account already exists for {invitation.email}. Sign in below to
+          join this organization - no new account is created.
+        </p>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           placeholder="Your full name"
@@ -242,19 +329,21 @@ export default function AcceptOrganizationInvitationForm({
 
         <Input
           type="password"
-          placeholder="Create a password"
+          placeholder={hasAccount ? "Your password" : "Create a password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
 
-        <Input
-          type="password"
-          placeholder="Confirm password"
-          value={confirmPassword}
-          onChange={(e) =>
-            setConfirmPassword(e.target.value)
-          }
-        />
+        {!hasAccount && (
+          <Input
+            type="password"
+            placeholder="Confirm password"
+            value={confirmPassword}
+            onChange={(e) =>
+              setConfirmPassword(e.target.value)
+            }
+          />
+        )}
 
         <Button
           type="submit"
@@ -262,7 +351,11 @@ export default function AcceptOrganizationInvitationForm({
           className="w-full"
         >
           {submitting
-            ? "Creating Account..."
+            ? hasAccount
+              ? "Signing In..."
+              : "Creating Account..."
+            : hasAccount
+            ? "Sign In & Join"
             : "Join Organization"}
         </Button>
       </form>

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
+import BranchMultiSelect from "./BranchMultiSelect";
 
 import {
   getOrganizationBranches,
@@ -75,14 +76,6 @@ export default function EditOrganizationMemberModal({
       })
       .finally(() => setLoading(false));
   }, [open, member, organizationId]);
-
-  function toggleBranch(clinicId: string) {
-    setSelectedBranchIds((prev) =>
-      prev.includes(clinicId)
-        ? prev.filter((id) => id !== clinicId)
-        : [...prev, clinicId]
-    );
-  }
 
   function handleClose() {
     if (saving) return;
@@ -204,28 +197,11 @@ export default function EditOrganizationMemberModal({
           </div>
 
           {branchAccess === "selected" && (
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-sea-glass p-3">
-              {branches.length === 0 ? (
-                <p className="text-sm text-mineral">
-                  No branches yet.
-                </p>
-              ) : (
-                branches.map((branch) => (
-                  <label
-                    key={branch.id}
-                    className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-graphite hover:bg-porcelain"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedBranchIds.includes(branch.id)}
-                      onChange={() => toggleBranch(branch.id)}
-                      className="h-4 w-4 rounded border-sea-glass text-eucalyptus focus:ring-eucalyptus"
-                    />
-                    {branch.name}
-                  </label>
-                ))
-              )}
-            </div>
+            <BranchMultiSelect
+              branches={branches}
+              selectedBranchIds={selectedBranchIds}
+              onChange={setSelectedBranchIds}
+            />
           )}
         </div>
       )}

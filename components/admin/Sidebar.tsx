@@ -20,6 +20,8 @@ import {
   ClipboardList,
   PackageCheck,
   Wallet,
+  TrendingUp,
+  FileBarChart,
   LucideIcon,
 } from "lucide-react";
 
@@ -55,6 +57,12 @@ const sections: SidebarSection[] = [
         name: "Analytics",
         href: "/admin/analytics",
         icon: BarChart3,
+        permission: "analytics",
+      },
+      {
+        name: "Reports",
+        href: "/admin/reports",
+        icon: FileBarChart,
         permission: "analytics",
       },
     ],
@@ -134,6 +142,12 @@ const sections: SidebarSection[] = [
         href: "/admin/money-out",
         icon: Wallet,
         permission: "money_out",
+      },
+      {
+        name: "Treatment Profitability",
+        href: "/admin/treatment-profitability",
+        icon: TrendingUp,
+        permission: "treatment_profitability",
       },
     ],
   },
