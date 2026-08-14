@@ -50,11 +50,28 @@ export async function POST(
     // (below) is the actual authorization boundary (it re-checks
     // is_organization_ceo() via the caller-scoped client), this is only
     // deciding whether a temporary credential needs rotating alongside it.
-    const { data: existingInvitation } = await supabaseAdmin
-      .from("organization_invitations")
-      .select("email, provisioned_auth_user_id")
-      .eq("id", invitationId)
-      .maybeSingle();
+    const { data: existingInvitation, error: existingInvitationError } =
+      await supabaseAdmin
+        .from("organization_invitations")
+        .select("email, provisioned_auth_user_id")
+        .eq("id", invitationId)
+        .maybeSingle();
+
+    // Previously this error was discarded and a missing/failed lookup fell
+    // through to `to: existingInvitation?.email ?? ""` below - silently
+    // asking Resend to send to an empty address instead of failing loudly.
+    // Fail here instead, before any token/credential rotation happens.
+    if (existingInvitationError || !existingInvitation?.email) {
+      console.error(
+        "[organization-invitations/resend] Could not resolve invitation email:",
+        existingInvitationError
+      );
+
+      return NextResponse.json(
+        { message: "Invitation not found or its email address is missing." },
+        { status: 404 }
+      );
+    }
 
     // Rotates organization_invitations.token to the new value BEFORE any
     // credential rotation below - the account's user_metadata must be
@@ -146,8 +163,18 @@ export async function POST(
           acceptUrl: `${origin}/org-invite/${token}`,
         });
 
+    // Temporary diagnostic (safe: never logs the key itself) - confirms
+    // what THIS route's execution actually sees at send time, since the
+    // create-invitation route and this resend route are separate
+    // serverless function instances. Remove once confirmed resolved.
+    console.log(
+      "[resend-invitation] API key present:",
+      !!process.env.RESEND_API_KEY
+    );
+    console.log("[resend-invitation] from:", process.env.RESEND_FROM_EMAIL);
+
     const sendResult = await sendEmail({
-      to: existingInvitation?.email ?? "",
+      to: existingInvitation.email,
       subject: emailContent.subject,
       html: emailContent.html,
       text: emailContent.text,
