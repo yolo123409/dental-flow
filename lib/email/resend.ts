@@ -37,6 +37,17 @@ export async function sendEmail(
 ): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
 
+  // Temporary diagnostic (safe: never logs the key itself) - visible in
+  // Vercel's Runtime Logs, to confirm what THIS deployment actually sees
+  // for these two env vars without exposing any secret. Remove once the
+  // production email-delivery issue is confirmed resolved.
+  console.log(
+    "[email] RESEND_API_KEY present:",
+    !!apiKey,
+    "| from:",
+    process.env.RESEND_FROM_EMAIL || DEFAULT_FROM
+  );
+
   if (!apiKey) {
     return {
       success: false,
