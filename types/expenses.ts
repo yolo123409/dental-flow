@@ -5,6 +5,9 @@ export interface ExpenseCategory {
   description: string | null;
   active: boolean;
   display_order: number;
+  // Which ledger account this category's expenses post to (Accounting
+  // Ledger) - null means "use the clinic's default expense account".
+  default_ledger_account_id: string | null;
   created_at: string;
   updated_at: string;
 }

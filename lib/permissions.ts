@@ -32,7 +32,11 @@ export type Permission =
   | "analytics"
   | "settings"
   | "treatment_profitability"
-  | "treatment_profitability_manage";
+  | "treatment_profitability_manage"
+  | "ledger"
+  | "ledger_manage"
+  | "accounts_payable"
+  | "accounts_payable_manage";
 
 export const permissions: Record<UserRole, ("*" | Permission)[]> = {
   Owner: ["*"],

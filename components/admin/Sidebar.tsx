@@ -22,6 +22,9 @@ import {
   Wallet,
   TrendingUp,
   FileBarChart,
+  BookOpen,
+  Scale,
+  HandCoins,
   LucideIcon,
 } from "lucide-react";
 
@@ -148,6 +151,30 @@ const sections: SidebarSection[] = [
         href: "/admin/treatment-profitability",
         icon: TrendingUp,
         permission: "treatment_profitability",
+      },
+    ],
+  },
+
+  {
+    title: "ACCOUNTING",
+    links: [
+      {
+        name: "Ledger",
+        href: "/admin/ledger",
+        icon: BookOpen,
+        permission: "ledger",
+      },
+      {
+        name: "Trial Balance",
+        href: "/admin/ledger/trial-balance",
+        icon: Scale,
+        permission: "ledger",
+      },
+      {
+        name: "Accounts Payable",
+        href: "/admin/accounts-payable",
+        icon: HandCoins,
+        permission: "accounts_payable",
       },
     ],
   },
