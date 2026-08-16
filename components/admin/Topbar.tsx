@@ -4,7 +4,6 @@ import GlobalSearch from "@/components/layout/GlobalSearch";
 import UserMenu from "@/components/auth/UserMenu";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import ThemeToggle from "@/components/ui/ThemeToggle";
-import BranchSwitcher from "@/components/organization/BranchSwitcher";
 
 export default function Topbar() {
   return (
@@ -12,7 +11,6 @@ export default function Topbar() {
 
       <div className="flex items-center gap-4">
         <GlobalSearch />
-        <BranchSwitcher />
       </div>
 
       <div className="flex items-center gap-6">

@@ -15,7 +15,6 @@ import {
   Calendar,
   BarChart3,
   Settings,
-  Building2,
   Truck,
   ClipboardList,
   PackageCheck,
@@ -201,7 +200,7 @@ const sections: SidebarSection[] = [
 export default function Sidebar() {
   const pathname = usePathname();
 
-  const { profile, organizationUser } = useAuth();
+  const { profile } = useAuth();
 
   const { hasPermission, role } =
     usePermissions();
@@ -295,62 +294,6 @@ export default function Sidebar() {
             </div>
           );
         })}
-
-        {organizationUser?.role === "CEO" && (
-          <div className="mb-8">
-
-            <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-mineral">
-              ORGANIZATION
-            </p>
-
-            <Link
-              href="/admin/organization/overview"
-              className={`mb-2 flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors ${
-                pathname === "/admin/organization/overview"
-                  ? "bg-eucalyptus text-white"
-                  : "text-graphite hover:bg-porcelain"
-              }`}
-            >
-              <LayoutDashboard size={20} />
-
-              <span className="font-medium">
-                Overview
-              </span>
-            </Link>
-
-            <Link
-              href="/admin/organization/team"
-              className={`mb-2 flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors ${
-                pathname === "/admin/organization/team" ||
-                pathname.startsWith("/admin/organization/team/")
-                  ? "bg-eucalyptus text-white"
-                  : "text-graphite hover:bg-porcelain"
-              }`}
-            >
-              <Building2 size={20} />
-
-              <span className="font-medium">
-                Team &amp; Access
-              </span>
-            </Link>
-
-            <Link
-              href="/admin/organization/settings"
-              className={`mb-2 flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors ${
-                pathname === "/admin/organization/settings"
-                  ? "bg-eucalyptus text-white"
-                  : "text-graphite hover:bg-porcelain"
-              }`}
-            >
-              <Settings size={20} />
-
-              <span className="font-medium">
-                Organization Settings
-              </span>
-            </Link>
-
-          </div>
-        )}
 
       </nav>
 

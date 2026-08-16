@@ -58,12 +58,9 @@ function buildInviteLink(token: string): string {
 export async function createInvitation(
   input: CreateInvitationInput
 ): Promise<{ invitation: CreatedInvitation; link: string }> {
-  const clinicId = await getCurrentClinicId();
-
   const { data, error } = await supabase.rpc(
     "create_staff_invitation",
     {
-      p_clinic_id: clinicId,
       p_email: input.email.trim(),
       p_full_name: input.full_name.trim(),
       p_role: input.role,
@@ -92,12 +89,9 @@ export async function createInvitation(
 export async function resendInvitation(
   invitationId: string
 ): Promise<{ link: string }> {
-  const clinicId = await getCurrentClinicId();
-
   const { data, error } = await supabase.rpc(
     "resend_staff_invitation",
     {
-      p_clinic_id: clinicId,
       p_invitation_id: invitationId,
       p_token: generateToken(),
     }

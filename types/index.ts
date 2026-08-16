@@ -2,8 +2,6 @@ export * from "./appointment";
 export * from "./clinicUser";
 export * from "./dashboard";
 export * from "./notification";
-export * from "./organization";
-export * from "./organizationInvitation";
 export * from "./staffInvitation";
 export * from "./patient";
 export * from "./patientTooth";
