@@ -27,6 +27,7 @@ import {
   LineChart,
   Landmark,
   ScrollText,
+  Receipt,
   LucideIcon,
 } from "lucide-react";
 
@@ -188,6 +189,12 @@ const sections: SidebarSection[] = [
         name: "Balance Sheet",
         href: "/admin/ledger/balance-sheet",
         icon: ScrollText,
+        permission: "ledger",
+      },
+      {
+        name: "Accounts Receivable",
+        href: "/admin/ledger/accounts-receivable",
+        icon: Receipt,
         permission: "ledger",
       },
       {
