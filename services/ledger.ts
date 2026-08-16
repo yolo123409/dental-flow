@@ -6,6 +6,9 @@ import { getPeriodFinancials } from "./reports/shared";
 
 import {
   AccountLedger,
+  BalanceSheetLine,
+  BalanceSheetPeriod,
+  BalanceSheetSection,
   CashFlowLine,
   CashFlowPeriod,
   CashFlowSection,
@@ -959,5 +962,158 @@ export async function getCashFlowStatement(start: Date, end: Date): Promise<Cash
     endingCash,
     hasInvestingCapability,
     hasFinancingCapability,
+  };
+}
+
+/* -------------------------------------- */
+/* Balance Sheet                          */
+/* -------------------------------------- */
+
+interface RawBalanceSheetRow {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: LedgerAccountType;
+  total_debit: number;
+  total_credit: number;
+}
+
+// No subtype/category column exists on clinic_ledger_accounts today, so
+// Current vs Non-Current is derived from account identity: the three
+// special-purpose accounts (below) plus any account whose name contains
+// "Current" (catching the default seed's "Other Current Assets"/"Other
+// Current Liabilities") - everything else falls to Non-Current. Same
+// name-based-classification precedent already used for EBITDA's
+// Depreciation/Amortization detection in getProfitAndLoss().
+const CURRENT_NAME_PATTERN = /current/i;
+
+function toBalanceSheetSection(lines: BalanceSheetLine[]): BalanceSheetSection {
+  const filtered = lines.filter((line) => line.amount !== 0);
+  return { lines: filtered, total: filtered.reduce((sum, line) => sum + line.amount, 0) };
+}
+
+/**
+ * Balance Sheet as of a single date - built entirely from the
+ * double-entry ledger via the single-query get_balance_sheet RPC (one
+ * round trip covering every account, no N+1). This is a read-only
+ * report: it never writes to any accounting table, and calling it twice
+ * concurrently is safe (getLedgerSettings()'s ensureLedgerProvisioned()
+ * call is memoized/idempotent, same as every other ledger report).
+ *
+ * Current vs Non-Current Assets/Liabilities: the three settings-designated
+ * accounts (cash/bank/mobile-money, Accounts Receivable, Inventory) are
+ * always Current; Accounts Payable is always Current; every other
+ * Asset/Liability account is Current only if its name contains "Current"
+ * (matching the default chart's "Other Current Assets"/"Other Current
+ * Liabilities"), otherwise Non-Current - so a custom "Equipment" or "Loan
+ * Payable" account (the same accounts Cash Flow would classify as
+ * Investing/Financing) correctly lands in Non-Current here too.
+ *
+ * Retained Earnings: this system has no dedicated Retained Earnings
+ * account and closes no books, so it is calculated - not fabricated - as
+ * cumulative Income minus cumulative Expense, all-time up to and
+ * including the as-of date. Its `lines` list every contributing
+ * Income/Expense account (Expense accounts shown as negative
+ * contributions) so the figure is auditable rather than a black box.
+ */
+export async function getBalanceSheet(asOf: Date): Promise<BalanceSheetPeriod> {
+  const asOfIso = asOf.toISOString().slice(0, 10);
+
+  const [settings, rpcResult] = await Promise.all([
+    getLedgerSettings(),
+    supabase.rpc("get_balance_sheet", { p_as_of: asOfIso }),
+  ]);
+
+  if (rpcResult.error) {
+    logError("[ledger] getBalanceSheet failed:", rpcResult.error);
+    throw toError(rpcResult.error);
+  }
+
+  const rows = (rpcResult.data ?? []) as RawBalanceSheetRow[];
+
+  const cashAccountIds = new Set<string>(
+    [settings.default_cash_account_id, ...Object.values(settings.payment_method_accounts ?? {})].filter(
+      (id): id is string => !!id
+    )
+  );
+  const receivableId = settings.accounts_receivable_account_id;
+  const payableId = settings.accounts_payable_account_id;
+  const inventoryId = settings.inventory_account_id;
+
+  const isCurrentAsset = (accountId: string, accountName: string): boolean =>
+    cashAccountIds.has(accountId) ||
+    accountId === receivableId ||
+    accountId === inventoryId ||
+    CURRENT_NAME_PATTERN.test(accountName);
+
+  const isCurrentLiability = (accountId: string, accountName: string): boolean =>
+    accountId === payableId || CURRENT_NAME_PATTERN.test(accountName);
+
+  const currentAssetLines: BalanceSheetLine[] = [];
+  const nonCurrentAssetLines: BalanceSheetLine[] = [];
+  const currentLiabilityLines: BalanceSheetLine[] = [];
+  const nonCurrentLiabilityLines: BalanceSheetLine[] = [];
+  const equityLines: BalanceSheetLine[] = [];
+  const retainedEarningsLines: BalanceSheetLine[] = [];
+
+  for (const row of rows) {
+    const accountId = row.account_id;
+    const accountCode = row.account_code;
+    const accountName = row.account_name;
+    const totalDebit = Number(row.total_debit);
+    const totalCredit = Number(row.total_credit);
+
+    if (row.account_type === "Asset") {
+      // Asset accounts are debit-normal.
+      const line: BalanceSheetLine = { accountId, accountCode, accountName, amount: totalDebit - totalCredit };
+      if (isCurrentAsset(accountId, accountName)) currentAssetLines.push(line);
+      else nonCurrentAssetLines.push(line);
+    } else if (row.account_type === "Liability") {
+      // Liability accounts are credit-normal.
+      const line: BalanceSheetLine = { accountId, accountCode, accountName, amount: totalCredit - totalDebit };
+      if (isCurrentLiability(accountId, accountName)) currentLiabilityLines.push(line);
+      else nonCurrentLiabilityLines.push(line);
+    } else if (row.account_type === "Equity") {
+      equityLines.push({ accountId, accountCode, accountName, amount: totalCredit - totalDebit });
+    } else if (row.account_type === "Income") {
+      retainedEarningsLines.push({ accountId, accountCode, accountName, amount: totalCredit - totalDebit });
+    } else if (row.account_type === "Expense") {
+      retainedEarningsLines.push({ accountId, accountCode, accountName, amount: -(totalDebit - totalCredit) });
+    }
+  }
+
+  const currentAssets = toBalanceSheetSection(currentAssetLines);
+  const nonCurrentAssets = toBalanceSheetSection(nonCurrentAssetLines);
+  const totalAssets = currentAssets.total + nonCurrentAssets.total;
+
+  const currentLiabilities = toBalanceSheetSection(currentLiabilityLines);
+  const nonCurrentLiabilities = toBalanceSheetSection(nonCurrentLiabilityLines);
+  const totalLiabilities = currentLiabilities.total + nonCurrentLiabilities.total;
+
+  const equityAccounts = toBalanceSheetSection(equityLines);
+  const retainedEarnings = toBalanceSheetSection(retainedEarningsLines);
+  const totalEquity = equityAccounts.total + retainedEarnings.total;
+
+  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+
+  // Never forced to zero - a real ledger imbalance (a bug, not float
+  // noise) must be visible, not hidden. The 1-cent epsilon only absorbs
+  // floating point summation noise, matching getTrialBalance's own rule.
+  const difference = totalAssets - totalLiabilitiesAndEquity;
+
+  return {
+    asOf: asOfIso,
+    currentAssets,
+    nonCurrentAssets,
+    totalAssets,
+    currentLiabilities,
+    nonCurrentLiabilities,
+    totalLiabilities,
+    equityAccounts,
+    retainedEarnings,
+    totalEquity,
+    totalLiabilitiesAndEquity,
+    difference,
+    balanced: Math.abs(difference) < 0.01,
   };
 }

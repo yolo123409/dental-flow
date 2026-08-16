@@ -134,3 +134,61 @@ export function percentChange(current: number, previous: number): number | null 
   if (previous === 0) return current === 0 ? 0 : null;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
+
+/**
+ * A point-in-time statement (Balance Sheet) needs a single "as of" date,
+ * not a range - separate presets from REPORT_RANGE_OPTIONS above.
+ */
+export const AS_OF_DATE_PRESETS = [
+  "Today",
+  "End of This Month",
+  "End of Last Month",
+  "End of This Quarter",
+  "End of This Year",
+  "Custom Date",
+];
+
+/**
+ * Resolves a preset (or an explicit custom date string) to a concrete
+ * Date at end-of-day - null when Custom Date is selected but not yet
+ * entered.
+ */
+export function resolveAsOfDate(preset: string, customDate: string): Date | null {
+  const now = new Date();
+
+  switch (preset) {
+    case "Today":
+      return now;
+
+    case "End of This Month": {
+      const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    case "End of Last Month": {
+      const d = new Date(now.getFullYear(), now.getMonth(), 0);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    case "End of This Quarter": {
+      const quarterEndMonth = Math.floor(now.getMonth() / 3) * 3 + 3;
+      const d = new Date(now.getFullYear(), quarterEndMonth, 0);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    case "End of This Year": {
+      const d = new Date(now.getFullYear(), 11, 31);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    case "Custom Date":
+      return customDate ? new Date(`${customDate}T23:59:59.999`) : null;
+
+    default:
+      return null;
+  }
+}

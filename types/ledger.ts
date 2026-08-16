@@ -240,3 +240,58 @@ export interface CashFlowPeriod {
   hasInvestingCapability: boolean;
   hasFinancingCapability: boolean;
 }
+
+/**
+ * Balance Sheet - every account's cumulative balance as of a single
+ * date, built from clinic_ledger_accounts/entries/transactions via the
+ * get_balance_sheet RPC. Current vs Non-Current is derived from account
+ * identity: the three special-purpose accounts
+ * (cash/bank/mobile-money, Accounts Receivable, Inventory) plus any
+ * other account whose name contains "Current" are Current; every other
+ * Asset/Liability account is Non-Current. This matches the clinic's own
+ * default Chart of Accounts (e.g. "Other Current Assets") without
+ * hard-coding account IDs beyond the ones clinic_ledger_settings itself
+ * already designates.
+ *
+ * There is no dedicated Retained Earnings account in this system, so it
+ * is calculated - not fabricated - as cumulative Income minus cumulative
+ * Expense, all-time up to and including the as-of date, exactly matching
+ * standard accounting practice for a system that closes no books. Its
+ * `lines` show every contributing Income/Expense account so the figure
+ * is auditable, not a black box.
+ */
+export interface BalanceSheetLine {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  amount: number;
+}
+
+export interface BalanceSheetSection {
+  lines: BalanceSheetLine[];
+  total: number;
+}
+
+export interface BalanceSheetPeriod {
+  asOf: string;
+
+  currentAssets: BalanceSheetSection;
+  nonCurrentAssets: BalanceSheetSection;
+  totalAssets: number;
+
+  currentLiabilities: BalanceSheetSection;
+  nonCurrentLiabilities: BalanceSheetSection;
+  totalLiabilities: number;
+
+  /** Real Equity-type ledger accounts (Owner's Equity, Opening Balance Equity, any custom account) - excludes the calculated Retained Earnings figure below. */
+  equityAccounts: BalanceSheetSection;
+  /** Calculated, not a ledger account: cumulative Income minus cumulative Expense as of this date. */
+  retainedEarnings: BalanceSheetSection;
+  totalEquity: number;
+
+  totalLiabilitiesAndEquity: number;
+
+  /** Assets - (Liabilities + Equity). Zero when balanced. Never silently forced to zero. */
+  difference: number;
+  balanced: boolean;
+}
