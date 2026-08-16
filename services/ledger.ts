@@ -14,6 +14,9 @@ import {
   LedgerTransaction,
   LedgerTransactionFilters,
   LedgerTransactionPage,
+  ProfitAndLossLine,
+  ProfitAndLossPeriod,
+  ProfitAndLossSection,
   TrialBalance,
   TrialBalanceRow,
 } from "@/types/ledger";
@@ -601,5 +604,141 @@ export async function getLedgerDashboardTotals(
     expenses: financials.expenses,
     netProfit: financials.netProfit,
     openReconciliationIssues: issues.length,
+  };
+}
+
+/* -------------------------------------- */
+/* Profit & Loss                          */
+/* -------------------------------------- */
+
+interface RawProfitAndLossRow {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: LedgerAccountType;
+  total_debit: number;
+  total_credit: number;
+}
+
+const DEPRECIATION_NAME_PATTERN = /deprecia|amortiz/i;
+
+function buildSection(
+  rows: { accountId: string; accountCode: string; accountName: string; amount: number }[]
+): ProfitAndLossSection {
+  const lines: ProfitAndLossLine[] = rows
+    .filter((row) => row.amount !== 0)
+    .map((row) => ({
+      accountId: row.accountId,
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      amount: row.amount,
+    }));
+
+  return {
+    lines,
+    total: lines.reduce((sum, line) => sum + line.amount, 0),
+  };
+}
+
+/**
+ * Profit & Loss for a single period, built entirely from the double-entry
+ * ledger (clinic_ledger_accounts/entries/transactions via the
+ * get_profit_and_loss RPC) - never from summing invoices, payments, or
+ * clinic_expenses rows directly. This is a read-only report: it never
+ * writes to any accounting table.
+ *
+ * Revenue = net credit movement on Income accounts in the period.
+ * Direct Costs = the Expense account the clinic's own ledger settings
+ * designate for inventory consumed in delivering treatments
+ * (supplies_used_account_id) - the existing system's own "cost of goods
+ * sold" classification, not an invented category. Every other Expense
+ * account is an Operating Expense, using whatever account each expense
+ * category (or the clinic's default) is actually mapped to - so the
+ * breakdown always matches this clinic's real Chart of Accounts.
+ *
+ * EBITDA is only populated when the clinic's own chart contains an
+ * account that is clearly Depreciation/Amortization (by name) - there is
+ * no such account in the default seeded chart, so most clinics will see
+ * null here, which the UI must render as "not available", never as 0.
+ */
+export async function getProfitAndLoss(start: Date, end: Date): Promise<ProfitAndLossPeriod> {
+  const startIso = start.toISOString().slice(0, 10);
+  const endIso = end.toISOString().slice(0, 10);
+
+  const [settings, rpcResult] = await Promise.all([
+    getLedgerSettings(),
+    supabase.rpc("get_profit_and_loss", { p_start: startIso, p_end: endIso }),
+  ]);
+
+  if (rpcResult.error) {
+    logError("[ledger] getProfitAndLoss failed:", rpcResult.error);
+    throw toError(rpcResult.error);
+  }
+
+  const rows = (rpcResult.data ?? []) as RawProfitAndLossRow[];
+
+  const incomeRows = rows
+    .filter((row) => row.account_type === "Income")
+    .map((row) => ({
+      accountId: row.account_id,
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      // Income accounts are credit-normal: net credit movement is the
+      // period's revenue for that account.
+      amount: Number(row.total_credit) - Number(row.total_debit),
+    }));
+
+  const expenseRows = rows.filter((row) => row.account_type === "Expense");
+
+  const directCostRows = expenseRows
+    .filter((row) => row.account_id === settings.supplies_used_account_id)
+    .map((row) => ({
+      accountId: row.account_id,
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      // Expense accounts are debit-normal: net debit movement is the
+      // period's cost for that account.
+      amount: Number(row.total_debit) - Number(row.total_credit),
+    }));
+
+  const operatingExpenseRows = expenseRows
+    .filter((row) => row.account_id !== settings.supplies_used_account_id)
+    .map((row) => ({
+      accountId: row.account_id,
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      amount: Number(row.total_debit) - Number(row.total_credit),
+    }));
+
+  const revenue = buildSection(incomeRows);
+  const directCosts = buildSection(directCostRows);
+  const operatingExpenses = buildSection(operatingExpenseRows);
+
+  const grossProfit = revenue.total - directCosts.total;
+  const totalOperatingExpenses = operatingExpenses.total;
+  const ebit = grossProfit - totalOperatingExpenses;
+
+  // No interest/tax accounts exist in this clinic's ledger design, so
+  // there is nothing to separate out below EBIT - Net Profit and EBIT
+  // are the same figure until such accounts exist.
+  const netProfit = ebit;
+
+  const depreciationTotal = operatingExpenses.lines
+    .filter((line) => DEPRECIATION_NAME_PATTERN.test(line.accountName))
+    .reduce((sum, line) => sum + line.amount, 0);
+
+  const ebitda = depreciationTotal > 0 ? ebit + depreciationTotal : null;
+
+  return {
+    start: startIso,
+    end: endIso,
+    revenue,
+    directCosts,
+    grossProfit,
+    operatingExpenses,
+    totalOperatingExpenses,
+    ebit,
+    netProfit,
+    ebitda,
   };
 }

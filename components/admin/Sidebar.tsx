@@ -24,6 +24,7 @@ import {
   BookOpen,
   Scale,
   HandCoins,
+  LineChart,
   LucideIcon,
 } from "lucide-react";
 
@@ -167,6 +168,12 @@ const sections: SidebarSection[] = [
         name: "Trial Balance",
         href: "/admin/ledger/trial-balance",
         icon: Scale,
+        permission: "ledger",
+      },
+      {
+        name: "Profit & Loss",
+        href: "/admin/ledger/profit-loss",
+        icon: LineChart,
         permission: "ledger",
       },
       {

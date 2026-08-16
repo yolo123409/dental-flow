@@ -143,3 +143,44 @@ export interface LedgerDashboardTotals {
   netProfit: number;
   openReconciliationIssues: number;
 }
+
+/**
+ * Profit & Loss - built from clinic_ledger_accounts/entries/transactions
+ * (the same double-entry source of truth as the Trial Balance and General
+ * Ledger), not from summing invoices/payments/expenses directly. Each
+ * line's `amount` is already sign-adjusted for its account's normal
+ * balance side (revenue lines are positive when the account has a net
+ * credit balance, expense lines are positive when the account has a net
+ * debit balance) so every amount in the UI can be shown and summed as a
+ * plain positive figure.
+ */
+export interface ProfitAndLossLine {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  amount: number;
+}
+
+export interface ProfitAndLossSection {
+  lines: ProfitAndLossLine[];
+  total: number;
+}
+
+export interface ProfitAndLossPeriod {
+  start: string;
+  end: string;
+  revenue: ProfitAndLossSection;
+  directCosts: ProfitAndLossSection;
+  grossProfit: number;
+  operatingExpenses: ProfitAndLossSection;
+  totalOperatingExpenses: number;
+  ebit: number;
+  netProfit: number;
+  /**
+   * Only ever populated when the clinic's own Chart of Accounts contains
+   * a Depreciation/Amortization expense account to add back - never
+   * estimated. Null means "not reliably computable from the accounts
+   * that exist", not zero.
+   */
+  ebitda: number | null;
+}

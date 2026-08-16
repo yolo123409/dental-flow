@@ -82,6 +82,28 @@ export function getDateRange(
       };
     }
 
+    // Full previous calendar year (Jan 1 -> Dec 31), same "full prior
+    // period" convention as "Last Month".
+    case "Last Year": {
+      const start = new Date(end.getFullYear() - 1, 0, 1);
+
+      const lastYearEnd = new Date(end.getFullYear() - 1, 11, 31);
+      lastYearEnd.setHours(23, 59, 59, 999);
+
+      return { start, end: lastYearEnd };
+    }
+
+    // Current calendar quarter to date (quarter start -> now), same
+    // "to date" convention as "This Month"/"This Year".
+    case "This Quarter": {
+      const quarterStartMonth = Math.floor(end.getMonth() / 3) * 3;
+
+      return {
+        start: new Date(end.getFullYear(), quarterStartMonth, 1),
+        end,
+      };
+    }
+
     default:
       return {
         start: null,
