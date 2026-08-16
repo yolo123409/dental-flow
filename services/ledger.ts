@@ -30,6 +30,7 @@ const TRANSACTION_SELECT = `
 `;
 
 let provisioned = false;
+let provisioningPromise: Promise<void> | null = null;
 
 /**
  * The chart of accounts/settings are seeded lazily on first use (same
@@ -37,18 +38,36 @@ let provisioned = false;
  * elsewhere in this project) rather than requiring a migration-time data
  * backfill for every existing clinic. Cached in-memory per session so
  * repeated calls within one page load don't re-invoke the RPC.
+ *
+ * Callers like getLedgerDashboardTotals() invoke this via multiple
+ * services (getLedgerSettings(), getTrialBalance()) in parallel through
+ * Promise.all, so the `provisioned` flag alone isn't enough - two calls
+ * can both see it as false before either has resolved. In-flight calls
+ * share a single promise so only one RPC request is ever sent at a time
+ * (the RPC itself is also idempotent server-side, guarding against the
+ * same race across separate tabs/sessions).
  */
 export async function ensureLedgerProvisioned(): Promise<void> {
   if (provisioned) return;
 
-  const { error } = await supabase.rpc("ensure_ledger_provisioned");
+  if (!provisioningPromise) {
+    provisioningPromise = (async () => {
+      try {
+        const { error } = await supabase.rpc("ensure_ledger_provisioned");
 
-  if (error) {
-    logError("[ledger] ensureLedgerProvisioned failed:", error);
-    throw toError(error);
+        if (error) {
+          logError("[ledger] ensureLedgerProvisioned failed:", error);
+          throw toError(error);
+        }
+
+        provisioned = true;
+      } finally {
+        provisioningPromise = null;
+      }
+    })();
   }
 
-  provisioned = true;
+  return provisioningPromise;
 }
 
 /* -------------------------------------- */
