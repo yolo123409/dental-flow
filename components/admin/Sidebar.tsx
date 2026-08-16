@@ -25,6 +25,7 @@ import {
   Scale,
   HandCoins,
   LineChart,
+  Landmark,
   LucideIcon,
 } from "lucide-react";
 
@@ -174,6 +175,12 @@ const sections: SidebarSection[] = [
         name: "Profit & Loss",
         href: "/admin/ledger/profit-loss",
         icon: LineChart,
+        permission: "ledger",
+      },
+      {
+        name: "Cash Flow",
+        href: "/admin/ledger/cash-flow",
+        icon: Landmark,
         permission: "ledger",
       },
       {

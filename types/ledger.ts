@@ -184,3 +184,59 @@ export interface ProfitAndLossPeriod {
    */
   ebitda: number | null;
 }
+
+/**
+ * Cash Flow Statement - built directly from clinic_ledger_entries/
+ * transactions, looking only at entries that actually touch a
+ * cash/bank/mobile-money account (never from invoices or expenses
+ * directly, so accrual activity - e.g. an unpaid invoice - never appears
+ * as a cash movement). Each cash-touching transaction is classified by
+ * the *other* account it posts against: Accounts Receivable/Payable,
+ * Inventory, or an Income/Expense account -> Operating; any other Asset
+ * account -> Investing; any Liability/Equity account (other than the
+ * Opening Balance Equity account, which isn't a real period cash flow) ->
+ * Financing.
+ */
+export interface CashFlowLine {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  amount: number;
+}
+
+export interface CashFlowSection {
+  lines: CashFlowLine[];
+  total: number;
+}
+
+export interface CashFlowPeriod {
+  start: string;
+  end: string;
+
+  beginningCash: number;
+
+  operating: CashFlowSection;
+  investing: CashFlowSection;
+  financing: CashFlowSection;
+  /**
+   * Cash movements that don't reliably belong in any of the three
+   * standard sections - currently only Opening Balance entries dated
+   * inside the selected period (a balance-forward declaration, not a
+   * real financing inflow). Shown explicitly, never silently dropped or
+   * misclassified, so Beginning + Net Change always equals Ending.
+   */
+  other: CashFlowSection;
+
+  netChangeInCash: number;
+  endingCash: number;
+
+  /**
+   * Whether this clinic's Chart of Accounts contains any account that
+   * COULD represent Investing/Financing activity, independent of whether
+   * it had activity this specific period - used to tell "genuinely zero
+   * this period" apart from "this clinic has never configured an account
+   * to track this category at all" in the UI.
+   */
+  hasInvestingCapability: boolean;
+  hasFinancingCapability: boolean;
+}

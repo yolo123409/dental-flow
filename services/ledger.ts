@@ -6,6 +6,9 @@ import { getPeriodFinancials } from "./reports/shared";
 
 import {
   AccountLedger,
+  CashFlowLine,
+  CashFlowPeriod,
+  CashFlowSection,
   LedgerAccount,
   LedgerAccountType,
   LedgerDashboardTotals,
@@ -740,5 +743,221 @@ export async function getProfitAndLoss(start: Date, end: Date): Promise<ProfitAn
     ebit,
     netProfit,
     ebitda,
+  };
+}
+
+/* -------------------------------------- */
+/* Cash Flow Statement                    */
+/* -------------------------------------- */
+
+/**
+ * Cash Flow Statement for a single period - a direct-method statement
+ * built entirely from clinic_ledger_entries/transactions, reusing
+ * getLedgerTransactions() (already RLS-scoped, already used by the
+ * Ledger page) once per cash/bank/mobile-money account rather than
+ * adding any new database object. No table is read or written outside
+ * the existing ledger schema, and nothing is ever written.
+ *
+ * Only entries that actually touch a "cash and cash equivalents" account
+ * (clinic_ledger_settings.default_cash_account_id and every account in
+ * payment_method_accounts - the exact same definition
+ * getLedgerDashboardTotals already uses for its "Cash & Bank" figure)
+ * count as a cash movement. Every ledger transaction in this system
+ * currently has exactly two legs, so for a transaction with one cash leg
+ * the other leg tells us what the cash movement actually was:
+ *
+ *  - the other leg is Accounts Receivable, Accounts Payable, Inventory,
+ *    or any Income/Expense account -> Operating (customer receipts,
+ *    supplier/expense payments - all genuinely operating in nature)
+ *  - the other leg is the Opening Balance Equity account -> excluded
+ *    from all three sections (a balance-forward declaration, not a real
+ *    period cash flow) but still included in Net Change so Beginning +
+ *    Net Change always equals Ending
+ *  - the other leg is any other Asset account -> Investing (this system
+ *    has no dedicated Fixed Asset/Equipment account by default; if the
+ *    clinic has created one and posted against it, e.g. via a Manual
+ *    Journal Entry, it appears here automatically)
+ *  - the other leg is any other Liability or Equity account -> Financing
+ *    (e.g. a custom Loan Payable account, or the Owner's Equity account)
+ *  - both legs are cash accounts (a transfer between Cash and Bank, say)
+ *    -> excluded entirely, since it doesn't change the total cash
+ *    position across the whole cash pool
+ *
+ * hasInvestingCapability/hasFinancingCapability reflect whether this
+ * clinic's Chart of Accounts contains an account that could ever produce
+ * an Investing/Financing line, independent of this period's activity -
+ * the UI uses this to distinguish "genuinely zero this period" from
+ * "no such account has ever been configured".
+ */
+export async function getCashFlowStatement(start: Date, end: Date): Promise<CashFlowPeriod> {
+  const startIso = start.toISOString().slice(0, 10);
+  const endIso = end.toISOString().slice(0, 10);
+
+  const [settings, allAccounts] = await Promise.all([
+    getLedgerSettings(),
+    getLedgerAccounts({ includeInactive: true }),
+  ]);
+
+  const cashAccountIds = new Set<string>(
+    [settings.default_cash_account_id, ...Object.values(settings.payment_method_accounts ?? {})].filter(
+      (id): id is string => !!id
+    )
+  );
+
+  const emptySection: CashFlowSection = { lines: [], total: 0 };
+
+  if (cashAccountIds.size === 0) {
+    return {
+      start: startIso,
+      end: endIso,
+      beginningCash: 0,
+      operating: emptySection,
+      investing: emptySection,
+      financing: emptySection,
+      other: emptySection,
+      netChangeInCash: 0,
+      endingCash: 0,
+      hasInvestingCapability: false,
+      hasFinancingCapability: false,
+    };
+  }
+
+  const receivableId = settings.accounts_receivable_account_id;
+  const payableId = settings.accounts_payable_account_id;
+  const inventoryId = settings.inventory_account_id;
+  const openingBalanceEquityId = settings.opening_balance_equity_account_id;
+
+  const [openingBalanceResults, transactionPages] = await Promise.all([
+    Promise.all(
+      Array.from(cashAccountIds).map((id) =>
+        supabase.rpc("get_account_opening_balance", { p_account_id: id, p_start: startIso })
+      )
+    ),
+    Promise.all(
+      Array.from(cashAccountIds).map((id) =>
+        getLedgerTransactions({ accountId: id, startDate: startIso, endDate: endIso, limit: 10000 })
+      )
+    ),
+  ]);
+
+  for (const result of openingBalanceResults) {
+    if (result.error) {
+      logError("[ledger] getCashFlowStatement (opening balance) failed:", result.error);
+      throw toError(result.error);
+    }
+  }
+
+  const beginningCash = openingBalanceResults.reduce((sum, r) => sum + Number(r.data ?? 0), 0);
+
+  type Bucket = "operating" | "investing" | "financing" | "other";
+
+  const linesByBucket: Record<Bucket, Map<string, CashFlowLine>> = {
+    operating: new Map(),
+    investing: new Map(),
+    financing: new Map(),
+    other: new Map(),
+  };
+
+  const seenTransactionIds = new Set<string>();
+
+  for (const page of transactionPages) {
+    for (const txn of page.rows) {
+      if (seenTransactionIds.has(txn.id)) continue;
+
+      const entries = txn.clinic_ledger_entries ?? [];
+      const cashLegs = entries.filter((e) => cashAccountIds.has(e.account_id));
+      const nonCashLegs = entries.filter((e) => !cashAccountIds.has(e.account_id));
+
+      // No cash leg (shouldn't happen given the accountId filter), or
+      // every leg is a cash account (an internal transfer between two
+      // cash accounts - nets to zero across the whole cash pool).
+      if (cashLegs.length === 0 || nonCashLegs.length === 0) continue;
+
+      seenTransactionIds.add(txn.id);
+
+      const cashAmount = cashLegs.reduce((sum, e) => sum + (Number(e.debit) - Number(e.credit)), 0);
+      if (cashAmount === 0) continue;
+
+      // Every transaction in this system posts exactly two legs today,
+      // so with exactly one cash leg there is exactly one other leg.
+      const nonCashLeg = nonCashLegs[0];
+      const meta = nonCashLeg.clinic_ledger_accounts;
+      const accountId = nonCashLeg.account_id;
+
+      let bucket: Bucket;
+
+      if (
+        accountId === receivableId ||
+        accountId === payableId ||
+        accountId === inventoryId ||
+        meta?.type === "Income" ||
+        meta?.type === "Expense"
+      ) {
+        bucket = "operating";
+      } else if (accountId === openingBalanceEquityId) {
+        bucket = "other";
+      } else if (meta?.type === "Asset") {
+        bucket = "investing";
+      } else if (meta?.type === "Liability" || meta?.type === "Equity") {
+        bucket = "financing";
+      } else {
+        bucket = "other";
+      }
+
+      const bucketMap = linesByBucket[bucket];
+      const existingLine = bucketMap.get(accountId);
+
+      if (existingLine) {
+        existingLine.amount += cashAmount;
+      } else {
+        bucketMap.set(accountId, {
+          accountId,
+          accountCode: meta?.code ?? "",
+          accountName: meta?.name ?? "Unclassified",
+          amount: cashAmount,
+        });
+      }
+    }
+  }
+
+  function toSection(bucket: Bucket): CashFlowSection {
+    const lines = Array.from(linesByBucket[bucket].values()).filter((line) => line.amount !== 0);
+    return { lines, total: lines.reduce((sum, line) => sum + line.amount, 0) };
+  }
+
+  const operating = toSection("operating");
+  const investing = toSection("investing");
+  const financing = toSection("financing");
+  const other = toSection("other");
+
+  const netChangeInCash = operating.total + investing.total + financing.total + other.total;
+  const endingCash = beginningCash + netChangeInCash;
+
+  const hasInvestingCapability = allAccounts.some(
+    (account) =>
+      account.type === "Asset" &&
+      !cashAccountIds.has(account.id) &&
+      account.id !== receivableId &&
+      account.id !== inventoryId
+  );
+
+  const hasFinancingCapability = allAccounts.some(
+    (account) =>
+      (account.type === "Liability" && account.id !== payableId) ||
+      (account.type === "Equity" && account.id !== openingBalanceEquityId)
+  );
+
+  return {
+    start: startIso,
+    end: endIso,
+    beginningCash,
+    operating,
+    investing,
+    financing,
+    other,
+    netChangeInCash,
+    endingCash,
+    hasInvestingCapability,
+    hasFinancingCapability,
   };
 }
