@@ -28,6 +28,7 @@ import {
   Landmark,
   ScrollText,
   Receipt,
+  Activity,
   LucideIcon,
 } from "lucide-react";
 
@@ -195,6 +196,12 @@ const sections: SidebarSection[] = [
         name: "Accounts Receivable",
         href: "/admin/ledger/accounts-receivable",
         icon: Receipt,
+        permission: "ledger",
+      },
+      {
+        name: "EBIT / EBITDA",
+        href: "/admin/ledger/ebit-ebitda",
+        icon: Activity,
         permission: "ledger",
       },
       {

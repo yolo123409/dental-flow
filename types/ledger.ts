@@ -295,3 +295,46 @@ export interface BalanceSheetPeriod {
   difference: number;
   balanced: boolean;
 }
+
+/**
+ * EBIT/EBITDA - entirely derived from getProfitAndLoss() for the same
+ * period rather than a second revenue/cost calculation, so Revenue and
+ * Direct Costs here are always byte-identical to the P&L's own figures.
+ * The only new work is splitting P&L's Operating Expenses into Interest,
+ * Tax, Depreciation, and Amortization (identified by account name,
+ * same precedent as P&L's own EBITDA depreciation detection) and
+ * everything else - Interest and Tax are excluded from `operatingExpenses`
+ * (EBIT is defined as being before them), while Depreciation/Amortization
+ * stay included (EBIT is after D&A; EBITDA adds them back separately).
+ * When no Interest/Tax account exists (true for the default Chart of
+ * Accounts), `operatingExpenses.total` and `ebit` are byte-identical to
+ * the P&L's own totalOperatingExpenses/ebit - not merely close.
+ */
+export interface EbitEbitdaPeriod {
+  start: string;
+  end: string;
+
+  revenue: number;
+  directCosts: number;
+  grossProfit: number;
+
+  /** Operating Expenses used for EBIT - excludes Interest/Tax, includes Depreciation/Amortization. */
+  operatingExpenses: ProfitAndLossSection;
+  /** Informational only - already excluded from operatingExpenses/EBIT, not a bridge subtraction line. */
+  interestExpense: ProfitAndLossSection;
+  /** Informational only - already excluded from operatingExpenses/EBIT, not a bridge subtraction line. */
+  taxExpense: ProfitAndLossSection;
+
+  ebit: number;
+
+  depreciation: ProfitAndLossSection;
+  amortization: ProfitAndLossSection;
+
+  /** False whenever neither a Depreciation nor an Amortization account has any activity this period - never fabricated. */
+  ebitdaAvailable: boolean;
+  ebitda: number | null;
+
+  /** Null when revenue is zero - never NaN/Infinity. */
+  ebitMarginPercent: number | null;
+  ebitdaMarginPercent: number | null;
+}

@@ -12,6 +12,7 @@ import {
   CashFlowLine,
   CashFlowPeriod,
   CashFlowSection,
+  EbitEbitdaPeriod,
   LedgerAccount,
   LedgerAccountType,
   LedgerDashboardTotals,
@@ -1115,5 +1116,127 @@ export async function getBalanceSheet(asOf: Date): Promise<BalanceSheetPeriod> {
     totalLiabilitiesAndEquity,
     difference,
     balanced: Math.abs(difference) < 0.01,
+  };
+}
+
+/* -------------------------------------- */
+/* EBIT / EBITDA                          */
+/* -------------------------------------- */
+
+// Applied only to P&L's own operatingExpenses.lines, in this priority
+// order, each excluding accounts already claimed by an earlier pattern -
+// same name-based-classification precedent as P&L's own
+// DEPRECIATION_NAME_PATTERN (which stays untouched; these are separate,
+// finer-grained patterns used only by this report).
+const INTEREST_NAME_PATTERN = /interest|finance charge/i;
+const TAX_NAME_PATTERN = /\btax\b/i;
+const EBIT_DEPRECIATION_PATTERN = /deprecia/i;
+const EBIT_AMORTIZATION_PATTERN = /amortiz/i;
+
+/**
+ * EBIT/EBITDA for a single period - built entirely on top of
+ * getProfitAndLoss() for the same period rather than a second
+ * revenue/cost calculation, so Revenue, Direct Costs, and Gross Profit
+ * here are always byte-identical to the P&L's own figures for the same
+ * dates. This is a read-only report: it calls no RPC beyond what
+ * getProfitAndLoss() already calls, and never writes anything.
+ *
+ * P&L's own Operating Expenses total already includes whatever
+ * Interest/Tax/Depreciation/Amortization accounts exist (it doesn't
+ * distinguish them - see getProfitAndLoss's own comments). This function
+ * re-splits those same lines: Interest and Tax accounts are identified
+ * by name and pulled OUT of Operating Expenses entirely (EBIT is
+ * defined as being before interest and taxes), while Depreciation and
+ * Amortization accounts are identified separately but LEFT IN Operating
+ * Expenses (EBIT is after D&A - only EBITDA adds them back on top).
+ *
+ * When this clinic's Chart of Accounts contains no Interest/Tax account
+ * (true for the default seeded chart), no lines are pulled out, so
+ * `operatingExpenses.total` and `ebit` below are byte-identical to the
+ * P&L's own `totalOperatingExpenses`/`ebit` for the same period - not
+ * merely close. EBITDA is only ever populated when Depreciation or
+ * Amortization accounts have real activity in the period; otherwise it
+ * is null (rendered as "Not available" by the UI, never estimated or
+ * silently set equal to EBIT).
+ */
+export async function getEbitEbitda(start: Date, end: Date): Promise<EbitEbitdaPeriod> {
+  const pl = await getProfitAndLoss(start, end);
+
+  const interestLines = pl.operatingExpenses.lines.filter((line) =>
+    INTEREST_NAME_PATTERN.test(line.accountName)
+  );
+  const interestIds = new Set(interestLines.map((line) => line.accountId));
+
+  const taxLines = pl.operatingExpenses.lines.filter(
+    (line) => !interestIds.has(line.accountId) && TAX_NAME_PATTERN.test(line.accountName)
+  );
+  const taxIds = new Set(taxLines.map((line) => line.accountId));
+
+  const depreciationLines = pl.operatingExpenses.lines.filter(
+    (line) =>
+      !interestIds.has(line.accountId) &&
+      !taxIds.has(line.accountId) &&
+      EBIT_DEPRECIATION_PATTERN.test(line.accountName)
+  );
+  const depreciationIds = new Set(depreciationLines.map((line) => line.accountId));
+
+  const amortizationLines = pl.operatingExpenses.lines.filter(
+    (line) =>
+      !interestIds.has(line.accountId) &&
+      !taxIds.has(line.accountId) &&
+      !depreciationIds.has(line.accountId) &&
+      EBIT_AMORTIZATION_PATTERN.test(line.accountName)
+  );
+  const amortizationIds = new Set(amortizationLines.map((line) => line.accountId));
+
+  const remainingOperatingLines = pl.operatingExpenses.lines.filter(
+    (line) =>
+      !interestIds.has(line.accountId) &&
+      !taxIds.has(line.accountId) &&
+      !depreciationIds.has(line.accountId) &&
+      !amortizationIds.has(line.accountId)
+  );
+
+  // Excludes Interest/Tax, includes Depreciation/Amortization - see the
+  // function-level comment above for why.
+  const operatingExpenses = buildSection([
+    ...remainingOperatingLines,
+    ...depreciationLines,
+    ...amortizationLines,
+  ]);
+  const interestExpense = buildSection(interestLines);
+  const taxExpense = buildSection(taxLines);
+  const depreciation = buildSection(depreciationLines);
+  const amortization = buildSection(amortizationLines);
+
+  const revenue = pl.revenue.total;
+  const directCosts = pl.directCosts.total;
+  const grossProfit = pl.grossProfit;
+
+  const ebit = grossProfit - operatingExpenses.total;
+
+  const ebitdaAvailable = depreciation.total + amortization.total > 0;
+  const ebitda = ebitdaAvailable ? ebit + depreciation.total + amortization.total : null;
+
+  const ebitMarginPercent = revenue !== 0 ? (ebit / revenue) * 100 : null;
+  const ebitdaMarginPercent =
+    ebitdaAvailable && ebitda !== null && revenue !== 0 ? (ebitda / revenue) * 100 : null;
+
+  return {
+    start: pl.start,
+    end: pl.end,
+    revenue,
+    directCosts,
+    grossProfit,
+    operatingExpenses,
+    interestExpense,
+    taxExpense,
+    ebit,
+    depreciation,
+    amortization,
+    ebitdaAvailable,
+    ebitda,
+    ebitMarginPercent,
+    ebitdaMarginPercent,
   };
 }
