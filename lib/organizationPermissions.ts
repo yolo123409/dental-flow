@@ -14,12 +14,16 @@ export type OrganizationPermission =
  * own is_organization_ceo() check (see migration 0033), exactly the same
  * relationship lib/permissions.ts already has to clinic-level RLS.
  *
- * Partner/Manager/Viewer are deliberately [] - every existing check in
- * this codebase (RLS, RPCs, page gates) is CEO-only with zero exceptions
- * today, and nothing in this phase expands that. Granting Partner specific
- * capabilities later is a one-line change to this map, not a redesign -
- * but it also requires loosening the corresponding RPCs' authorization,
- * which this phase does not do.
+ * Partner/Manager/Viewer/Dentist/Receptionist are deliberately [] - every
+ * existing check in this codebase (RLS, RPCs, page gates) is CEO-only with
+ * zero exceptions today, and nothing in this phase expands that. Dentist/
+ * Receptionist branch invitees get their real, canonical permissions from
+ * lib/permissions.ts once provisioned into a branch (migration 0047) - this
+ * map is org-management-only (inviting/editing/suspending members) and
+ * deliberately unrelated to that. Granting Partner specific capabilities
+ * later is a one-line change to this map, not a redesign - but it also
+ * requires loosening the corresponding RPCs' authorization, which this
+ * phase does not do.
  */
 const organizationPermissions: Record<
   OrganizationRole,
@@ -36,6 +40,8 @@ const organizationPermissions: Record<
   Partner: [],
   Manager: [],
   Viewer: [],
+  Dentist: [],
+  Receptionist: [],
 };
 
 export function canAccessOrganization(

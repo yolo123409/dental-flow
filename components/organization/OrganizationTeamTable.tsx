@@ -46,7 +46,11 @@ const ORG_ROLE_BADGE_CLASSES: Record<string, string> = {
 };
 
 function MemberRoleBadge({ member }: { member: OrganizationTeamMember }) {
-  if (member.source === "clinic") {
+  // Dentist/Receptionist is the same permission vocabulary regardless of
+  // source (organization-invited-but-not-yet-switched, or clinic-hired) -
+  // RoleBadge already has the right colors for it, no separate org-side
+  // color needed (migration 0047).
+  if (member.source === "clinic" || member.role === "Dentist" || member.role === "Receptionist") {
     return <RoleBadge role={member.role} />;
   }
 
@@ -346,14 +350,18 @@ export default function OrganizationTeamTable({
                       {invitation.email}
                     </td>
                     <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          ORG_ROLE_BADGE_CLASSES[invitation.role] ??
-                          "bg-slate-100 text-slate-700"
-                        }`}
-                      >
-                        {invitation.role}
-                      </span>
+                      {invitation.role === "Dentist" || invitation.role === "Receptionist" ? (
+                        <RoleBadge role={invitation.role} />
+                      ) : (
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            ORG_ROLE_BADGE_CLASSES[invitation.role] ??
+                            "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {invitation.role}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-mineral">
                       {invitation.branch_access === "all"

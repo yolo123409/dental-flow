@@ -293,6 +293,30 @@ export async function getMyOrganization(
 }
 
 /**
+ * The clinic ids this organization member can actually access right now -
+ * resolves 'all' vs 'selected' access identically to switch_active_branch's
+ * own internal check (get_organization_branch_ids, migration 0018), so this
+ * never needs its own copy of that logic. Used right after accepting a
+ * branch invitation to determine whether there is exactly one branch to
+ * automatically switch into (see AcceptOrganizationInvitationForm.tsx).
+ */
+export async function getMyOrganizationBranchIds(
+  organizationId: string
+): Promise<string[]> {
+  const { data, error } = await supabase.rpc("get_organization_branch_ids", {
+    p_organization_id: organizationId,
+  });
+
+  if (error) {
+    logError("[organizations] getMyOrganizationBranchIds failed:", error);
+
+    throw toError(error);
+  }
+
+  return (data ?? []) as string[];
+}
+
+/**
  * Switches the active branch: validates + lazily provisions a real
  * clinic_users row server-side (switch_active_branch RPC - never trusts
  * the browser's claim of "I'm authorized for this branch"), then persists

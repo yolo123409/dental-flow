@@ -1,4 +1,10 @@
-export type OrganizationRole = "CEO" | "Partner" | "Manager" | "Viewer";
+export type OrganizationRole =
+  | "CEO"
+  | "Partner"
+  | "Manager"
+  | "Viewer"
+  | "Dentist"
+  | "Receptionist";
 
 export type OrganizationBranchAccess = "all" | "selected";
 

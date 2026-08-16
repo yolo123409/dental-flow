@@ -20,6 +20,7 @@ import { logError } from "@/lib/logError";
 
 import {
   CreateOrganizationInvitationResult,
+  INVITABLE_ORGANIZATION_ROLES,
   InvitableOrganizationRole,
 } from "@/types/organizationInvitation";
 import { OrganizationBranchAccess } from "@/types/organization";
@@ -33,20 +34,21 @@ interface Props {
   onSuccess: () => Promise<void> | void;
 }
 
-const ROLES: InvitableOrganizationRole[] = [
-  "Partner",
-  "Manager",
-  "Viewer",
-];
+const ROLES = INVITABLE_ORGANIZATION_ROLES;
 
-// Sourced from the same three roles the invite RPC actually accepts
-// (create_organization_invitation's `p_role not in ('Partner','Manager',
-// 'Viewer')` check) - no new role vocabulary invented for this UI.
+// Sourced from the same roles the invite RPC actually accepts
+// (create_organization_invitation's p_role allow-list, migration 0047) - no
+// new role vocabulary invented for this UI. Dentist/Receptionist grant
+// exactly the same permissions as an independent clinic's own Dentist/
+// Receptionist (lib/permissions.ts) - never Owner/Admin wildcard access.
 const ROLE_DESCRIPTIONS: Record<InvitableOrganizationRole, string> = {
   Partner:
     "Organization-level access with restricted ownership controls.",
   Manager: "Can manage assigned branches according to organization permissions.",
   Viewer: "Read-only access where permitted.",
+  Dentist: "Clinical access to assigned branch(es) - same permissions as a clinic-hired Dentist.",
+  Receptionist:
+    "Front-desk access to assigned branch(es) - same permissions as a clinic-hired Receptionist.",
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

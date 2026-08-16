@@ -15,7 +15,10 @@ import {
 } from "@/services/organizations";
 import { logError } from "@/lib/logError";
 
-import { InvitableOrganizationRole } from "@/types/organizationInvitation";
+import {
+  INVITABLE_ORGANIZATION_ROLES,
+  InvitableOrganizationRole,
+} from "@/types/organizationInvitation";
 import { OrganizationBranchAccess, OrganizationUser } from "@/types/organization";
 
 interface Props {
@@ -26,11 +29,7 @@ interface Props {
   onSuccess: () => Promise<void> | void;
 }
 
-const ROLES: InvitableOrganizationRole[] = [
-  "Partner",
-  "Manager",
-  "Viewer",
-];
+const ROLES = INVITABLE_ORGANIZATION_ROLES;
 
 export default function EditOrganizationMemberModal({
   open,

@@ -11,10 +11,15 @@ import Badge from "@/components/ui/Badge";
 import { supabase } from "@/lib/supabase";
 import { logError } from "@/lib/logError";
 import {
+  AcceptedOrganizationInvitation,
   getOrganizationInvitationDetails,
   acceptOrganizationInvitation,
   checkInvitationEmailHasAccount,
 } from "@/services/organizationInvitations";
+import {
+  getMyOrganizationBranchIds,
+  switchActiveBranch,
+} from "@/services/organizations";
 import { OrganizationInvitationDetails } from "@/types/organizationInvitation";
 
 interface Props {
@@ -128,6 +133,55 @@ export default function AcceptOrganizationInvitationForm({
     };
   }, [token]);
 
+  /**
+   * Runs once organization_users membership exists (accept_organization_invitation
+   * just succeeded). Two things a plain router.push("/admin") skipped
+   * entirely, which is why an accepted branch invitee previously landed in
+   * a broken/empty shell:
+   *
+   * 1. No clinic_users row is ever created by acceptance itself - it's only
+   *    lazily provisioned by switch_active_branch, and nothing was calling
+   *    that automatically. A single-branch invitee has exactly one branch
+   *    they could possibly mean, so auto-switch into it now (multi-branch/
+   *    'all' access invitees keep the existing behavior: land on
+   *    Organization Overview and pick via the existing BranchSwitcher -
+   *    nothing new built for that case).
+   * 2. A soft router.push race against AuthContext's own SIGNED_IN/
+   *    USER_UPDATED-triggered loadProfile() calls (both of which started
+   *    BEFORE this invitation was accepted, so can resolve with stale
+   *    "no organization membership yet" data) could momentarily mount
+   *    Dashboard/Patients/etc with no clinic context at all. A full reload
+   *    forces AuthContext to re-initialize from scratch against the
+   *    now-committed database state - the same pattern BranchSwitcher
+   *    already uses after switchActiveBranch/switching to "All Branches".
+   */
+  async function completeAcceptance(
+    accepted: AcceptedOrganizationInvitation,
+    organizationName: string
+  ) {
+    try {
+      const branchIds = await getMyOrganizationBranchIds(
+        accepted.organization_id
+      );
+
+      if (branchIds.length === 1) {
+        await switchActiveBranch(branchIds[0]);
+      }
+    } catch (error) {
+      // Never block landing in the app over this - worst case they land on
+      // Organization Overview and switch branches manually, same as any
+      // multi-branch member already does today.
+      logError(
+        "[AcceptOrganizationInvitationForm] Auto branch-switch failed:",
+        error
+      );
+    }
+
+    toast.success(`Welcome to ${organizationName}!`);
+
+    window.location.href = "/admin";
+  }
+
   async function handleSubmit(
     e: React.FormEvent<HTMLFormElement>
   ) {
@@ -185,12 +239,12 @@ export default function AcceptOrganizationInvitationForm({
           data: { pending_full_name: fullName.trim() },
         });
 
-        await acceptOrganizationInvitation(token, fullName.trim());
+        const accepted = await acceptOrganizationInvitation(
+          token,
+          fullName.trim()
+        );
 
-        toast.success(`Welcome to ${state.invitation.organization_name}!`);
-
-        router.push("/admin");
-        router.refresh();
+        await completeAcceptance(accepted, state.invitation.organization_name);
 
         return;
       }
@@ -209,14 +263,12 @@ export default function AcceptOrganizationInvitationForm({
       if (error) throw error;
 
       if (data.session) {
-        await acceptOrganizationInvitation(token, fullName.trim());
-
-        toast.success(
-          `Welcome to ${state.invitation.organization_name}!`
+        const accepted = await acceptOrganizationInvitation(
+          token,
+          fullName.trim()
         );
 
-        router.push("/admin");
-        router.refresh();
+        await completeAcceptance(accepted, state.invitation.organization_name);
       } else {
         toast.success(
           "Check your email to confirm your account, then log in to finish joining the organization."

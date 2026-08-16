@@ -6,6 +6,22 @@ import {
 export type InvitableOrganizationRole = Exclude<OrganizationRole, "CEO">;
 
 /**
+ * Single source of truth for which roles the invite/edit-member UI offers -
+ * mirrors what create_organization_invitation/update_organization_member
+ * actually accept (migration 0047). Dentist/Receptionist resolve to the
+ * exact same lib/permissions.ts permission set an independent clinic's own
+ * Dentist/Receptionist gets (see switch_active_branch, 0047) - Owner/CEO
+ * are never offered here, matching every existing invite path.
+ */
+export const INVITABLE_ORGANIZATION_ROLES: InvitableOrganizationRole[] = [
+  "Partner",
+  "Manager",
+  "Viewer",
+  "Dentist",
+  "Receptionist",
+];
+
+/**
  * "not_configured" means RESEND_API_KEY isn't set - a distinct, honest
  * state from "failed" (a real send attempt that errored). Never a fourth
  * "sent" claim when either of the other two is true - see
