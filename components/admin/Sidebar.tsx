@@ -32,6 +32,7 @@ import {
   Percent,
   Gauge,
   Timer,
+  UserPlus,
   LucideIcon,
 } from "lucide-react";
 
@@ -73,6 +74,12 @@ const sections: SidebarSection[] = [
         name: "Reports",
         href: "/admin/reports",
         icon: FileBarChart,
+        permission: "analytics",
+      },
+      {
+        name: "Visit Analytics",
+        href: "/admin/analytics/visits",
+        icon: UserPlus,
         permission: "analytics",
       },
     ],
