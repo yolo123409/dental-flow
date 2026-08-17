@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import Card from "@/components/ui/Card";
 
 import {
@@ -9,10 +11,34 @@ import {
   Stethoscope,
 } from "lucide-react";
 
-import { TimelineItem } from "@/types";
+import { TimelineCodeBadge, TimelineItem } from "@/types";
 
 interface Props {
   items: TimelineItem[];
+}
+
+function CodeBadge({ badge }: { badge: TimelineCodeBadge }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs font-medium text-slate-600 transition hover:bg-slate-200"
+      >
+        {badge.codeSystem}: {badge.code}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-10 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-lg">
+          <p className="font-mono font-semibold text-slate-700">{badge.code}</p>
+          <p className="mt-1 text-slate-600">{badge.shortDescription}</p>
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-400">{badge.codeSystem}</p>
+        </div>
+      )}
+    </span>
+  );
 }
 
 export default function PatientTimeline({
@@ -73,6 +99,17 @@ export default function PatientTimeline({
                 <p className="mt-1 text-slate-500">
                   {item.description}
                 </p>
+
+                {((item.diagnosisCodes?.length ?? 0) > 0 || (item.procedureCodes?.length ?? 0) > 0) && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {item.diagnosisCodes?.map((badge) => (
+                      <CodeBadge key={`${badge.codeSystem}-${badge.code}`} badge={badge} />
+                    ))}
+                    {item.procedureCodes?.map((badge) => (
+                      <CodeBadge key={`${badge.codeSystem}-${badge.code}`} badge={badge} />
+                    ))}
+                  </div>
+                )}
 
                 <p className="mt-3 text-sm text-blue-600">
                   {new Date(

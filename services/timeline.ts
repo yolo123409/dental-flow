@@ -1,8 +1,9 @@
 import { supabase } from "@/lib/supabase";
 
-import { TimelineItem } from "@/types";
+import { TimelineCodeBadge, TimelineItem } from "@/types";
 
 import { getCurrentClinicId } from "./clinic";
+import { getAllToothCodesForPatient } from "./clinicalCodes";
 
 interface AppointmentRow {
   id: string;
@@ -15,6 +16,7 @@ interface ChargeRow {
   treatment_name: string;
   amount: number;
   created_at: string;
+  tooth_number: number | null;
 }
 
 interface InvoiceRow {
@@ -40,6 +42,7 @@ export async function getPatientTimeline(
     charges,
     invoices,
     reminders,
+    toothCodes,
   ] = await Promise.all([
     supabase
       .from("appointments")
@@ -50,7 +53,7 @@ export async function getPatientTimeline(
     supabase
       .from("clinic_charges")
       .select(
-        "id, treatment_name, amount, created_at"
+        "id, treatment_name, amount, created_at, tooth_number"
       )
       .eq("clinic_id", clinicId)
       .eq("patient_id", patientId),
@@ -68,6 +71,11 @@ export async function getPatientTimeline(
       )
       .eq("clinic_id", clinicId)
       .eq("patient_id", patientId),
+
+    // Read-only, gracefully empty if the coding tables aren't migrated
+    // in yet (see services/clinicalCodes.ts) - a timeline with no coding
+    // available must still render everything else normally.
+    getAllToothCodesForPatient(patientId),
   ]);
 
   const items: TimelineItem[] = [];
@@ -87,6 +95,30 @@ export async function getPatientTimeline(
 
   (charges.data as ChargeRow[] | null)?.forEach(
     (charge) => {
+      const toothNumber = charge.tooth_number;
+
+      const diagnosisCodes: TimelineCodeBadge[] | undefined =
+        toothNumber != null
+          ? toothCodes.diagnosisByTooth
+              .get(toothNumber)
+              ?.map((row) => ({
+                codeSystem: row.code_system,
+                code: row.clinical_codes.code,
+                shortDescription: row.clinical_codes.short_description,
+              }))
+          : undefined;
+
+      const procedureCodes: TimelineCodeBadge[] | undefined =
+        toothNumber != null
+          ? toothCodes.procedureByTooth
+              .get(toothNumber)
+              ?.map((row) => ({
+                codeSystem: row.code_system,
+                code: row.clinical_codes.code,
+                shortDescription: row.clinical_codes.short_description,
+              }))
+          : undefined;
+
       items.push({
         id: charge.id,
         patient_id: patientId,
@@ -94,6 +126,8 @@ export async function getPatientTimeline(
         description: `KSh ${charge.amount}`,
         created_at: charge.created_at,
         type: "treatment",
+        diagnosisCodes: diagnosisCodes?.length ? diagnosisCodes : undefined,
+        procedureCodes: procedureCodes?.length ? procedureCodes : undefined,
       });
     }
   );

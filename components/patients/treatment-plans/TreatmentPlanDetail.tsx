@@ -382,6 +382,7 @@ export default function TreatmentPlanDetail({
       <TreatmentItemModal
         open={itemModalOpen}
         item={editingItem}
+        patientId={plan.patient_id}
         defaultToothNumber={defaultToothNumber}
         saving={savingItem}
         onClose={() => {

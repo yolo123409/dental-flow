@@ -9,6 +9,20 @@ import FormTextarea from "@/components/ui/FormTextarea";
 
 import TreatmentSelect from "@/components/treatments/TreatmentSelect";
 
+import ClinicalCodePicker from "@/components/clinical/ClinicalCodePicker";
+import CodedProcedureList from "@/components/clinical/CodedProcedureList";
+
+import {
+  ClinicalCodingUnavailableError,
+  addPatientProcedureCode,
+  addProcedureCodeModifier,
+  getProcedureCodesForTreatmentPlanItem,
+  removePatientProcedureCode,
+  removeProcedureCodeModifier,
+} from "@/services/clinicalCodes";
+
+import { AttachedProcedureCode, ClinicalCode } from "@/types/clinicalCodes";
+
 import {
   TreatmentItemPriority,
   TreatmentItemStatus,
@@ -20,6 +34,9 @@ interface Props {
   open: boolean;
 
   item?: TreatmentPlanItem | null;
+
+  /** Needed to attach CDT/CPT procedure codes to the correct patient - see TreatmentItemCoding. */
+  patientId: string;
 
   /** Prefilled when opened from a selected tooth on the odontogram. */
   defaultToothNumber?: number | null;
@@ -43,9 +60,173 @@ const EMPTY_FORM: SaveTreatmentItemInput = {
   status: "Planned",
 };
 
+function newTempKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `tmp-${Date.now()}-${Math.random()}`;
+}
+
+/**
+ * CDT/CPT procedure coding for an existing treatment plan item -
+ * clinical metadata only, completely independent of the item's
+ * procedure/tooth/price fields and of the surrounding modal's own
+ * Save/Add submit flow. Only shown once the item itself has a real id
+ * (i.e. when editing, never while creating) since
+ * patient_procedure_codes.treatment_plan_item_id needs a real row to
+ * point at. Each add/remove here writes immediately - there's no
+ * separate "save" step for coding, since there's no natural moment to
+ * defer it to that doesn't involve changing how the item itself saves.
+ */
+function TreatmentItemCoding({
+  patientId,
+  itemId,
+  toothNumber,
+}: {
+  patientId: string;
+  itemId: string;
+  toothNumber: number | null;
+}) {
+  const [codes, setCodes] = useState<AttachedProcedureCode[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [showCptPicker, setShowCptPicker] = useState(false);
+
+  async function load() {
+    const rows = await getProcedureCodesForTreatmentPlanItem(itemId);
+
+    setCodes(
+      rows.map((row) => ({
+        key: row.id,
+        existingId: row.id,
+        code: row.clinical_codes,
+        modifiers: row.modifiers.map((m) => ({
+          key: m.id,
+          existingId: m.id,
+          modifierCode: m.modifier_code,
+          modifierDescription: m.modifier_description,
+        })),
+      }))
+    );
+    setLoaded(true);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemId]);
+
+  async function handleSelect(code: ClinicalCode) {
+    if (codes.some((item) => item.code.id === code.id)) return;
+
+    try {
+      await addPatientProcedureCode({
+        patientId,
+        codeId: code.id,
+        toothNumber,
+        treatmentPlanItemId: itemId,
+      });
+
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof ClinicalCodingUnavailableError
+          ? error.message
+          : "Failed to save procedure code."
+      );
+    }
+
+    setShowCptPicker(false);
+  }
+
+  async function handleRemove(key: string) {
+    const target = codes.find((item) => item.key === key);
+    if (!target?.existingId) return;
+
+    try {
+      await removePatientProcedureCode(target.existingId);
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof ClinicalCodingUnavailableError
+          ? error.message
+          : "Failed to remove procedure code."
+      );
+    }
+  }
+
+  async function handleAddModifier(procedureKey: string, modifierCode: string, modifierDescription: string | null) {
+    const target = codes.find((item) => item.key === procedureKey);
+    if (!target?.existingId) return;
+
+    try {
+      await addProcedureCodeModifier(target.existingId, modifierCode, modifierDescription);
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof ClinicalCodingUnavailableError
+          ? error.message
+          : "Failed to save modifier."
+      );
+    }
+  }
+
+  async function handleRemoveModifier(_procedureKey: string, modifierKey: string) {
+    try {
+      await removeProcedureCodeModifier(modifierKey);
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof ClinicalCodingUnavailableError
+          ? error.message
+          : "Failed to remove modifier."
+      );
+    }
+  }
+
+  if (!loaded) return null;
+
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <label className="mb-1 block font-medium">
+        CDT Procedure Code <span className="font-normal text-slate-400">(optional, saves immediately)</span>
+      </label>
+
+      <CodedProcedureList
+        codes={codes}
+        onRemove={handleRemove}
+        onAddModifier={handleAddModifier}
+        onRemoveModifier={handleRemoveModifier}
+      />
+
+      <ClinicalCodePicker codeSystem="CDT" placeholder="Search CDT procedure codes..." onSelect={handleSelect} />
+
+      <div className="mt-2">
+        {showCptPicker ? (
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-600">Medical Procedure Code (CPT)</label>
+            <ClinicalCodePicker
+              codeSystem="CPT"
+              placeholder="Search CPT medical procedure codes..."
+              onSelect={handleSelect}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowCptPicker(true)}
+            className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline"
+          >
+            + Medical Procedure Code (CPT)
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TreatmentItemModal({
   open,
   item,
+  patientId,
   defaultToothNumber,
   saving = false,
   onClose,
@@ -213,6 +394,14 @@ export default function TreatmentItemModal({
           update("notes", value || null)
         }
       />
+
+      {editing && item ? (
+        <TreatmentItemCoding patientId={patientId} itemId={item.id} toothNumber={form.tooth_number} />
+      ) : (
+        <p className="border-t pt-4 text-xs text-slate-400">
+          Save this procedure first, then reopen it here to add a CDT/CPT procedure code.
+        </p>
+      )}
     </FormModal>
   );
 }

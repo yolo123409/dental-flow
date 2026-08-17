@@ -211,6 +211,8 @@ export default function ToothDetails({
         {activeTab ===
           "history" && (
           <ToothHistoryTab
+            patientId={patientId}
+            tooth={tooth}
             history={history}
           />
         )}
