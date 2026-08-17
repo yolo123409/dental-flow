@@ -4,6 +4,7 @@ import { generateToken } from "@/lib/generateToken";
 
 import { getCurrentClinicId } from "./clinic";
 import { notifyStaffAdded } from "./notifications";
+import { getOrganizationInvitationDetails } from "./organizations";
 
 import {
   CreateInvitationInput,
@@ -170,16 +171,34 @@ export interface AcceptedInvitation {
   full_name: string;
 }
 
+/**
+ * Tries the SEPARATE get_organization_invitation_details lookup first
+ * (a cheap, read-only, side-effect-free RPC that returns a row ONLY for
+ * a branch invitation - see migration 0055) purely to decide which
+ * acceptance RPC applies. A branch invitation must go through
+ * accept_branch_invitation, which allows an existing organization member
+ * to accept a second/third branch; every other invitation (that lookup
+ * finding nothing) goes through the original, completely untouched
+ * accept_staff_invitation/get_invitation_details pair from migration
+ * 0008. Both callers of this function (the invite page, and
+ * AuthContext's deferred acceptPendingInvitationIfNeeded) stay
+ * completely unaware of the distinction - centralizing it here is what
+ * keeps the independent-clinic acceptance path provably unaffected by
+ * branch invitations existing.
+ */
 export async function acceptInvitation(
   token: string
 ): Promise<AcceptedInvitation> {
-  const { data, error } = await supabase.rpc(
-    "accept_staff_invitation",
-    { p_token: token }
-  );
+  const organizationDetails = await getOrganizationInvitationDetails(token);
+
+  const rpcName = organizationDetails
+    ? "accept_branch_invitation"
+    : "accept_staff_invitation";
+
+  const { data, error } = await supabase.rpc(rpcName, { p_token: token });
 
   if (error) {
-    logError("[staffInvitations] acceptInvitation failed:", error);
+    logError(`[staffInvitations] acceptInvitation (${rpcName}) failed:`, error);
 
     throw toError(error);
   }

@@ -1,6 +1,17 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
+import { getCurrentOrganizationUser, switchActiveBranch } from "./organizations";
+
+/**
+ * Every independent-clinic user has exactly one clinic_users row, so this
+ * always resolves via the fast, unchanged single-row path below - byte
+ * for byte the same query and result as before multi-branch existed.
+ * Only a multi-branch organization member (a CEO, or a Member of more
+ * than one branch) can ever have more than one row, which is resolved
+ * via the org-level active-branch selection (never a client-supplied
+ * value - see services/organizations.ts#switchActiveBranch).
+ */
 export async function getCurrentClinicUser() {
   const {
     data: { user },
@@ -20,8 +31,7 @@ export async function getCurrentClinicUser() {
   const { data, error } = await supabase
     .from("clinic_users")
     .select("*")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
+    .eq("auth_user_id", user.id);
 
   if (error) {
     logError(
@@ -32,5 +42,51 @@ export async function getCurrentClinicUser() {
     throw toError(error);
   }
 
-  return data;
+  const rows = data ?? [];
+
+  if (rows.length === 0) return null;
+  if (rows.length === 1) return rows[0];
+
+  return resolveActiveClinicUser(rows);
+}
+
+/**
+ * Multi-branch resolution, split out so the common (0 or 1 row) path
+ * above never even imports/evaluates anything organization-related.
+ */
+async function resolveActiveClinicUser(rows: Record<string, unknown>[]) {
+  const orgUser = await getCurrentOrganizationUser();
+
+  const active = rows.find(
+    (row) => row.clinic_id === orgUser?.active_clinic_id
+  );
+
+  if (active) return active;
+
+  // No active branch selected yet, or it no longer matches a real row
+  // (e.g. revoked access) - deterministically fall back to the
+  // earliest-granted branch and persist it, so this resolves the same
+  // way on every subsequent load instead of picking differently each
+  // time. Single-branch organization members never reach this function
+  // at all (they have exactly one row, handled above), matching "no
+  // unnecessary branch-selection screen".
+  const fallback = [...rows].sort(
+    (a, b) =>
+      new Date((a.created_at as string) ?? 0).getTime() -
+      new Date((b.created_at as string) ?? 0).getTime()
+  )[0];
+
+  try {
+    await switchActiveBranch(fallback.clinic_id as string);
+  } catch (switchError) {
+    // Best-effort - the user still gets a working session even if this
+    // particular write fails (e.g. a transient network blip); it'll just
+    // re-resolve to the same deterministic fallback next load.
+    logError(
+      "[clinicUsers] Failed to persist fallback active branch:",
+      switchError
+    );
+  }
+
+  return fallback;
 }

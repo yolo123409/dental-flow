@@ -24,6 +24,12 @@ export interface CreatedInvitation {
   expires_at: string;
 }
 
+/**
+ * Return shape of the existing, unmodified get_invitation_details(text)
+ * RPC (migration 0008) - independent-clinic invitations only. Kept
+ * byte-for-byte as it always was; see OrganizationInvitationDetails in
+ * types/organization.ts for the separate branch-invitation shape.
+ */
 export interface InvitationDetails {
   email: string;
   role: InvitableRole;
