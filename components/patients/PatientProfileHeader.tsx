@@ -65,6 +65,16 @@ export default function PatientProfileHeader({
             Patient ID: {patient.id}
           </p>
 
+          <p className="mt-1 text-sm text-slate-500">
+            Acquisition: {patient.acquisition_source ?? "Not Recorded"}
+            {patient.acquisition_source === "Referral" && (
+              <>
+                {patient.referral_source && ` — ${patient.referral_source}`}
+                {patient.referral_source_name && ` (${patient.referral_source_name})`}
+              </>
+            )}
+          </p>
+
         </div>
 
         <WhatsAppReminderButton

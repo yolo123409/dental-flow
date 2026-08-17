@@ -11,11 +11,15 @@
  * are never counted as visits.
  *
  * `MetricValue.value` is null whenever a figure cannot be reliably
- * computed - either the underlying data genuinely doesn't exist in this
- * schema (Walk-ins, Referrals - confirmed absent by live inspection, not
- * assumed) or a ratio's denominator is zero. `unavailableReason` always
- * explains why. A real zero (e.g. zero visits in a quiet period) is a
- * value, not "unavailable".
+ * computed - a ratio's denominator is zero (e.g. no new patients this
+ * period). `unavailableReason` always explains why. A real zero (e.g.
+ * zero visits in a quiet period) is a value, not "unavailable".
+ *
+ * Acquisition source (migration 0053_patient_acquisition_source.sql)
+ * belongs to the patient, not any single appointment/visit, and is only
+ * ever explicitly recorded going forward - existing patients have
+ * `acquisition_source = null`, meaning "not recorded", and are never
+ * reclassified as Walk-in/Referral/Other/etc.
  */
 export interface MetricValue {
   value: number | null;
@@ -38,6 +42,35 @@ export interface VisitTrendPoint {
   totalVisits: number;
 }
 
+/**
+ * One row of the Acquisition Summary - `source` is either a real
+ * `AcquisitionSource` value or the literal "Not Recorded" bucket for new
+ * patients whose acquisition_source is null. `percent` is relative to
+ * Total New Patients this period (the literal denominator this feature's
+ * spec states for both the Acquisition Summary and Referral Rate) and is
+ * always null for the "Not Recorded" row - showing a percentage for
+ * "we don't know" would misleadingly imply it's a real category.
+ */
+export interface AcquisitionSourceCount {
+  source: string;
+  count: number;
+  percent: number | null;
+}
+
+/**
+ * One row of Top Referral Sources - `source` is either a real
+ * `ReferralSource` value or "Not Specified" (acquisition_source =
+ * Referral but referral_source itself was left blank - allowed, since
+ * referral_source is optional even under Referral). `percent` is
+ * relative to Referral Patients specifically, not Total New Patients -
+ * this is a breakdown *within* the referral cohort.
+ */
+export interface ReferralSourceCount {
+  source: string;
+  count: number;
+  percent: number | null;
+}
+
 export interface VisitAnalyticsReport {
   periodLabel: string;
   periodStart: string;
@@ -55,15 +88,24 @@ export interface VisitAnalyticsReport {
   newPatientPercent: MetricValue;
   returningPatientPercent: MetricValue;
 
-  /** Always unavailable in this schema - no walk-in/source field exists on appointments or patients (confirmed by direct inspection). */
-  walkInVisits: MetricValue;
-  scheduledVisits: MetricValue;
+  /**
+   * Among this period's New Patients only (per section 14 - acquisition
+   * is about how a patient was newly acquired, not about who visited).
+   * `acquisitionRecordedCount` + `notRecordedCount` always equals
+   * `newPatients`. `acquisitionBreakdown` never includes a "Not
+   * Recorded" row - that count is surfaced separately via
+   * `notRecordedCount` so it can never be mistaken for a real source.
+   */
+  acquisitionRecordedCount: number;
+  notRecordedNewPatients: number;
+  acquisitionBreakdown: AcquisitionSourceCount[];
+
+  walkInPatients: number;
   walkInPercent: MetricValue;
 
-  /** Always unavailable in this schema - no referral field/table exists (confirmed by direct inspection, including a live probe for common referral table names). */
-  referralPatients: MetricValue;
+  referralPatients: number;
   referralRate: MetricValue;
-  topReferralSources: { source: string; count: number }[] | null;
+  topReferralSources: ReferralSourceCount[];
 
   /** Returning Patients (this period) / patients who had a qualifying visit before the period started x 100. Not available when that eligible cohort is empty. */
   retentionRate: MetricValue;

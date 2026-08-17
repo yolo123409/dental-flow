@@ -1,6 +1,12 @@
 "use client";
 
-import { PatientGender } from "@/types";
+import {
+  ACQUISITION_SOURCES,
+  AcquisitionSource,
+  PatientGender,
+  REFERRAL_SOURCES,
+  ReferralSource,
+} from "@/types";
 
 export interface PatientFormData {
   first_name: string;
@@ -12,14 +18,18 @@ export interface PatientFormData {
   address: string;
   allergies: string;
   medical_history: string;
+  acquisition_source: AcquisitionSource | null;
+  referral_source: ReferralSource | null;
+  referral_source_name: string;
 }
+
+export { ACQUISITION_SOURCES, REFERRAL_SOURCES };
+
+type FormField = keyof PatientFormData;
 
 interface Props {
   form: PatientFormData;
-  onChange: (
-    field: keyof PatientFormData,
-    value: string
-  ) => void;
+  onChange: (field: FormField, value: string) => void;
 }
 
 export default function PatientForm({
@@ -126,6 +136,83 @@ export default function PatientForm({
           onChange("medical_history", e.target.value)
         }
       />
+
+      <div className="border-t pt-4">
+
+        <label className="mb-1 block text-sm font-medium text-slate-600">
+          Acquisition Source
+        </label>
+
+        <p className="mb-2 text-xs text-slate-400">
+          How this patient first came to the clinic. Operational metadata - optional.
+        </p>
+
+        <select
+          className="rounded-lg border p-3"
+          value={form.acquisition_source ?? ""}
+          onChange={(e) =>
+            onChange("acquisition_source", e.target.value)
+          }
+        >
+          {form.acquisition_source === null && (
+            <option value="">
+              Not Recorded
+            </option>
+          )}
+
+          {ACQUISITION_SOURCES.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
+
+      </div>
+
+      {form.acquisition_source === "Referral" && (
+        <div className="grid gap-4 rounded-lg bg-slate-50 p-4">
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-600">
+              Referral Source
+            </label>
+
+            <select
+              className="w-full rounded-lg border p-3"
+              value={form.referral_source ?? ""}
+              onChange={(e) =>
+                onChange("referral_source", e.target.value)
+              }
+            >
+              <option value="">
+                Select Referral Source
+              </option>
+
+              {REFERRAL_SOURCES.map((source) => (
+                <option key={source} value={source}>
+                  {source}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-600">
+              Referral Source Name
+            </label>
+
+            <input
+              className="w-full rounded-lg border p-3"
+              placeholder="e.g. John Mwangi, or Dr. Kamau (optional)"
+              value={form.referral_source_name}
+              onChange={(e) =>
+                onChange("referral_source_name", e.target.value)
+              }
+            />
+          </div>
+
+        </div>
+      )}
 
     </div>
   );

@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import PatientForm from "@/components/patients/PatientForm";
+import PatientForm, { PatientFormData } from "@/components/patients/PatientForm";
 import { createPatient } from "@/services/patients";
 
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 
-import { PatientGender } from "@/types";
+import { AcquisitionSource, PatientGender, ReferralSource } from "@/types";
 
 interface Props {
   open: boolean;
@@ -17,16 +17,21 @@ interface Props {
   onSuccess: () => void;
 }
 
-interface PatientFormData {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email: string;
-  gender: PatientGender | null;
-  date_of_birth: string;
-  address: string;
-  allergies: string;
-  medical_history: string;
+function emptyForm(): PatientFormData {
+  return {
+    first_name: "",
+    last_name: "",
+    phone: "",
+    email: "",
+    gender: null,
+    date_of_birth: "",
+    address: "",
+    allergies: "",
+    medical_history: "",
+    acquisition_source: "Unknown",
+    referral_source: null,
+    referral_source_name: "",
+  };
 }
 
 export default function AddPatientModal({
@@ -37,31 +42,46 @@ export default function AddPatientModal({
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] =
-    useState<PatientFormData>({
-      first_name: "",
-      last_name: "",
-      phone: "",
-      email: "",
-      gender: null,
-      date_of_birth: "",
-      address: "",
-      allergies: "",
-      medical_history: "",
-    });
+    useState<PatientFormData>(emptyForm());
 
   function update(
     field: keyof PatientFormData,
     value: string
   ) {
-    setForm((prev) => ({
-      ...prev,
-      [field]:
-        field === "gender"
-          ? ((value === ""
-              ? null
-              : value) as PatientGender | null)
-          : value,
-    }));
+    setForm((prev) => {
+      if (field === "gender") {
+        return {
+          ...prev,
+          gender: value === "" ? null : (value as PatientGender),
+        };
+      }
+
+      if (field === "acquisition_source") {
+        const nextSource = value === "" ? null : (value as AcquisitionSource);
+
+        // Switching away from Referral clears referral-specific fields
+        // rather than silently carrying stale referral data along.
+        if (nextSource === "Referral") {
+          return { ...prev, acquisition_source: nextSource };
+        }
+
+        return {
+          ...prev,
+          acquisition_source: nextSource,
+          referral_source: null,
+          referral_source_name: "",
+        };
+      }
+
+      if (field === "referral_source") {
+        return {
+          ...prev,
+          referral_source: value === "" ? null : (value as ReferralSource),
+        };
+      }
+
+      return { ...prev, [field]: value };
+    });
   }
 
   async function savePatient() {
@@ -83,22 +103,20 @@ export default function AddPatientModal({
     setLoading(true);
 
     try {
-      await createPatient(form);
+      const isReferral = form.acquisition_source === "Referral";
+
+      await createPatient({
+        ...form,
+        referral_source: isReferral ? form.referral_source : null,
+        referral_source_name: isReferral
+          ? form.referral_source_name.trim() || null
+          : null,
+      });
 
       onSuccess();
       onClose();
 
-      setForm({
-        first_name: "",
-        last_name: "",
-        phone: "",
-        email: "",
-        gender: null,
-        date_of_birth: "",
-        address: "",
-        allergies: "",
-        medical_history: "",
-      });
+      setForm(emptyForm());
 
     } catch (error) {
       console.error("Save patient error:", error);

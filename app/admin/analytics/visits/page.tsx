@@ -12,12 +12,22 @@ import EmptyState from "@/components/ui/EmptyState";
 import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import { getVisitAnalyticsReport } from "@/services/analytics/visits";
-import { MetricValue, VisitAnalyticsReport, VisitPatientRow } from "@/types/visitAnalytics";
+import {
+  AcquisitionSourceCount,
+  MetricValue,
+  ReferralSourceCount,
+  VisitAnalyticsReport,
+  VisitPatientRow,
+} from "@/types/visitAnalytics";
 
 import { REPORT_RANGE_OPTIONS, ResolvedPeriod, resolveCurrentPeriod } from "@/lib/reports/period";
 
 function formatMetric(metric: MetricValue, suffix = ""): string {
   return metric.value == null ? "Not available" : `${metric.value.toFixed(1)}${suffix}`;
+}
+
+function formatPercent(percent: number | null): string {
+  return percent == null ? "—" : `${percent.toFixed(1)}%`;
 }
 
 function MetricStatCard({ title, metric, suffix = "" }: { title: string; metric: MetricValue; suffix?: string }) {
@@ -68,6 +78,79 @@ function PatientRowsTable({ title, rows, dateLabel }: { title: string; rows: Vis
   );
 }
 
+function AcquisitionBreakdownTable({
+  rows,
+  notRecorded,
+}: {
+  rows: AcquisitionSourceCount[];
+  notRecorded: number;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <table className="min-w-full">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-sm font-semibold">Source</th>
+            <th className="px-4 py-3 text-right text-sm font-semibold">Patients</th>
+            <th className="px-4 py-3 text-right text-sm font-semibold">Percentage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.source} className="border-t border-slate-200">
+              <td className="px-4 py-3">{row.source}</td>
+              <td className="px-4 py-3 text-right">{row.count}</td>
+              <td className="px-4 py-3 text-right">{formatPercent(row.percent)}</td>
+            </tr>
+          ))}
+          {notRecorded > 0 && (
+            <tr className="border-t border-slate-200 bg-porcelain">
+              <td className="px-4 py-3 text-mineral">Not Recorded</td>
+              <td className="px-4 py-3 text-right text-mineral">{notRecorded}</td>
+              <td className="px-4 py-3 text-right text-mineral">—</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <p className="px-4 py-3 text-xs text-mineral">
+        Percentages are of Total New Patients this period. "Not Recorded" covers new patients whose
+        acquisition source was never captured - it is never treated as Walk-in, Other, or any other
+        category.
+      </p>
+    </div>
+  );
+}
+
+function ReferralSourceTable({ rows }: { rows: ReferralSourceCount[] }) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <table className="min-w-full">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-sm font-semibold">Source</th>
+            <th className="px-4 py-3 text-right text-sm font-semibold">Patients</th>
+            <th className="px-4 py-3 text-right text-sm font-semibold">Percentage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.source} className="border-t border-slate-200">
+              <td className="px-4 py-3">{row.source}</td>
+              <td className="px-4 py-3 text-right">{row.count}</td>
+              <td className="px-4 py-3 text-right">{formatPercent(row.percent)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="px-4 py-3 text-xs text-mineral">
+        Percentages are of Referral Patients, not Total New Patients. Individual referrer names
+        (referral_source_name) are not shown here - view a specific patient&apos;s profile for that
+        detail.
+      </p>
+    </div>
+  );
+}
+
 function VisitAnalyticsPageContent() {
   const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState("This Month");
@@ -112,8 +195,8 @@ function VisitAnalyticsPageContent() {
       <div>
         <h1 className="text-3xl font-bold">Visit &amp; Patient Acquisition Analytics</h1>
         <p className="mt-2 text-slate-500">
-          New vs returning patients, visit volume, and retention, built directly from completed
-          appointments.
+          New vs returning patients, visit volume, retention, and patient acquisition sources,
+          built directly from completed appointments and recorded patient data.
         </p>
       </div>
 
@@ -176,11 +259,36 @@ function VisitAnalyticsPageContent() {
 
           <div>
             <h3 className="mb-4 text-lg font-bold">Acquisition</h3>
-            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
               <ReportStatCard title="New Patients" value={report.newPatients} />
-              <MetricStatCard title="Walk-in Visits" metric={report.walkInVisits} />
-              <MetricStatCard title="Referral Patients" metric={report.referralPatients} />
+              <ReportStatCard
+                title="Walk-ins"
+                value={report.walkInPatients}
+                subtitle={formatMetric(report.walkInPercent, "%")}
+              />
+              <ReportStatCard
+                title="Referrals"
+                value={report.referralPatients}
+                subtitle={formatMetric(report.referralRate, "%")}
+              />
+              <ReportStatCard title="Not Recorded" value={report.notRecordedNewPatients} />
             </div>
+          </div>
+
+          <div>
+            <h3 className="mb-4 text-lg font-bold">Acquisition Summary</h3>
+            <Card>
+              {report.newPatients === 0 ? (
+                <p className="text-sm text-mineral">No new patients in this period.</p>
+              ) : report.acquisitionRecordedCount === 0 ? (
+                <p className="text-sm text-mineral">No acquisition sources have been recorded yet.</p>
+              ) : (
+                <AcquisitionBreakdownTable
+                  rows={report.acquisitionBreakdown}
+                  notRecorded={report.notRecordedNewPatients}
+                />
+              )}
+            </Card>
           </div>
 
           <div>
@@ -267,23 +375,23 @@ function VisitAnalyticsPageContent() {
           </div>
 
           <div>
-            <h3 className="mb-4 text-lg font-bold">Walk-ins</h3>
-            <Card>
-              <EmptyState
-                title="Walk-in tracking not available"
-                description="This clinic's schema has no walk-in/booking-source field on appointments or patients. Walk-in Visits, Scheduled Visits, and Walk-in % cannot be reliably calculated from existing data. Adding a booking-source field would be a future enhancement, not something this analytics feature can retroactively infer from existing records."
-              />
-            </Card>
-          </div>
-
-          <div>
             <h3 className="mb-4 text-lg font-bold">Referrals</h3>
-            <Card>
-              <EmptyState
-                title="Referral tracking not available"
-                description="This clinic's schema has no referral source field on patients or appointments, and no referrals table exists. Referred Patients, Referral Rate, and Top Referral Sources cannot be reliably calculated. Adding a referral-source field would be a future enhancement, not something this analytics feature can retroactively infer from existing records."
-              />
-            </Card>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <ReportStatCard title="Referral Patients" value={report.referralPatients} />
+              <MetricStatCard title="Referral Rate" metric={report.referralRate} suffix="%" />
+            </div>
+
+            <div className="mt-6">
+              <Card title="Top Referral Sources">
+                {report.newPatients === 0 ? (
+                  <p className="text-sm text-mineral">No new patients in this period.</p>
+                ) : report.referralPatients === 0 ? (
+                  <p className="text-sm text-mineral">No patients were acquired via Referral in this period.</p>
+                ) : (
+                  <ReferralSourceTable rows={report.topReferralSources} />
+                )}
+              </Card>
+            </div>
           </div>
         </>
       )}

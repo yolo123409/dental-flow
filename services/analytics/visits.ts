@@ -5,7 +5,16 @@ import { getCurrentClinicId } from "@/services/clinic";
 
 import { monthLabel, shortDate } from "@/lib/reports/period";
 
-import { MetricValue, VisitAnalyticsReport, VisitPatientRow, VisitTrendPoint } from "@/types/visitAnalytics";
+import { ACQUISITION_SOURCES, AcquisitionSource, REFERRAL_SOURCES, ReferralSource } from "@/types/patient";
+
+import {
+  AcquisitionSourceCount,
+  MetricValue,
+  ReferralSourceCount,
+  VisitAnalyticsReport,
+  VisitPatientRow,
+  VisitTrendPoint,
+} from "@/types/visitAnalytics";
 
 /**
  * Same "date-only" conversion services/appointments.ts already uses for
@@ -35,15 +44,17 @@ function unavailable(reason: string): MetricValue {
   return { value: null, unavailableReason: reason };
 }
 
-const NOT_RECORDED_WALKIN =
-  "Not available — walk-in source is not currently recorded. Neither the appointments nor patients table has a walk-in/booking-source field in this clinic's schema.";
-const NOT_RECORDED_REFERRAL =
-  "Not available — referral source is not currently recorded. No referral field or table exists in this clinic's schema.";
+const NO_NEW_PATIENTS_REASON = "Not available — no new patients were recorded in this period";
 
 interface CompletedVisitRow {
   patient_id: string;
   appointment_date: string;
-  patients: { first_name: string; last_name: string } | null;
+  patients: {
+    first_name: string;
+    last_name: string;
+    acquisition_source: AcquisitionSource | null;
+    referral_source: ReferralSource | null;
+  } | null;
 }
 
 function patientName(row: CompletedVisitRow): string {
@@ -115,6 +126,16 @@ function buildMonthlyBuckets(startIso: string, endIso: string): Bucket[] {
  * RECORD was created, not their first actual visit) or patients.last_visit
  * (confirmed, by live inspection, to be null for every patient in this
  * schema - an unmaintained column, not a reliable signal).
+ *
+ * Acquisition/Referral/Walk-in breakdowns (migration
+ * 0053_patient_acquisition_source.sql) are computed ONLY over this
+ * period's New Patients (per the spec's explicit "reuse the existing
+ * Visit Analytics definition of New Patient" rule) - a returning
+ * patient's acquisition source is a historical fact about when they were
+ * first acquired, not something this period's report should re-surface.
+ * Every existing patient's acquisition_source is null ("not recorded")
+ * and is counted in `notRecordedNewPatients`, never guessed at or
+ * folded into any real category.
  */
 export async function getVisitAnalyticsReport(
   start: Date,
@@ -128,7 +149,9 @@ export async function getVisitAnalyticsReport(
 
   const { data, error } = await supabase
     .from("appointments")
-    .select("patient_id, appointment_date, patients ( first_name, last_name )")
+    .select(
+      "patient_id, appointment_date, patients ( first_name, last_name, acquisition_source, referral_source )"
+    )
     .eq("clinic_id", clinicId)
     .eq("status", "Completed")
     .order("appointment_date", { ascending: true });
@@ -157,9 +180,13 @@ export async function getVisitAnalyticsReport(
   const returningPatientIds = new Set<string>();
   const nameById = new Map<string, string>();
   const lastVisitInPeriodById = new Map<string, string>();
+  const acquisitionById = new Map<string, AcquisitionSource | null>();
+  const referralSourceById = new Map<string, ReferralSource | null>();
 
   for (const row of inPeriod) {
     nameById.set(row.patient_id, patientName(row));
+    acquisitionById.set(row.patient_id, row.patients?.acquisition_source ?? null);
+    referralSourceById.set(row.patient_id, row.patients?.referral_source ?? null);
 
     const firstVisit = firstVisitByPatient.get(row.patient_id)!;
     if (firstVisit >= startIso) {
@@ -201,6 +228,65 @@ export async function getVisitAnalyticsReport(
       visitDate: lastVisitInPeriodById.get(id)!,
     }))
     .sort((a, b) => a.visitDate.localeCompare(b.visitDate));
+
+  /* ---------------- Acquisition / Referral / Walk-in ---------------- */
+
+  const totalNewPatients = newPatientIds.size;
+
+  const acquisitionCounts = new Map<AcquisitionSource, number>();
+  let notRecordedNewPatients = 0;
+
+  for (const id of newPatientIds) {
+    const source = acquisitionById.get(id) ?? null;
+    if (source == null) {
+      notRecordedNewPatients += 1;
+    } else {
+      acquisitionCounts.set(source, (acquisitionCounts.get(source) ?? 0) + 1);
+    }
+  }
+
+  const acquisitionRecordedCount = totalNewPatients - notRecordedNewPatients;
+
+  const percentOfNewPatients = (count: number): number | null =>
+    totalNewPatients > 0 ? (count / totalNewPatients) * 100 : null;
+
+  const acquisitionBreakdown: AcquisitionSourceCount[] = ACQUISITION_SOURCES.filter(
+    (source) => (acquisitionCounts.get(source) ?? 0) > 0
+  ).map((source) => {
+    const count = acquisitionCounts.get(source) ?? 0;
+    return { source, count, percent: percentOfNewPatients(count) };
+  });
+
+  const walkInPatients = acquisitionCounts.get("Walk-in") ?? 0;
+  const walkInPercent: MetricValue =
+    totalNewPatients === 0 ? unavailable(NO_NEW_PATIENTS_REASON) : metric((walkInPatients / totalNewPatients) * 100);
+
+  const referralPatients = acquisitionCounts.get("Referral") ?? 0;
+  const referralRate: MetricValue =
+    totalNewPatients === 0
+      ? unavailable(NO_NEW_PATIENTS_REASON)
+      : metric((referralPatients / totalNewPatients) * 100);
+
+  const referralSourceCounts = new Map<ReferralSource | "Not Specified", number>();
+  for (const id of newPatientIds) {
+    if (acquisitionById.get(id) !== "Referral") continue;
+    const referralSource = referralSourceById.get(id) ?? "Not Specified";
+    referralSourceCounts.set(referralSource, (referralSourceCounts.get(referralSource) ?? 0) + 1);
+  }
+
+  const referralSourceOrder: (ReferralSource | "Not Specified")[] = [...REFERRAL_SOURCES, "Not Specified"];
+
+  const topReferralSources: ReferralSourceCount[] = referralSourceOrder
+    .filter((source) => (referralSourceCounts.get(source) ?? 0) > 0)
+    .map((source) => {
+      const count = referralSourceCounts.get(source) ?? 0;
+      return {
+        source,
+        count,
+        percent: referralPatients > 0 ? (count / referralPatients) * 100 : null,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
 
   /* ---------------- Retention ---------------- */
 
@@ -264,13 +350,16 @@ export async function getVisitAnalyticsReport(
     newPatientPercent,
     returningPatientPercent,
 
-    walkInVisits: unavailable(NOT_RECORDED_WALKIN),
-    scheduledVisits: unavailable(NOT_RECORDED_WALKIN),
-    walkInPercent: unavailable(NOT_RECORDED_WALKIN),
+    acquisitionRecordedCount,
+    notRecordedNewPatients,
+    acquisitionBreakdown,
 
-    referralPatients: unavailable(NOT_RECORDED_REFERRAL),
-    referralRate: unavailable(NOT_RECORDED_REFERRAL),
-    topReferralSources: null,
+    walkInPatients,
+    walkInPercent,
+
+    referralPatients,
+    referralRate,
+    topReferralSources,
 
     retentionRate,
     retentionEligibleCohortSize: eligibleToReturnCohort.size === 0 ? null : eligibleToReturnCohort.size,

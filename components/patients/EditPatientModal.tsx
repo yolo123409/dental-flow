@@ -8,7 +8,7 @@ import PatientForm, {
 } from "@/components/patients/PatientForm";
 
 import { Patient } from "@/types/patient";
-import { PatientGender } from "@/types";
+import { AcquisitionSource, PatientGender, ReferralSource } from "@/types";
 
 import { updatePatient } from "@/services/patients";
 
@@ -22,6 +22,23 @@ interface Props {
   onSuccess: () => void;
 }
 
+function emptyForm(): PatientFormData {
+  return {
+    first_name: "",
+    last_name: "",
+    phone: "",
+    email: "",
+    gender: null,
+    date_of_birth: "",
+    address: "",
+    allergies: "",
+    medical_history: "",
+    acquisition_source: null,
+    referral_source: null,
+    referral_source_name: "",
+  };
+}
+
 export default function EditPatientModal({
   open,
   patient,
@@ -31,17 +48,7 @@ export default function EditPatientModal({
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] =
-    useState<PatientFormData>({
-      first_name: "",
-      last_name: "",
-      phone: "",
-      email: "",
-      gender: null,
-      date_of_birth: "",
-      address: "",
-      allergies: "",
-      medical_history: "",
-    });
+    useState<PatientFormData>(emptyForm());
 
   useEffect(() => {
     if (!patient) return;
@@ -56,6 +63,9 @@ export default function EditPatientModal({
       address: patient.address ?? "",
       allergies: patient.allergies ?? "",
       medical_history: patient.medical_history ?? "",
+      acquisition_source: patient.acquisition_source ?? null,
+      referral_source: patient.referral_source ?? null,
+      referral_source_name: patient.referral_source_name ?? "",
     });
   }, [patient]);
 
@@ -63,15 +73,42 @@ export default function EditPatientModal({
     field: keyof PatientFormData,
     value: string
   ) {
-    setForm((prev) => ({
-      ...prev,
-      [field]:
-        field === "gender"
-          ? ((value === ""
-              ? null
-              : value) as PatientGender | null)
-          : value,
-    }));
+    setForm((prev) => {
+      if (field === "gender") {
+        return {
+          ...prev,
+          gender: value === "" ? null : (value as PatientGender),
+        };
+      }
+
+      if (field === "acquisition_source") {
+        const nextSource = value === "" ? null : (value as AcquisitionSource);
+
+        // Switching away from Referral clears referral-specific fields
+        // rather than silently carrying stale referral data along. This
+        // is a local form-state change only - nothing is written until
+        // Save Changes is pressed.
+        if (nextSource === "Referral") {
+          return { ...prev, acquisition_source: nextSource };
+        }
+
+        return {
+          ...prev,
+          acquisition_source: nextSource,
+          referral_source: null,
+          referral_source_name: "",
+        };
+      }
+
+      if (field === "referral_source") {
+        return {
+          ...prev,
+          referral_source: value === "" ? null : (value as ReferralSource),
+        };
+      }
+
+      return { ...prev, [field]: value };
+    });
   }
 
   async function saveChanges() {
@@ -80,7 +117,15 @@ export default function EditPatientModal({
     try {
       setLoading(true);
 
-      await updatePatient(patient.id, form);
+      const isReferral = form.acquisition_source === "Referral";
+
+      await updatePatient(patient.id, {
+        ...form,
+        referral_source: isReferral ? form.referral_source : null,
+        referral_source_name: isReferral
+          ? form.referral_source_name.trim() || null
+          : null,
+      });
 
       onSuccess();
       onClose();
