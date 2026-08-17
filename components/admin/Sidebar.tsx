@@ -31,6 +31,7 @@ import {
   Activity,
   Percent,
   Gauge,
+  Timer,
   LucideIcon,
 } from "lucide-react";
 
@@ -216,6 +217,12 @@ const sections: SidebarSection[] = [
         name: "Financial Ratios",
         href: "/admin/ledger/financial-ratios",
         icon: Gauge,
+        permission: "ledger",
+      },
+      {
+        name: "Stock Days",
+        href: "/admin/ledger/stock-days",
+        icon: Timer,
         permission: "ledger",
       },
       {
