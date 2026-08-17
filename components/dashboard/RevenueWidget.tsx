@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 
 import {
   ResponsiveContainer,
@@ -12,7 +11,6 @@ import {
 
 import Card from "@/components/ui/Card";
 
-import usePermissions from "@/hooks/usePermissions";
 import { roundMoney } from "@/lib/currency";
 
 import { RevenueChartPoint } from "@/services/analytics/charts";
@@ -20,8 +18,19 @@ import { RevenueChartPoint } from "@/services/analytics/charts";
 interface RevenueWidgetProps {
   revenue: number;
   taxCollected: number | null;
-  // NULL = no monthly break-even target configured yet - never treated as 0.
+  // Break-even revenue for the selected period - the revenue level at
+  // which Total Revenue - Total Costs Incurred = 0, which is simply the
+  // period's Total Costs Incurred itself (see app/admin/page.tsx, sourced
+  // from services/expenses.ts#getExpenseSummary - the same figure the
+  // Money Out widget shows, never a separately fabricated number). NULL =
+  // Total Costs Incurred could not be determined for this period (e.g.
+  // failed to load) - never treated as 0.
   breakEven: number | null;
+  // Whether the Total Costs Incurred figure above is still loading - kept
+  // distinct from `loading`/`error` (which describe revenue only) so the
+  // break-even section doesn't flash "Not available" before its own data
+  // source has actually finished loading.
+  costsLoading: boolean;
   chartData: RevenueChartPoint[];
   currency: string;
   loading: boolean;
@@ -32,13 +41,12 @@ export default function RevenueWidget({
   revenue,
   taxCollected,
   breakEven,
+  costsLoading,
   chartData,
   currency,
   loading,
   error,
 }: RevenueWidgetProps) {
-  const { hasPermission } = usePermissions();
-  const canEditTarget = hasPermission("settings");
   const formattedRevenue = useMemo(
     () =>
       new Intl.NumberFormat(undefined, {
@@ -73,19 +81,22 @@ export default function RevenueWidget({
       maximumFractionDigits: 0,
     }).format(amount);
 
-  // Rounded to whole cents before comparing so accumulated float drift
-  // from summing many invoice rows can never flip an exact "at target"
-  // match into a spurious below/above result.
+  // Break-even = the revenue level at which Total Revenue - Total Costs
+  // Incurred = 0, i.e. `breakEven` itself (already equal to Total Costs
+  // Incurred - see the prop doc above). Rounded to whole cents before
+  // comparing so accumulated float drift from summing many invoice/expense
+  // rows can never flip an exact "at break-even" match into a spurious
+  // below/above result.
   const breakEvenStatus = useMemo(() => {
     if (breakEven == null) return null;
 
     const roundedRevenue = roundMoney(revenue);
-    const roundedTarget = roundMoney(breakEven);
-    const diff = roundMoney(roundedRevenue - roundedTarget);
+    const totalCosts = roundMoney(breakEven);
+    const diff = roundMoney(roundedRevenue - totalCosts);
 
     const progress =
-      roundedTarget > 0
-        ? Math.min(100, (roundedRevenue / roundedTarget) * 100)
+      totalCosts > 0
+        ? Math.min(100, (roundedRevenue / totalCosts) * 100)
         : roundedRevenue > 0
         ? 100
         : 0;
@@ -93,25 +104,28 @@ export default function RevenueWidget({
     if (diff < 0) {
       return {
         kind: "below" as const,
-        label: `Below break-even by ${formatMoney(Math.abs(diff))}`,
-        target: roundedTarget,
+        label: `Below Break-even by ${formatMoney(Math.abs(diff))}`,
+        totalCosts,
+        diff,
         progress,
       };
     }
 
     if (diff === 0) {
       return {
-        kind: "reached" as const,
-        label: "Break-even reached",
-        target: roundedTarget,
+        kind: "even" as const,
+        label: "Break-even",
+        totalCosts,
+        diff,
         progress,
       };
     }
 
     return {
       kind: "above" as const,
-      label: `In profit by ${formatMoney(diff)}`,
-      target: roundedTarget,
+      label: `Above Break-even by ${formatMoney(diff)}`,
+      totalCosts,
+      diff,
       progress,
     };
     // formatMoney is a plain closure recreated each render off of
@@ -122,13 +136,13 @@ export default function RevenueWidget({
 
   const statusColorClasses = {
     below: "text-amber-600",
-    reached: "text-slate-600",
+    even: "text-slate-600",
     above: "text-eucalyptus",
   } as const;
 
   const progressBarColorClasses = {
     below: "bg-amber-500",
-    reached: "bg-slate-400",
+    even: "bg-slate-400",
     above: "bg-eucalyptus",
   } as const;
 
@@ -157,7 +171,13 @@ export default function RevenueWidget({
             </p>
           )}
 
-          {!loading && !error && breakEvenStatus && (
+          {!loading && !error && costsLoading && (
+            <p className="mt-3 text-sm text-slate-500">
+              Calculating break-even...
+            </p>
+          )}
+
+          {!loading && !error && !costsLoading && breakEvenStatus && (
             <div className="mt-3">
               <p
                 className={`text-sm font-semibold ${statusColorClasses[breakEvenStatus.kind]}`}
@@ -166,7 +186,12 @@ export default function RevenueWidget({
               </p>
 
               <p className="mt-0.5 text-xs text-slate-500">
-                Break-even: {formatMoney(breakEvenStatus.target)}
+                Total Costs Incurred: {formatMoney(breakEvenStatus.totalCosts)}
+              </p>
+
+              <p className="mt-0.5 text-xs text-slate-500">
+                Net Difference: {breakEvenStatus.diff > 0 ? "+" : breakEvenStatus.diff < 0 ? "-" : ""}
+                {formatMoney(Math.abs(breakEvenStatus.diff))}
               </p>
 
               <div className="mt-2 h-1.5 max-w-xs overflow-hidden rounded-full bg-slate-100">
@@ -178,13 +203,10 @@ export default function RevenueWidget({
             </div>
           )}
 
-          {!loading && !error && !breakEvenStatus && canEditTarget && (
-            <Link
-              href="/admin/settings#financial-targets"
-              className="mt-3 inline-block text-sm font-semibold text-eucalyptus hover:underline"
-            >
-              Set monthly break-even target
-            </Link>
+          {!loading && !error && !costsLoading && !breakEvenStatus && (
+            <p className="mt-3 text-sm text-slate-500">
+              Break-even: Not available
+            </p>
           )}
 
         </div>

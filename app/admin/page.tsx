@@ -44,6 +44,12 @@ export default function AdminDashboard() {
 
   const [currency, setCurrency] = useState("KES");
 
+  // Break-even revenue for the period = Total Costs Incurred for that same
+  // period (services/expenses.ts#getExpenseSummary, the same figure the
+  // Money Out widget shows) - the revenue level at which Total Revenue -
+  // Total Costs Incurred = 0. Set alongside `moneyOut` below, never from a
+  // manually entered setting. NULL = Total Costs Incurred could not be
+  // determined for this period.
   const [breakEven, setBreakEven] = useState<number | null>(null);
 
   const [moneyOut, setMoneyOut] = useState(0);
@@ -96,7 +102,6 @@ export default function AdminDashboard() {
       setRevenueChart(chartData);
       setCurrency(clinicSettings.currency || "KES");
       setClinicName(clinicSettings.clinic_name);
-      setBreakEven(clinicSettings.monthly_break_even_revenue);
 
       setTaxCollected(
         clinicSettings.tax_enabled
@@ -127,11 +132,16 @@ export default function AdminDashboard() {
       const summary = await getExpenseSummary("This Month");
 
       setMoneyOut(summary.total);
+      // Break-even revenue for the period = Total Costs Incurred for the
+      // period - see the `breakEven` state doc above.
+      setBreakEven(summary.total);
     } catch (error) {
       logError(
         "[dashboard page] Failed to load Money Out widget:",
         error
       );
+
+      setBreakEven(null);
 
       setMoneyOutError(
         error instanceof Error

@@ -151,69 +151,6 @@ function SettingsPageContent() {
   const [savingInsurance, setSavingInsurance] =
     useState(false);
 
-  // Deliberately separate from the shared `settings`/isDirty machinery
-  // above (same reasoning as Insurance Providers' own local state) - it
-  // has its own Save button, so folding it into the combined Clinic
-  // Profile/Tax dirty-check would leave "unsaved changes" stuck on after
-  // a successful save here.
-  const [breakEvenInput, setBreakEvenInput] = useState("");
-  const [savingBreakEven, setSavingBreakEven] = useState(false);
-
-  useEffect(() => {
-    if (settings) {
-      setBreakEvenInput(
-        settings.monthly_break_even_revenue == null
-          ? ""
-          : String(settings.monthly_break_even_revenue)
-      );
-    }
-  }, [settings]);
-
-  async function handleSaveBreakEven() {
-    if (savingBreakEven) return;
-
-    const trimmed = breakEvenInput.trim();
-
-    let value: number | null = null;
-
-    if (trimmed) {
-      value = Number(trimmed);
-
-      if (Number.isNaN(value)) {
-        toast.error("Enter a valid number.");
-        return;
-      }
-
-      if (value < 0) {
-        toast.error("Monthly break-even revenue cannot be negative.");
-        return;
-      }
-    }
-
-    try {
-      setSavingBreakEven(true);
-
-      const updated = await saveClinicSettings({
-        monthly_break_even_revenue: value,
-      });
-
-      setSettings(updated);
-      savedSnapshotRef.current = updated;
-
-      toast.success("Financial target saved.");
-    } catch (error) {
-      console.error(error);
-
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save financial target."
-      );
-    } finally {
-      setSavingBreakEven(false);
-    }
-  }
-
   const isDirty =
     settings !== null &&
     savedSnapshotRef.current !== null &&
@@ -743,35 +680,19 @@ function SettingsPageContent() {
         <Card title="Financial Targets">
 
           <h3 className="mb-1 font-semibold text-graphite">
-            Monthly Break-Even Revenue
+            Break-Even
           </h3>
 
-          <p className="mb-4 text-sm text-mineral">
-            Set the minimum monthly revenue your clinic needs to cover its
-            operating costs. DentalFlow will compare this against your
-            monthly revenue on the Dashboard.
+          <p className="text-sm text-mineral">
+            Break-even is calculated automatically for each period as Total
+            Revenue (paid invoices) compared against Total Costs Incurred
+            (paid expenses) - there is nothing to configure here. View the
+            current break-even status on the{" "}
+            <Link href="/admin" className="font-semibold text-eucalyptus hover:underline">
+              Dashboard
+            </Link>
+            .
           </p>
-
-          <div className="max-w-xs">
-            <FormInput
-              label={`Monthly Break-Even Revenue (${settings?.currency ?? "KES"})`}
-              type="number"
-              value={breakEvenInput}
-              placeholder="e.g. 500000"
-              onChange={setBreakEvenInput}
-            />
-          </div>
-
-          <div className="mt-6 flex items-center justify-end gap-3">
-
-            <Button
-              onClick={handleSaveBreakEven}
-              disabled={savingBreakEven}
-            >
-              {savingBreakEven ? "Saving..." : "Save"}
-            </Button>
-
-          </div>
 
         </Card>
       </div>

@@ -10,8 +10,11 @@ import { roundMoney } from "@/lib/currency";
 interface NetPositionWidgetProps {
   revenue: number;
   moneyOut: number;
-  // NULL = no monthly break-even target configured yet - never treated as 0,
-  // same convention as RevenueWidget's breakEven prop.
+  // Break-even revenue for the selected period - equal to Total Costs
+  // Incurred (`moneyOut`) itself, since that's the revenue level at which
+  // Total Revenue - Total Costs Incurred = 0. NULL = Total Costs Incurred
+  // could not be determined for this period - never treated as 0. Same
+  // convention as RevenueWidget's breakEven prop.
   breakEven: number | null;
   currency: string;
   loading: boolean;
@@ -100,11 +103,9 @@ export default function NetPositionWidget({
 
             <p className="mt-1 text-sm text-slate-500">{position.label}</p>
 
-            {breakEven != null && (
-              <p className="mt-1 text-xs text-slate-500">
-                Break-even target: {formatMoney(breakEven)}
-              </p>
-            )}
+            <p className="mt-1 text-xs text-slate-500">
+              Break-even revenue: {breakEven == null ? "Not available" : formatMoney(breakEven)}
+            </p>
           </div>
         )}
       </div>

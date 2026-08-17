@@ -42,6 +42,7 @@ export default function DashboardWidgets({
           revenue={revenue}
           taxCollected={taxCollected}
           breakEven={breakEven}
+          costsLoading={moneyOutLoading}
           chartData={revenueChart}
           currency={currency}
           loading={revenueLoading}
