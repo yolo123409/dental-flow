@@ -30,6 +30,7 @@ import {
   Receipt,
   Activity,
   Percent,
+  Gauge,
   LucideIcon,
 } from "lucide-react";
 
@@ -209,6 +210,12 @@ const sections: SidebarSection[] = [
         name: "Margins & Markup",
         href: "/admin/ledger/margins-markup",
         icon: Percent,
+        permission: "ledger",
+      },
+      {
+        name: "Financial Ratios",
+        href: "/admin/ledger/financial-ratios",
+        icon: Gauge,
         permission: "ledger",
       },
       {
