@@ -29,6 +29,7 @@ import {
   ScrollText,
   Receipt,
   Activity,
+  Percent,
   LucideIcon,
 } from "lucide-react";
 
@@ -202,6 +203,12 @@ const sections: SidebarSection[] = [
         name: "EBIT / EBITDA",
         href: "/admin/ledger/ebit-ebitda",
         icon: Activity,
+        permission: "ledger",
+      },
+      {
+        name: "Margins & Markup",
+        href: "/admin/ledger/margins-markup",
+        icon: Percent,
         permission: "ledger",
       },
       {
