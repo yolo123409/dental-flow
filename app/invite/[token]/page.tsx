@@ -1,31 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useParams } from "next/navigation";
 
 import Card from "@/components/ui/Card";
 import AcceptInvitationForm from "@/components/auth/AcceptInvitationForm";
 
 import { useAuth } from "@/contexts/AuthContext";
 
+/**
+ * Deliberately does NOT redirect an already-authenticated visitor away
+ * unconditionally - a multi-branch organization member who already
+ * accepted one branch invitation (and so already has a session) must be
+ * able to accept a SECOND branch invitation (e.g. a CEO inviting the
+ * same person to another branch, possibly with a different role)
+ * without logging out first. AcceptInvitationForm itself decides what
+ * an authenticated visitor sees: an "Accept as [email]" flow using
+ * their existing session when the invitation email matches, or a
+ * "log out to accept a different invitation" message when it belongs
+ * to someone else.
+ */
 export default function InvitePage() {
   const params = useParams();
   const token = String(params.token ?? "");
 
-  const router = useRouter();
-
-  const { authUser, loading } = useAuth();
-
-  useEffect(() => {
-    if (!loading && authUser) {
-      toast(
-        "You're already signed in - log out to accept a different invitation."
-      );
-
-      router.replace("/admin");
-    }
-  }, [loading, authUser, router]);
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -33,10 +31,6 @@ export default function InvitePage() {
         Loading...
       </main>
     );
-  }
-
-  if (authUser) {
-    return null;
   }
 
   return (

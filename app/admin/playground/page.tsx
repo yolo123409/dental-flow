@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getCurrentClinicId } from "@/services/clinic";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 type Message = {
   id: string;
@@ -10,7 +11,7 @@ type Message = {
   message: string;
 };
 
-export default function PlaygroundPage() {
+function PlaygroundPageContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -215,5 +216,13 @@ export default function PlaygroundPage() {
 
       </div>
     </main>
+  );
+}
+
+export default function PlaygroundPage() {
+  return (
+    <PermissionGuard permission="settings">
+      <PlaygroundPageContent />
+    </PermissionGuard>
   );
 }

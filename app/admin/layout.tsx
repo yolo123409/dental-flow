@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 
 import AdminLayout from "@/components/admin/AdminLayout";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import { OrganizationProvider } from "@/contexts/OrganizationContext";
 
 export default function Layout({
   children,
@@ -10,9 +11,11 @@ export default function Layout({
 }) {
   return (
     <ProtectedRoute>
-      <AdminLayout>
-        {children}
-      </AdminLayout>
+      <OrganizationProvider>
+        <AdminLayout>
+          {children}
+        </AdminLayout>
+      </OrganizationProvider>
     </ProtectedRoute>
   );
 }

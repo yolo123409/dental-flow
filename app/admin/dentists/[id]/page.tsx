@@ -8,13 +8,14 @@ import PageContainer from "@/components/ui/PageContainer";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 import {
   getDentistById,
   getDentistCompletedTreatmentCount,
 } from "@/services/dentists";
 import { Dentist } from "@/types/dentist";
 
-export default function DentistDetailsPage() {
+function DentistDetailsPageContent() {
   const params = useParams();
   const router = useRouter();
   const dentistId = String(params.id ?? "");
@@ -114,5 +115,13 @@ export default function DentistDetailsPage() {
         </Card>
       </div>
     </PageContainer>
+  );
+}
+
+export default function DentistDetailsPage() {
+  return (
+    <PermissionGuard permission="patients">
+      <DentistDetailsPageContent />
+    </PermissionGuard>
   );
 }

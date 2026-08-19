@@ -72,7 +72,13 @@ export function canAccess(
   role: UserRole,
   permission: Permission
 ): boolean {
-  const allowed = permissions[role];
+  // Fails closed (not a thrown error) for a role string that isn't one
+  // of the four defined above - e.g. stale/corrupted data, or a future
+  // clinic_users.role value added to the database before this map is
+  // updated to match - so every caller (PermissionGuard, usePermissions,
+  // assertPermission) can treat "no access" and "unrecognized role" the
+  // same way without each needing its own guard.
+  const allowed = permissions[role] ?? [];
 
   return allowed.includes("*") || allowed.includes(permission);
 }

@@ -1,5 +1,6 @@
 import { getEbitEbitda, getProfitAndLoss } from "./ledger";
 import { getTreatmentProfitabilityReportForPeriod } from "./treatmentProfitability";
+import { assertPermission } from "./authorization";
 
 import { MarginsMarkupReport, TreatmentMarkupRow } from "@/types/marginsMarkup";
 import { TreatmentProfitabilityRow } from "@/types/treatmentProfitability";
@@ -62,6 +63,8 @@ export async function getMarginsMarkupReport(
   end: Date,
   periodLabel: string
 ): Promise<MarginsMarkupReport> {
+  await assertPermission("ledger");
+
   const [ebitEbitda, profitAndLoss, treatmentReport] = await Promise.all([
     getEbitEbitda(start, end),
     getProfitAndLoss(start, end),

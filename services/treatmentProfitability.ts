@@ -3,6 +3,7 @@ import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
 import { getDateRange } from "./analytics/dateRange";
+import { assertPermission } from "./authorization";
 
 import {
   TreatmentProfitabilityReport,
@@ -69,9 +70,12 @@ export async function getTreatmentProfitabilityReport(
 export async function getTreatmentProfitabilityReportForPeriod(
   start: Date | null,
   end: Date | null,
-  rangeLabel: string
+  rangeLabel: string,
+  overrideClinicId?: string
 ): Promise<TreatmentProfitabilityReport> {
-  const clinicId = await getCurrentClinicId();
+  await assertPermission("treatment_profitability");
+
+  const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
   let invoicesQuery = supabase
     .from("clinic_invoices")
@@ -250,6 +254,7 @@ export async function updateTreatmentDirectCost(
   treatmentId: string,
   directCost: number | null
 ): Promise<void> {
+  await assertPermission("treatment_profitability_manage");
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase

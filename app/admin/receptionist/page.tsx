@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getCurrentClinicId } from "@/services/clinic";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 type AIReceptionist = {
   id?: string;
@@ -19,7 +20,7 @@ type AIReceptionist = {
   voice_enabled: boolean;
 };
 
-export default function ReceptionistPage() {
+function ReceptionistPageContent() {
   const [saving, setSaving] = useState(false);
 
   const [config, setConfig] = useState<AIReceptionist>({
@@ -277,5 +278,13 @@ export default function ReceptionistPage() {
 
       </div>
     </main>
+  );
+}
+
+export default function ReceptionistPage() {
+  return (
+    <PermissionGuard permission="settings">
+      <ReceptionistPageContent />
+    </PermissionGuard>
   );
 }

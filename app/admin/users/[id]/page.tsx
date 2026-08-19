@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import PageContainer from "@/components/ui/PageContainer";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 import { logError } from "@/lib/logError";
@@ -27,7 +28,7 @@ import {
 
 import { toast } from "sonner";
 
-export default function StaffProfilePage() {
+function StaffProfilePageContent() {
   const params = useParams();
   const router = useRouter();
 
@@ -159,5 +160,13 @@ export default function StaffProfilePage() {
       </div>
 
     </PageContainer>
+  );
+}
+
+export default function StaffProfilePage() {
+  return (
+    <PermissionGuard permission="users">
+      <StaffProfilePageContent />
+    </PermissionGuard>
   );
 }

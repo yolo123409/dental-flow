@@ -3,8 +3,13 @@ import { logError, toError } from "@/lib/logError";
 import { generateToken } from "@/lib/generateToken";
 
 import { getCurrentClinicId } from "./clinic";
+import { getCurrentClinicUser } from "./clinicUsers";
 import { notifyStaffAdded } from "./notifications";
-import { getOrganizationInvitationDetails } from "./organizations";
+import { sendInvitationEmail } from "./invitationEmail";
+import {
+  getOrganizationInvitationDetails,
+  createBranchInvitation,
+} from "./organizations";
 
 import {
   CreateInvitationInput,
@@ -56,9 +61,52 @@ function buildInviteLink(token: string): string {
   return `${origin}/invite/${token}`;
 }
 
+/**
+ * The existing Clinic Staff page (app/admin/users) calls this for every
+ * clinic, independent or branch - if the caller's currently active
+ * clinic belongs to an organization, dispatch to create_branch_invitation
+ * instead of create_staff_invitation, exactly mirroring how
+ * acceptInvitation() below already dispatches on the accept side. This
+ * matters, not just for consistency: create_staff_invitation rejects
+ * anyone "already linked to a clinic" globally, which would wrongly
+ * block inviting an existing organization member to a second branch -
+ * create_branch_invitation has no such restriction, only "already staff
+ * of THIS branch".
+ */
 export async function createInvitation(
   input: CreateInvitationInput
-): Promise<{ invitation: CreatedInvitation; link: string }> {
+): Promise<{ invitation: CreatedInvitation; link: string; emailSent: boolean }> {
+  const clinicId = await getCurrentClinicId();
+
+  const { data: clinic, error: clinicError } = await supabase
+    .from("clinics")
+    .select("organization_id")
+    .eq("id", clinicId)
+    .maybeSingle();
+
+  if (clinicError) {
+    logError(
+      "[staffInvitations] createInvitation failed to check clinic type:",
+      clinicError
+    );
+
+    throw toError(clinicError);
+  }
+
+  if (clinic?.organization_id) {
+    const branchResult = await createBranchInvitation(clinicId, input);
+
+    return {
+      invitation: {
+        invitation_id: branchResult.invitationId,
+        token: branchResult.token,
+        expires_at: branchResult.expiresAt,
+      },
+      link: branchResult.link,
+      emailSent: branchResult.emailSent,
+    };
+  }
+
   const { data, error } = await supabase.rpc(
     "create_staff_invitation",
     {
@@ -77,9 +125,22 @@ export async function createInvitation(
 
   const invitation = data[0] as CreatedInvitation;
 
+  // Best-effort inviter name for the email's "Invited by" line only -
+  // never used for authorization (the RPC above already did every real
+  // check). A failure here must never fail invitation creation, which
+  // has already succeeded by this point.
+  const inviterName = await getCurrentClinicUser()
+    .then(
+      (clinicUser) => (clinicUser?.full_name as string | undefined) ?? null
+    )
+    .catch(() => null);
+
+  const emailSent = await sendInvitationEmail(invitation.token, inviterName);
+
   return {
     invitation,
     link: buildInviteLink(invitation.token),
+    emailSent,
   };
 }
 

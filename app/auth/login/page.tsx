@@ -14,15 +14,21 @@ export default function LoginPage() {
   const {
     authUser,
     loading,
+    profileLoading,
   } = useAuth();
 
   useEffect(() => {
-    if (!loading && authUser) {
+    if (!loading && !profileLoading && authUser) {
       router.replace("/admin");
     }
-  }, [loading, authUser, router]);
+  }, [loading, profileLoading, authUser, router]);
 
-  if (loading) {
+  // While profileLoading is true and we have an authUser, a clinic
+  // (or, for a brand-new deferred signup, the clinic itself) may still be
+  // provisioning - navigating to /admin before that finishes is what used
+  // to send a user with no clinic_users row yet into a page that expects
+  // one, so wait for it to settle instead of only waiting on `loading`.
+  if (loading || (authUser && profileLoading)) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         Loading...

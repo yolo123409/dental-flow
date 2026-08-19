@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 
 import PageContainer from "@/components/ui/PageContainer";
 import Card from "@/components/ui/Card";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import PatientProfileHeader from "@/components/patients/PatientProfileHeader";
 import PatientTabs from "@/components/patients/PatientTabs";
@@ -39,7 +40,7 @@ type BillingSummaryState = ReturnType<
   typeof calculateBalance
 >;
 
-export default function PatientProfilePage() {
+function PatientProfilePageContent() {
   const params = useParams();
 
   const id = params.id as string;
@@ -273,5 +274,13 @@ export default function PatientProfilePage() {
       )}
 
     </PageContainer>
+  );
+}
+
+export default function PatientProfilePage() {
+  return (
+    <PermissionGuard permission="patients">
+      <PatientProfilePageContent />
+    </PermissionGuard>
   );
 }

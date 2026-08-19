@@ -3,6 +3,7 @@ import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCashFlowStatement, getLedgerSettings, getProfitAndLoss, getTrialBalance } from "./ledger";
+import { assertPermission } from "./authorization";
 
 import { ArAging, ArAgingBucket, ArInvoiceRow, ArReconciliation, ArReport } from "@/types/accountsReceivable";
 
@@ -120,6 +121,8 @@ export async function getAccountsReceivableReport(
   periodEnd: Date,
   periodLabel: string
 ): Promise<ArReport> {
+  await assertPermission("ledger");
+
   const [settings, invoices, trialBalance, profitAndLoss, cashFlow] = await Promise.all([
     getLedgerSettings(),
     getOutstandingInvoiceRows(),

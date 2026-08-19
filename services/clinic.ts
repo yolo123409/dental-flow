@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { runExclusive } from "@/lib/inFlightGuard";
 
 import { getCurrentClinicUser } from "./clinicUsers";
 import { acceptInvitation } from "./staffInvitations";
@@ -85,60 +86,73 @@ export async function provisionPendingClinicIfNeeded() {
     return false;
   }
 
-  const pendingClinicName = user.user_metadata
-    ?.pending_clinic_name as string | undefined;
+  // The signup form's own direct call and AuthContext's auth-state-change
+  // call can both reach here for the same freshly-signed-in user at
+  // nearly the same instant. Without this, both pass the "does a
+  // clinic_users row exist yet" check before either has created one, and
+  // both go on to call create_clinic_with_admin - which only rejects a
+  // *later* attempt against an existing row, not two concurrent ones -
+  // producing two separate clinics for one user. Keying the shared
+  // promise by user id collapses the second caller onto the first's
+  // in-flight result instead of letting it run the check-then-create
+  // logic a second time.
+  return runExclusive(`provision-clinic:${user.id}`, async () => {
+    const pendingClinicName = user.user_metadata
+      ?.pending_clinic_name as string | undefined;
 
-  const pendingFullName = user.user_metadata
-    ?.pending_full_name as string | undefined;
+    const pendingFullName = user.user_metadata
+      ?.pending_full_name as string | undefined;
 
-  if (!pendingClinicName || !pendingFullName) {
-    console.log(
-      "[onboarding] provisionPendingClinicIfNeeded: no pending clinic metadata on this user, skipping"
-    );
-
-    return false;
-  }
-
-  const existing = await getCurrentClinicUser();
-
-  if (existing) {
-    console.log(
-      "[onboarding] provisionPendingClinicIfNeeded: clinic_users row already exists, skipping"
-    );
-
-    return false;
-  }
-
-  console.log(
-    "[onboarding] provisionPendingClinicIfNeeded: no clinic yet, creating one now:",
-    pendingClinicName
-  );
-
-  try {
-    await createClinicWithAdmin({
-      clinicName: pendingClinicName,
-      fullName: pendingFullName,
-      email: user.email ?? "",
-    });
-  } catch (error) {
-    // A concurrent call (e.g. the signup form's direct call racing with
-    // AuthContext's own provisioning check) may have already created it -
-    // that's a benign race, not a real failure, so don't surface it.
-    const message =
-      error instanceof Error ? error.message : String(error);
-
-    if (message.includes("already linked")) {
+    if (!pendingClinicName || !pendingFullName) {
       console.log(
-        "[onboarding] clinic was already created by a concurrent call, continuing"
+        "[onboarding] provisionPendingClinicIfNeeded: no pending clinic metadata on this user, skipping"
       );
 
       return false;
     }
 
-    throw error;
-  }
+    const existing = await getCurrentClinicUser();
 
-  return true;
+    if (existing) {
+      console.log(
+        "[onboarding] provisionPendingClinicIfNeeded: clinic_users row already exists, skipping"
+      );
+
+      return false;
+    }
+
+    console.log(
+      "[onboarding] provisionPendingClinicIfNeeded: no clinic yet, creating one now:",
+      pendingClinicName
+    );
+
+    try {
+      await createClinicWithAdmin({
+        clinicName: pendingClinicName,
+        fullName: pendingFullName,
+        email: user.email ?? "",
+      });
+    } catch (error) {
+      // A concurrent call from a different tab/device may have already
+      // created it - that's a benign race, not a real failure, so don't
+      // surface it. (Concurrent calls within this tab are already ruled
+      // out by the runExclusive guard above.)
+      const message =
+        error instanceof Error ? error.message : String(error);
+
+      if (message.includes("already linked")) {
+        console.log(
+          "[onboarding] clinic was already created by a concurrent call, continuing"
+        );
+
+        return false;
+      }
+
+      throw error;
+    }
+
+    return true;
+  });
 }
 
 /**
@@ -164,26 +178,31 @@ export async function acceptPendingInvitationIfNeeded() {
     return false;
   }
 
-  const existing = await getCurrentClinicUser();
+  // Same in-tab race as provisionPendingClinicIfNeeded above: the invite
+  // page's own direct call and AuthContext's call can both fire for the
+  // same freshly-signed-in user at once.
+  return runExclusive(`accept-invitation:${user.id}`, async () => {
+    const existing = await getCurrentClinicUser();
 
-  if (existing) {
-    return false;
-  }
-
-  try {
-    await acceptInvitation(pendingToken);
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
-
-    // A concurrent call (immediate-session branch racing with
-    // AuthContext's own check) may have already accepted it.
-    if (message.includes("already linked")) {
+    if (existing) {
       return false;
     }
 
-    throw error;
-  }
+    try {
+      await acceptInvitation(pendingToken);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
 
-  return true;
+      // A concurrent call from a different tab/device may have already
+      // accepted it.
+      if (message.includes("already linked")) {
+        return false;
+      }
+
+      throw error;
+    }
+
+    return true;
+  });
 }

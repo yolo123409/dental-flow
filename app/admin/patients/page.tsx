@@ -14,6 +14,7 @@ import { Patient } from "@/types/patient";
 import { getPatients } from "@/services/patients";
 
 import PageContainer from "@/components/ui/PageContainer";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import PatientHeader from "@/components/patients/PatientHeader";
 import PatientStats from "@/components/patients/PatientStats";
@@ -21,7 +22,7 @@ import PatientSearch from "@/components/patients/PatientSearch";
 import PatientGrid from "@/components/patients/PatientGrid";
 import AddPatientModal from "@/components/patients/AddPatientModal";
 
-export default function PatientsPage() {
+function PatientsPageContent() {
   const [patients, setPatients] = useState<Patient[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -118,5 +119,13 @@ export default function PatientsPage() {
       </div>
 
     </PageContainer>
+  );
+}
+
+export default function PatientsPage() {
+  return (
+    <PermissionGuard permission="patients">
+      <PatientsPageContent />
+    </PermissionGuard>
   );
 }

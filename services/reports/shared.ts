@@ -34,16 +34,23 @@ export function periodLabel(period: ReportPeriod): string {
   return formatDateRangeLabel(period.label, period.start, period.end);
 }
 
-async function getExpensesForPeriod(start: Date | null, end: Date | null) {
+async function getExpensesForPeriod(
+  start: Date | null,
+  end: Date | null,
+  overrideClinicId?: string
+) {
   if (!start || !end) {
-    return getExpenses({});
+    return getExpenses({}, overrideClinicId);
   }
 
-  return getExpenses({
-    dateRange: "Custom",
-    customStart: isoDate(start),
-    customEnd: isoDate(end),
-  });
+  return getExpenses(
+    {
+      dateRange: "Custom",
+      customStart: isoDate(start),
+      customEnd: isoDate(end),
+    },
+    overrideClinicId
+  );
 }
 
 export interface PeriodFinancials {
@@ -66,12 +73,13 @@ export interface PeriodFinancials {
  */
 export async function getPeriodFinancials(
   start: Date | null,
-  end: Date | null
+  end: Date | null,
+  overrideClinicId?: string
 ): Promise<PeriodFinancials> {
   const [revenueAnalytics, profitabilityReport, expenses] = await Promise.all([
-    getRevenueAnalyticsForPeriod(start, end),
-    getTreatmentProfitabilityReportForPeriod(start, end, "period"),
-    getExpensesForPeriod(start, end),
+    getRevenueAnalyticsForPeriod(start, end, overrideClinicId),
+    getTreatmentProfitabilityReportForPeriod(start, end, "period", overrideClinicId),
+    getExpensesForPeriod(start, end, overrideClinicId),
   ]);
 
   const revenue = revenueAnalytics.totalRevenue;

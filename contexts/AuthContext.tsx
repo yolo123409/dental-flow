@@ -11,11 +11,13 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
-import { logError } from "@/lib/logError";
+import { logError, toError } from "@/lib/logError";
 import {
   provisionPendingClinicIfNeeded,
   acceptPendingInvitationIfNeeded,
 } from "@/services/clinic";
+import { provisionPendingOrganizationIfNeeded } from "@/services/organizations";
+import { getCurrentClinicUser } from "@/services/clinicUsers";
 
 import { ClinicUser } from "@/types/clinicUser";
 
@@ -24,6 +26,7 @@ interface AuthContextType {
   authUser: User | null;
   profile: ClinicUser | null;
   loading: boolean;
+  profileLoading: boolean;
   refreshProfile: () => Promise<void>;
 }
 
@@ -32,6 +35,7 @@ const AuthContext = createContext<AuthContextType>({
   authUser: null,
   profile: null,
   loading: true,
+  profileLoading: false,
   refreshProfile: async () => {},
 });
 
@@ -52,6 +56,14 @@ export function AuthProvider({
   const [loading, setLoading] =
     useState(true);
 
+  // True for the duration of loadProfile() - including any deferred
+  // onboarding provisioning it triggers below. Pages that redirect based
+  // on authUser (e.g. the login page) must wait for this to go false
+  // too, or they navigate to a clinic-scoped page before the clinic
+  // actually exists yet.
+  const [profileLoading, setProfileLoading] =
+    useState(false);
+
   async function loadProfile(
     user: User | null
   ) {
@@ -60,16 +72,33 @@ export function AuthProvider({
       return;
     }
 
+    setProfileLoading(true);
+
+    try {
+      await loadProfileInner(user);
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  async function loadProfileInner(
+    user: User
+  ) {
     console.log("[auth] loading clinic profile for", user.id);
 
-    let { data, error } = await supabase
-      .from("clinic_users")
-      .select("*")
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
+    // getCurrentClinicUser() (services/clinicUsers.ts) resolves 0 or 1
+    // clinic_users rows exactly like the old direct .maybeSingle() query
+    // did, and additionally resolves 2+ rows via the organization's
+    // active-branch selection - required now that a CEO can hold more
+    // than one clinic_users row (one per branch). The old raw query here
+    // would throw "multiple rows returned" the moment a CEO had a second
+    // branch, permanently breaking their session on next load.
+    let clinicUser: ClinicUser | null;
 
-    if (error) {
-      logError("[auth] Failed to load clinic profile:", error);
+    try {
+      clinicUser = (await getCurrentClinicUser()) as ClinicUser | null;
+    } catch (error) {
+      logError("[auth] Failed to load clinic profile:", toError(error));
 
       setProfile(null);
 
@@ -82,7 +111,7 @@ export function AuthProvider({
     // single place that guarantees onboarding finishes before any page
     // treats the user as "no clinic" regardless of how they got signed in.
     if (
-      !data &&
+      !clinicUser &&
       user.user_metadata?.pending_clinic_name
     ) {
       console.log(
@@ -93,26 +122,12 @@ export function AuthProvider({
       try {
         await provisionPendingClinicIfNeeded();
 
-        const retry = await supabase
-          .from("clinic_users")
-          .select("*")
-          .eq("auth_user_id", user.id)
-          .maybeSingle();
+        clinicUser = (await getCurrentClinicUser()) as ClinicUser | null;
 
-        data = retry.data;
-        error = retry.error;
-
-        if (error) {
-          logError(
-            "[auth] Failed to re-fetch clinic profile after provisioning:",
-            error
-          );
-        } else {
-          console.log(
-            "[auth] provisioning finished, clinic profile loaded:",
-            data
-          );
-        }
+        console.log(
+          "[auth] provisioning finished, clinic profile loaded:",
+          clinicUser
+        );
       } catch (provisionError) {
         logError(
           "[auth] Clinic provisioning failed:",
@@ -121,10 +136,39 @@ export function AuthProvider({
       }
     }
 
+    // Same deferred-session gap, for Multi-Branch Organization signups -
+    // mirrors the pending_clinic_name branch above exactly, just for the
+    // organization/initial-branch RPC (services/organizations.ts).
+    if (
+      !clinicUser &&
+      user.user_metadata?.pending_organization_name
+    ) {
+      console.log(
+        "[auth] no clinic_users row yet but pending organization metadata found - provisioning now:",
+        user.user_metadata.pending_organization_name
+      );
+
+      try {
+        await provisionPendingOrganizationIfNeeded();
+
+        clinicUser = (await getCurrentClinicUser()) as ClinicUser | null;
+
+        console.log(
+          "[auth] organization provisioning finished, clinic profile loaded:",
+          clinicUser
+        );
+      } catch (provisionError) {
+        logError(
+          "[auth] Organization provisioning failed:",
+          provisionError
+        );
+      }
+    }
+
     // Same deferred-session gap, for staff who signed up via an invite
     // link rather than creating a clinic.
     if (
-      !data &&
+      !clinicUser &&
       user.user_metadata?.pending_invitation_token
     ) {
       console.log(
@@ -134,21 +178,7 @@ export function AuthProvider({
       try {
         await acceptPendingInvitationIfNeeded();
 
-        const retry = await supabase
-          .from("clinic_users")
-          .select("*")
-          .eq("auth_user_id", user.id)
-          .maybeSingle();
-
-        data = retry.data;
-        error = retry.error;
-
-        if (error) {
-          logError(
-            "[auth] Failed to re-fetch clinic profile after accepting invitation:",
-            error
-          );
-        }
+        clinicUser = (await getCurrentClinicUser()) as ClinicUser | null;
       } catch (acceptError) {
         logError(
           "[auth] Invitation acceptance failed:",
@@ -157,7 +187,7 @@ export function AuthProvider({
       }
     }
 
-    setProfile((data ?? null) as ClinicUser | null);
+    setProfile(clinicUser);
   }
 
   async function refreshProfile() {
@@ -223,6 +253,7 @@ export function AuthProvider({
         authUser,
         profile,
         loading,
+        profileLoading,
         refreshProfile,
       }}
     >

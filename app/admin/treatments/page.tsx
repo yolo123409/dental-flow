@@ -19,8 +19,9 @@ import {
 import { getClinicSettings } from "@/services/settings";
 
 import TreatmentModal from "@/components/treatments/TreatmentModal";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
-export default function TreatmentsPage() {
+function TreatmentsPageContent() {
   const [loading, setLoading] =
     useState(true);
 
@@ -340,5 +341,13 @@ function handleEdit(
       />
 
     </div>
+  );
+}
+
+export default function TreatmentsPage() {
+  return (
+    <PermissionGuard permission="patients">
+      <TreatmentsPageContent />
+    </PermissionGuard>
   );
 }

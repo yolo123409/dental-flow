@@ -33,6 +33,9 @@ import {
   Gauge,
   Timer,
   UserPlus,
+  Building2,
+  LayoutGrid,
+  CircleDollarSign,
   LucideIcon,
 } from "lucide-react";
 
@@ -40,7 +43,10 @@ import { Permission } from "@/lib/permissions";
 
 import { useAuth } from "@/contexts/AuthContext";
 import usePermissions from "@/hooks/usePermissions";
+import useOrganization from "@/hooks/useOrganization";
 import useInventoryAttentionCount from "@/hooks/useInventoryAttentionCount";
+
+import BranchSwitcher from "@/components/organization/BranchSwitcher";
 
 interface SidebarLink {
   name: string;
@@ -260,6 +266,45 @@ const sections: SidebarSection[] = [
   },
 ];
 
+// CEO is an organization-level capability, entirely separate from the
+// clinic permissions above - it's checked via useOrganization()
+// (organization_users.role), not lib/permissions.ts, and rendered as
+// its own section rather than folded into the permission-filtered
+// `sections` array so the two dimensions never get confused with each
+// other.
+const organizationLinks: SidebarLink[] = [
+  {
+    name: "Dashboard",
+    href: "/admin/organization/dashboard",
+    icon: LayoutGrid,
+    permission: "dashboard",
+  },
+  {
+    name: "Branches",
+    href: "/admin/organization/branches",
+    icon: Building2,
+    permission: "dashboard",
+  },
+  {
+    name: "Staff",
+    href: "/admin/organization/staff",
+    icon: Users,
+    permission: "dashboard",
+  },
+  {
+    name: "Invitations",
+    href: "/admin/organization/invitations",
+    icon: UserPlus,
+    permission: "dashboard",
+  },
+  {
+    name: "Financials",
+    href: "/admin/organization/financials",
+    icon: CircleDollarSign,
+    permission: "dashboard",
+  },
+];
+
 export default function Sidebar() {
   const pathname = usePathname();
 
@@ -267,6 +312,8 @@ export default function Sidebar() {
 
   const { hasPermission, role } =
     usePermissions();
+
+  const { isCeo } = useOrganization();
 
   const { count: attentionCount } =
     useInventoryAttentionCount();
@@ -287,6 +334,14 @@ export default function Sidebar() {
         </p>
 
       </div>
+
+      {/* Active branch switcher - only rendered for multi-branch
+          organization members (CEO or Member), never for independent
+          clinics; renders itself as a plain read-only label for a
+          single-branch member, an interactive dropdown for anyone with
+          2+ branches. See components/organization/BranchSwitcher.tsx. */}
+
+      <BranchSwitcher />
 
       {/* Navigation */}
 
@@ -357,6 +412,47 @@ export default function Sidebar() {
             </div>
           );
         })}
+
+        {/* Organization - CEO-only, gated on organization_users.role
+            rather than lib/permissions.ts (a separate capability
+            dimension layered on top of the ordinary clinic role the CEO
+            also holds in every branch). */}
+
+        {isCeo && (
+          <div className="mb-8">
+
+            <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-mineral">
+              ORGANIZATION
+            </p>
+
+            {organizationLinks.map((link) => {
+              const Icon = link.icon;
+
+              const active =
+                pathname === link.href ||
+                pathname.startsWith(`${link.href}/`);
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`mb-2 flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors ${
+                    active
+                      ? "bg-eucalyptus text-white"
+                      : "text-graphite hover:bg-porcelain"
+                  }`}
+                >
+                  <Icon size={20} />
+
+                  <span className="font-medium">
+                    {link.name}
+                  </span>
+                </Link>
+              );
+            })}
+
+          </div>
+        )}
 
       </nav>
 

@@ -27,9 +27,10 @@ export async function getRevenueAnalytics(
  */
 export async function getRevenueAnalyticsForPeriod(
   start: Date | null,
-  end: Date | null
+  end: Date | null,
+  overrideClinicId?: string
 ): Promise<RevenueAnalytics> {
-  const clinicId = await getCurrentClinicId();
+  const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
   let revenueQuery = supabase
     .from("clinic_invoices")

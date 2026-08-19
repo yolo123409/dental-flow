@@ -23,6 +23,7 @@ import {
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 
 import PageContainer from "@/components/ui/PageContainer";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import ReportsHeader from "@/components/reports/ReportsHeader";
 import ReportStatCard from "@/components/reports/ReportStatCard";
@@ -39,7 +40,7 @@ interface DashboardTotals {
   dentists: number;
 }
 
-export default function AnalyticsPage() {
+function AnalyticsPageContent() {
   const [range, setRange] =
     useState("All Time");
 
@@ -240,5 +241,13 @@ export default function AnalyticsPage() {
 
       </div>
     </PageContainer>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <PermissionGuard permission="analytics">
+      <AnalyticsPageContent />
+    </PermissionGuard>
   );
 }

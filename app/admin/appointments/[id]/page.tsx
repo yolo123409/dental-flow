@@ -15,8 +15,9 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import CareRail from "@/components/ui/CareRail";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Card from "@/components/ui/Card";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
-export default function AppointmentDetailsPage() {
+function AppointmentDetailsPageContent() {
   const params = useParams();
   const router = useRouter();
 
@@ -227,5 +228,13 @@ export default function AppointmentDetailsPage() {
       </Card>
 
     </div>
+  );
+}
+
+export default function AppointmentDetailsPage() {
+  return (
+    <PermissionGuard permission="appointments">
+      <AppointmentDetailsPageContent />
+    </PermissionGuard>
   );
 }

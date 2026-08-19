@@ -29,6 +29,7 @@ import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import {
   PatientOption,
@@ -37,7 +38,7 @@ import {
 
 const PAGE_SIZE = 50;
 
-export default function AppointmentsPage() {
+function AppointmentsPageContent() {
   const [appointments, setAppointments] =
     useState<Appointment[]>([]);
 
@@ -402,5 +403,13 @@ export default function AppointmentsPage() {
       />
 
     </div>
+  );
+}
+
+export default function AppointmentsPage() {
+  return (
+    <PermissionGuard permission="appointments">
+      <AppointmentsPageContent />
+    </PermissionGuard>
   );
 }

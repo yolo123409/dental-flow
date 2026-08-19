@@ -7,6 +7,7 @@ import {
   getProfitAndLoss,
 } from "./ledger";
 import { getAccountsReceivableReport } from "./accountsReceivable";
+import { assertPermission } from "./authorization";
 
 import { FinancialRatiosReport, RatioValue } from "@/types/financialRatios";
 
@@ -71,6 +72,8 @@ export async function getFinancialRatiosReport(
   end: Date,
   periodLabel: string
 ): Promise<FinancialRatiosReport> {
+  await assertPermission("ledger");
+
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
   const dayBeforeStart = new Date(start.getTime() - DAY_MS);

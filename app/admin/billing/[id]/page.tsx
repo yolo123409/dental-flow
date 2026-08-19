@@ -23,6 +23,7 @@ import {
 
 import RecordPaymentModal from "@/components/billing/RecordPaymentModal";
 import ClinicBrandingHeader from "@/components/branding/ClinicBrandingHeader";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 interface InvoiceDetail extends ClinicInvoice {
   patients: {
@@ -38,7 +39,7 @@ interface InvoiceDetail extends ClinicInvoice {
   clinic_payments: ClinicPayment[];
 }
 
-export default function InvoicePage() {
+function InvoicePageContent() {
   const params = useParams();
   const id = params.id as string;
 
@@ -710,5 +711,13 @@ async function downloadPDF() {
 
     </>
 
+  );
+}
+
+export default function InvoicePage() {
+  return (
+    <PermissionGuard permission="billing">
+      <InvoicePageContent />
+    </PermissionGuard>
   );
 }

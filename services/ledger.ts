@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 import { getPeriodFinancials } from "./reports/shared";
 
 import {
@@ -39,43 +40,58 @@ const TRANSACTION_SELECT = `
   )
 `;
 
-let provisioned = false;
+let provisionedClinicId: string | null = null;
 let provisioningPromise: Promise<void> | null = null;
+let provisioningClinicId: string | null = null;
 
 /**
  * The chart of accounts/settings are seeded lazily on first use (same
  * pattern as switch_active_branch's lazy clinic_users provisioning
  * elsewhere in this project) rather than requiring a migration-time data
  * backfill for every existing clinic. Cached in-memory per session so
- * repeated calls within one page load don't re-invoke the RPC.
+ * repeated calls within one page load don't re-invoke the RPC - keyed by
+ * clinic id (not a bare boolean) so switching to a different branch
+ * within the same session correctly re-provisions the newly-active
+ * branch instead of assuming "already provisioned" from a different
+ * branch's earlier call.
  *
  * Callers like getLedgerDashboardTotals() invoke this via multiple
  * services (getLedgerSettings(), getTrialBalance()) in parallel through
- * Promise.all, so the `provisioned` flag alone isn't enough - two calls
- * can both see it as false before either has resolved. In-flight calls
- * share a single promise so only one RPC request is ever sent at a time
- * (the RPC itself is also idempotent server-side, guarding against the
- * same race across separate tabs/sessions).
+ * Promise.all, so the `provisionedClinicId` check alone isn't enough -
+ * two calls can both see it as unprovisioned before either has resolved.
+ * In-flight calls for the same clinic share a single promise so only one
+ * RPC request is ever sent at a time (the RPC itself is also idempotent
+ * server-side, guarding against the same race across separate tabs/
+ * sessions).
  */
-export async function ensureLedgerProvisioned(): Promise<void> {
-  if (provisioned) return;
+export async function ensureLedgerProvisioned(overrideClinicId?: string): Promise<void> {
+  const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
-  if (!provisioningPromise) {
-    provisioningPromise = (async () => {
-      try {
-        const { error } = await supabase.rpc("ensure_ledger_provisioned");
+  if (provisionedClinicId === clinicId) return;
 
-        if (error) {
-          logError("[ledger] ensureLedgerProvisioned failed:", error);
-          throw toError(error);
-        }
-
-        provisioned = true;
-      } finally {
-        provisioningPromise = null;
-      }
-    })();
+  if (provisioningPromise && provisioningClinicId === clinicId) {
+    return provisioningPromise;
   }
+
+  provisioningClinicId = clinicId;
+
+  provisioningPromise = (async () => {
+    try {
+      const { error } = await supabase.rpc("ensure_ledger_provisioned", {
+        p_clinic_id: clinicId,
+      });
+
+      if (error) {
+        logError("[ledger] ensureLedgerProvisioned failed:", error);
+        throw toError(error);
+      }
+
+      provisionedClinicId = clinicId;
+    } finally {
+      provisioningPromise = null;
+      provisioningClinicId = null;
+    }
+  })();
 
   return provisioningPromise;
 }
@@ -87,6 +103,7 @@ export async function ensureLedgerProvisioned(): Promise<void> {
 export async function getLedgerAccounts(
   options: { includeInactive?: boolean } = {}
 ): Promise<LedgerAccount[]> {
+  await assertPermission("ledger");
   await ensureLedgerProvisioned();
 
   const clinicId = await getCurrentClinicId();
@@ -118,6 +135,7 @@ export interface LedgerAccountInput {
 }
 
 export async function createLedgerAccount(input: LedgerAccountInput): Promise<LedgerAccount> {
+  await assertPermission("ledger_manage");
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -143,6 +161,7 @@ export async function updateLedgerAccount(
   id: string,
   input: Partial<LedgerAccountInput>
 ): Promise<void> {
+  await assertPermission("ledger_manage");
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -167,6 +186,7 @@ export async function updateLedgerAccount(
  * stay intact) - only ever deactivated, matching section 5 exactly.
  */
 export async function setLedgerAccountActive(id: string, active: boolean): Promise<void> {
+  await assertPermission("ledger_manage");
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -185,10 +205,11 @@ export async function setLedgerAccountActive(id: string, active: boolean): Promi
 /* Settings / default mappings            */
 /* -------------------------------------- */
 
-export async function getLedgerSettings(): Promise<LedgerSettings> {
-  await ensureLedgerProvisioned();
+export async function getLedgerSettings(overrideClinicId?: string): Promise<LedgerSettings> {
+  await assertPermission("ledger");
+  await ensureLedgerProvisioned(overrideClinicId);
 
-  const clinicId = await getCurrentClinicId();
+  const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
   const { data, error } = await supabase
     .from("clinic_ledger_settings")
@@ -209,6 +230,7 @@ export async function updateLedgerSettings(
     Omit<LedgerSettings, "clinic_id" | "updated_at">
   >
 ): Promise<void> {
+  await assertPermission("ledger_manage");
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -226,6 +248,7 @@ export async function setExpenseCategoryAccount(
   categoryId: string,
   accountId: string | null
 ): Promise<void> {
+  await assertPermission("ledger_manage");
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -249,6 +272,7 @@ const DEFAULT_PAGE_SIZE = 25;
 export async function getLedgerTransactions(
   filters: LedgerTransactionFilters = {}
 ): Promise<LedgerTransactionPage> {
+  await assertPermission("ledger");
   const clinicId = await getCurrentClinicId();
 
   const limit = filters.limit ?? DEFAULT_PAGE_SIZE;
@@ -315,6 +339,7 @@ export async function getLedgerTransactions(
 }
 
 export async function getLedgerTransaction(id: string): Promise<LedgerTransaction> {
+  await assertPermission("ledger");
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -348,6 +373,8 @@ export interface ManualJournalEntryInput {
 export async function createManualJournalEntry(
   input: ManualJournalEntryInput
 ): Promise<string> {
+  await assertPermission("ledger_manage");
+
   const { data, error } = await supabase.rpc("create_manual_journal_entry", {
     p_transaction_date: input.transactionDate,
     p_description: input.description,
@@ -369,6 +396,8 @@ export async function reverseLedgerTransaction(
   transactionId: string,
   notes?: string
 ): Promise<string> {
+  await assertPermission("ledger_manage");
+
   const { data, error } = await supabase.rpc("reverse_ledger_transaction", {
     p_transaction_id: transactionId,
     p_notes: notes ?? null,
@@ -387,6 +416,8 @@ export async function setOpeningBalance(
   amount: number,
   asOf?: string
 ): Promise<void> {
+  await assertPermission("ledger_manage");
+
   const { error } = await supabase.rpc("set_opening_balance", {
     p_account_id: accountId,
     p_amount: amount,
@@ -413,9 +444,14 @@ interface RawTrialBalanceRow {
 }
 
 export async function getTrialBalance(): Promise<TrialBalance> {
+  await assertPermission("ledger");
   await ensureLedgerProvisioned();
 
-  const { data, error } = await supabase.rpc("get_trial_balance");
+  const clinicId = await getCurrentClinicId();
+
+  const { data, error } = await supabase.rpc("get_trial_balance", {
+    p_clinic_id: clinicId,
+  });
 
   if (error) {
     logError("[ledger] getTrialBalance failed:", error);
@@ -472,6 +508,7 @@ export async function getAccountLedger(
   start: string | null,
   end: string | null
 ): Promise<AccountLedger> {
+  await assertPermission("ledger");
   const clinicId = await getCurrentClinicId();
 
   const [{ data: accountData, error: accountError }, openingResult, rowsResult] =
@@ -535,6 +572,7 @@ export async function getAccountLedger(
 export async function getReconciliationIssues(
   options: { includeResolved?: boolean } = {}
 ): Promise<LedgerReconciliationIssue[]> {
+  await assertPermission("ledger");
   const clinicId = await getCurrentClinicId();
 
   let query = supabase
@@ -574,6 +612,8 @@ export async function getLedgerDashboardTotals(
   start: Date | null,
   end: Date | null
 ): Promise<LedgerDashboardTotals> {
+  await assertPermission("ledger");
+
   const [settings, trialBalance, financials, issues] = await Promise.all([
     getLedgerSettings(),
     getTrialBalance(),
@@ -668,13 +708,25 @@ function buildSection(
  * no such account in the default seeded chart, so most clinics will see
  * null here, which the UI must render as "not available", never as 0.
  */
-export async function getProfitAndLoss(start: Date, end: Date): Promise<ProfitAndLossPeriod> {
+export async function getProfitAndLoss(
+  start: Date,
+  end: Date,
+  overrideClinicId?: string
+): Promise<ProfitAndLossPeriod> {
+  await assertPermission("ledger");
+
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
 
+  const clinicId = overrideClinicId ?? (await getCurrentClinicId());
+
   const [settings, rpcResult] = await Promise.all([
-    getLedgerSettings(),
-    supabase.rpc("get_profit_and_loss", { p_start: startIso, p_end: endIso }),
+    getLedgerSettings(overrideClinicId),
+    supabase.rpc("get_profit_and_loss", {
+      p_clinic_id: clinicId,
+      p_start: startIso,
+      p_end: endIso,
+    }),
   ]);
 
   if (rpcResult.error) {
@@ -794,6 +846,8 @@ export async function getProfitAndLoss(start: Date, end: Date): Promise<ProfitAn
  * "no such account has ever been configured".
  */
 export async function getCashFlowStatement(start: Date, end: Date): Promise<CashFlowPeriod> {
+  await assertPermission("ledger");
+
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
 
@@ -1018,11 +1072,18 @@ function toBalanceSheetSection(lines: BalanceSheetLine[]): BalanceSheetSection {
  * contributions) so the figure is auditable rather than a black box.
  */
 export async function getBalanceSheet(asOf: Date): Promise<BalanceSheetPeriod> {
+  await assertPermission("ledger");
+
   const asOfIso = asOf.toISOString().slice(0, 10);
+
+  const clinicId = await getCurrentClinicId();
 
   const [settings, rpcResult] = await Promise.all([
     getLedgerSettings(),
-    supabase.rpc("get_balance_sheet", { p_as_of: asOfIso }),
+    supabase.rpc("get_balance_sheet", {
+      p_clinic_id: clinicId,
+      p_as_of: asOfIso,
+    }),
   ]);
 
   if (rpcResult.error) {
@@ -1159,8 +1220,14 @@ const EBIT_AMORTIZATION_PATTERN = /amortiz/i;
  * is null (rendered as "Not available" by the UI, never estimated or
  * silently set equal to EBIT).
  */
-export async function getEbitEbitda(start: Date, end: Date): Promise<EbitEbitdaPeriod> {
-  const pl = await getProfitAndLoss(start, end);
+export async function getEbitEbitda(
+  start: Date,
+  end: Date,
+  overrideClinicId?: string
+): Promise<EbitEbitdaPeriod> {
+  await assertPermission("ledger");
+
+  const pl = await getProfitAndLoss(start, end, overrideClinicId);
 
   const interestLines = pl.operatingExpenses.lines.filter((line) =>
     INTEREST_NAME_PATTERN.test(line.accountName)

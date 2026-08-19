@@ -15,6 +15,7 @@ import type {
   EventInput,
 } from "@fullcalendar/core";
 import CareRail from "@/components/ui/CareRail";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import {
   getCalendarAppointments,
@@ -44,7 +45,7 @@ import type {
   DentistOption,
 } from "@/types/options";
 
-export default function CalendarPage() {
+function CalendarPageContent() {
   const [events, setEvents] =
     useState<EventInput[]>([]);
 
@@ -511,5 +512,13 @@ export default function CalendarPage() {
       `}</style>
 
     </div>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <PermissionGuard permission="calendar">
+      <CalendarPageContent />
+    </PermissionGuard>
   );
 }

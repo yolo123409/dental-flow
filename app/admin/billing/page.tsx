@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import PaymentMethodField from "@/components/billing/PaymentMethodField";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import {
   ClinicCharge,
@@ -20,7 +21,7 @@ import {
   getClinicSettings,
 } from "@/services/settings";
 
-export default function BillingPage() {
+function BillingPageContent() {
   const [loading, setLoading] =
     useState(true);
 
@@ -372,5 +373,13 @@ export default function BillingPage() {
       </div>
 
     </div>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <PermissionGuard permission="billing">
+      <BillingPageContent />
+    </PermissionGuard>
   );
 }

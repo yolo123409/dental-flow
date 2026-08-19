@@ -1,10 +1,24 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { runExclusive } from "@/lib/inFlightGuard";
+import { generateToken } from "@/lib/generateToken";
+import { InvitableRole } from "@/lib/permissions";
+import { getPeriodFinancials } from "./reports/shared";
+import { getEbitEbitda } from "./ledger";
+import { getCurrentClinicUser } from "./clinicUsers";
+import { sendInvitationEmail } from "./invitationEmail";
 
 import {
   OrganizationUser,
   OrganizationBranch,
   OrganizationInvitationDetails,
+  OrganizationRole,
+  OrganizationStaffMember,
+  OrganizationInvitation,
+  OrganizationOverview,
+  OrganizationBranchOverview,
+  OrganizationFinancials,
+  OrganizationBranchFinancials,
 } from "@/types/organization";
 
 /* -------------------------------------- */
@@ -57,6 +71,26 @@ export async function getOrganizationInvitationDetails(
  * this is used to resolve which of a multi-branch user's several
  * clinic_users rows is "current".
  */
+/**
+ * Guards the organization-WIDE aggregate reads below (every branch's
+ * financials/overview/staff roster/invitations at once) - a plain
+ * Member legitimately has a real organization_users row (so
+ * getCurrentOrganizationUser() itself is never restricted), but only a
+ * CEO should be able to pull data spanning every branch in one call,
+ * matching CeoGuard's own isCeo check on the pages that call these
+ * (organization/dashboard, /financials, /staff, /invitations). Defined
+ * here rather than in services/authorization.ts to avoid a circular
+ * import - assertPermission() there depends on services/clinicUsers.ts,
+ * which itself depends on this file's getCurrentOrganizationUser().
+ */
+async function assertOrganizationCeo(): Promise<void> {
+  const organizationUser = await getCurrentOrganizationUser();
+
+  if (!organizationUser || organizationUser.role !== "CEO") {
+    throw new Error("Only the organization CEO can perform this action.");
+  }
+}
+
 export async function getCurrentOrganizationUser(): Promise<OrganizationUser | null> {
   const {
     data: { user },
@@ -117,6 +151,407 @@ export async function getOrganizationBranches(
 }
 
 /* -------------------------------------- */
+/* Organization-wide staff roster         */
+/* -------------------------------------- */
+
+/**
+ * Every person who holds a clinic_users row in any branch of
+ * `organizationId`, grouped by auth_user_id so a person who belongs to
+ * several branches (with possibly different clinic roles in each)
+ * appears once, with all of their branch memberships listed. Relies
+ * entirely on the existing clinic_users RLS policy
+ * (clinic_users_select_own_clinic_staff_admins, migration 0008): the
+ * caller can only see clinic_users rows for branches where they
+ * themselves are Owner/Admin, which for a CEO is every branch in their
+ * organization (create_branch always makes the CEO Owner of any branch
+ * they create) - no new policy needed for this read.
+ */
+export async function getOrganizationStaff(
+  organizationId: string
+): Promise<OrganizationStaffMember[]> {
+  await assertOrganizationCeo();
+
+  const branches = await getOrganizationBranches(organizationId);
+
+  const branchIds = branches.map((branch) => branch.id);
+
+  if (branchIds.length === 0) {
+    return [];
+  }
+
+  const branchNameById = new Map(
+    branches.map((branch) => [branch.id, branch.name])
+  );
+
+  const [clinicUsersResult, organizationUsersResult] = await Promise.all([
+    supabase
+      .from("clinic_users")
+      .select("auth_user_id, full_name, email, role, status, clinic_id")
+      .in("clinic_id", branchIds),
+    supabase
+      .from("organization_users")
+      .select("auth_user_id, role")
+      .eq("organization_id", organizationId),
+  ]);
+
+  if (clinicUsersResult.error) {
+    logError(
+      "[organizations] getOrganizationStaff failed to load clinic_users:",
+      clinicUsersResult.error
+    );
+
+    throw toError(clinicUsersResult.error);
+  }
+
+  if (organizationUsersResult.error) {
+    logError(
+      "[organizations] getOrganizationStaff failed to load organization_users:",
+      organizationUsersResult.error
+    );
+
+    throw toError(organizationUsersResult.error);
+  }
+
+  const organizationRoleByAuthUserId = new Map(
+    (organizationUsersResult.data ?? []).map((row) => [
+      row.auth_user_id as string,
+      row.role as OrganizationRole,
+    ])
+  );
+
+  const staffByAuthUserId = new Map<string, OrganizationStaffMember>();
+
+  for (const row of clinicUsersResult.data ?? []) {
+    const branchEntry = {
+      clinic_id: row.clinic_id as string,
+      clinic_name:
+        branchNameById.get(row.clinic_id as string) ?? "Unknown branch",
+      role: row.role as string,
+      status: row.status as string,
+    };
+
+    const existing = staffByAuthUserId.get(row.auth_user_id as string);
+
+    if (existing) {
+      existing.branches.push(branchEntry);
+    } else {
+      staffByAuthUserId.set(row.auth_user_id as string, {
+        auth_user_id: row.auth_user_id as string,
+        full_name: row.full_name as string,
+        email: row.email as string,
+        organization_role:
+          organizationRoleByAuthUserId.get(row.auth_user_id as string) ??
+          "Member",
+        branches: [branchEntry],
+      });
+    }
+  }
+
+  const staff = Array.from(staffByAuthUserId.values());
+
+  for (const member of staff) {
+    member.branches.sort((a, b) =>
+      a.clinic_name.localeCompare(b.clinic_name)
+    );
+  }
+
+  staff.sort((a, b) => {
+    if (a.organization_role !== b.organization_role) {
+      return a.organization_role === "CEO" ? -1 : 1;
+    }
+
+    return a.full_name.localeCompare(b.full_name);
+  });
+
+  return staff;
+}
+
+/* -------------------------------------- */
+/* Organization dashboard (operational)   */
+/* -------------------------------------- */
+
+/**
+ * Operational (non-financial) rollup for the CEO Organization Dashboard -
+ * branch/staff counts and today's activity, per branch and org-wide.
+ * Deliberately excludes revenue/expenses/any accounting figure:
+ * consolidated financials are a separate, later feature with their own
+ * strict no-fabrication aggregation rules, never mixed into this
+ * headcount-style overview. Mirrors services/dashboard.ts#getDashboardStats'
+ * exact count-query pattern (count: "exact", head: true), just run once
+ * per branch instead of once for the caller's single active clinic.
+ */
+export async function getOrganizationOverview(
+  organizationId: string
+): Promise<OrganizationOverview> {
+  await assertOrganizationCeo();
+
+  const branches = await getOrganizationBranches(organizationId);
+
+  if (branches.length === 0) {
+    return {
+      branch_count: 0,
+      staff_count: 0,
+      patients_total: 0,
+      appointments_today_total: 0,
+      branches: [],
+    };
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const [branchCounts, staff] = await Promise.all([
+    Promise.all(
+      branches.map(async (branch) => {
+        const [patients, appointments] = await Promise.all([
+          supabase
+            .from("patients")
+            .select("*", { count: "exact", head: true })
+            .eq("clinic_id", branch.id),
+          supabase
+            .from("appointments")
+            .select("*", { count: "exact", head: true })
+            .eq("clinic_id", branch.id)
+            .eq("appointment_date", today),
+        ]);
+
+        const firstError = [patients, appointments].find(
+          (result) => result.error
+        )?.error;
+
+        if (firstError) {
+          logError(
+            "[organizations] getOrganizationOverview failed to count a branch's activity:",
+            firstError
+          );
+
+          throw toError(firstError);
+        }
+
+        return {
+          clinic_id: branch.id,
+          clinic_name: branch.name,
+          patients: patients.count ?? 0,
+          appointments_today: appointments.count ?? 0,
+        };
+      })
+    ),
+    getOrganizationStaff(organizationId),
+  ]);
+
+  const staffCountByBranch = new Map<string, number>();
+
+  for (const member of staff) {
+    for (const branch of member.branches) {
+      staffCountByBranch.set(
+        branch.clinic_id,
+        (staffCountByBranch.get(branch.clinic_id) ?? 0) + 1
+      );
+    }
+  }
+
+  const branchOverviews: OrganizationBranchOverview[] = branchCounts.map(
+    (branch) => ({
+      ...branch,
+      staff: staffCountByBranch.get(branch.clinic_id) ?? 0,
+    })
+  );
+
+  return {
+    branch_count: branches.length,
+    staff_count: staff.length,
+    patients_total: branchOverviews.reduce(
+      (sum, branch) => sum + branch.patients,
+      0
+    ),
+    appointments_today_total: branchOverviews.reduce(
+      (sum, branch) => sum + branch.appointments_today,
+      0
+    ),
+    branches: branchOverviews,
+  };
+}
+
+/* -------------------------------------- */
+/* Organization dashboard (financials)    */
+/* -------------------------------------- */
+
+/**
+ * Consolidated Revenue/Expenses/Profit + EBIT/EBITDA across every branch
+ * of the organization, for the CEO Consolidated Financials view.
+ * Deliberately excludes Balance Sheet, Cash Flow, AR/AP, financial
+ * ratios, stock days, and break-even - none of those are safe to
+ * naively sum or average across branches, and are left for a dedicated,
+ * separately-reviewed pass rather than being rushed here.
+ *
+ * Revenue/Direct Costs/Gross Profit/Expenses/Net Profit come from
+ * getPeriodFinancials (services/reports/shared.ts, invoice/expense-table
+ * based) - the SAME calculation each branch's own Reports Center uses,
+ * called once per branch with an explicit clinic id override so the
+ * blended total is provably the sum of the exact figures a CEO would see
+ * by visiting each branch individually. EBIT/EBITDA come from
+ * getEbitEbitda (services/ledger.ts, ledger-based) - a SEPARATE,
+ * already-existing, intentionally non-reconciled calculation (the same
+ * dual P&L definition this codebase already documents for single-clinic
+ * pages), included because it is the only place EBIT/EBITDA exists at
+ * all - never blended with the invoice/expense figures above.
+ *
+ * Currency safety: every branch's clinic_settings.currency is checked
+ * before any blended total is computed. If branches don't all share one
+ * currency, every blended field is zeroed/null - only the per-branch
+ * `branches` array (each correctly labeled with its own currency) is
+ * still populated, since per-branch figures never require summing. There
+ * is no FX conversion anywhere in this codebase, so silently summing
+ * mismatched currencies would be fabrication.
+ *
+ * EBITDA safety: a branch whose Chart of Accounts has no Depreciation/
+ * Amortization account (the default for every clinic) reports
+ * ebitdaAvailable=false - such branches are excluded from the
+ * consolidated EBITDA sum (never treated as a zero contribution), and
+ * ebitdaBranchesIncluded/ebitdaBranchesTotal disclose exactly how many
+ * branches actually contributed, so a partial total is never presented
+ * as complete.
+ */
+export async function getOrganizationFinancials(
+  organizationId: string,
+  start: Date,
+  end: Date
+): Promise<OrganizationFinancials> {
+  await assertOrganizationCeo();
+
+  const branches = await getOrganizationBranches(organizationId);
+
+  if (branches.length === 0) {
+    return {
+      currencyConsistent: true,
+      currency: null,
+      branchCurrencies: [],
+      revenue: 0,
+      directCosts: 0,
+      grossProfit: 0,
+      grossMarginPercent: null,
+      expenses: 0,
+      netProfit: 0,
+      ebit: 0,
+      ebitdaAvailable: false,
+      ebitdaBranchesIncluded: 0,
+      ebitdaBranchesTotal: 0,
+      ebitda: null,
+      branches: [],
+    };
+  }
+
+  const branchIds = branches.map((branch) => branch.id);
+
+  const { data: settingsRows, error: settingsError } = await supabase
+    .from("clinic_settings")
+    .select("clinic_id, currency")
+    .in("clinic_id", branchIds);
+
+  if (settingsError) {
+    logError(
+      "[organizations] getOrganizationFinancials failed to load branch currencies:",
+      settingsError
+    );
+
+    throw toError(settingsError);
+  }
+
+  const currencyByClinicId = new Map(
+    (settingsRows ?? []).map((row) => [
+      row.clinic_id as string,
+      (row.currency as string) || "KES",
+    ])
+  );
+
+  const branchCurrencies = branches.map((branch) => ({
+    clinic_id: branch.id,
+    clinic_name: branch.name,
+    currency: currencyByClinicId.get(branch.id) ?? "KES",
+  }));
+
+  const currencyConsistent =
+    new Set(branchCurrencies.map((branch) => branch.currency)).size <= 1;
+
+  const branchFinancials: OrganizationBranchFinancials[] = await Promise.all(
+    branches.map(async (branch) => {
+      const [periodFinancials, ebitEbitda] = await Promise.all([
+        getPeriodFinancials(start, end, branch.id),
+        getEbitEbitda(start, end, branch.id),
+      ]);
+
+      return {
+        clinic_id: branch.id,
+        clinic_name: branch.name,
+        currency: currencyByClinicId.get(branch.id) ?? "KES",
+        revenue: periodFinancials.revenue,
+        directCosts: periodFinancials.directCosts,
+        grossProfit: periodFinancials.grossProfit,
+        expenses: periodFinancials.expenses,
+        netProfit: periodFinancials.netProfit,
+        ebit: ebitEbitda.ebit,
+        ebitdaAvailable: ebitEbitda.ebitdaAvailable,
+        ebitda: ebitEbitda.ebitda,
+      };
+    })
+  );
+
+  if (!currencyConsistent) {
+    return {
+      currencyConsistent: false,
+      currency: null,
+      branchCurrencies,
+      revenue: 0,
+      directCosts: 0,
+      grossProfit: 0,
+      grossMarginPercent: null,
+      expenses: 0,
+      netProfit: 0,
+      ebit: 0,
+      ebitdaAvailable: false,
+      ebitdaBranchesIncluded: 0,
+      ebitdaBranchesTotal: branchFinancials.length,
+      ebitda: null,
+      branches: branchFinancials,
+    };
+  }
+
+  const revenue = branchFinancials.reduce((sum, branch) => sum + branch.revenue, 0);
+  const directCosts = branchFinancials.reduce((sum, branch) => sum + branch.directCosts, 0);
+  const grossProfit = branchFinancials.reduce((sum, branch) => sum + branch.grossProfit, 0);
+  const expenses = branchFinancials.reduce((sum, branch) => sum + branch.expenses, 0);
+  const netProfit = branchFinancials.reduce((sum, branch) => sum + branch.netProfit, 0);
+  const ebit = branchFinancials.reduce((sum, branch) => sum + branch.ebit, 0);
+
+  const ebitdaBranches = branchFinancials.filter(
+    (branch) => branch.ebitdaAvailable && branch.ebitda !== null
+  );
+
+  const ebitdaAvailable = ebitdaBranches.length > 0;
+
+  const ebitda = ebitdaAvailable
+    ? ebitdaBranches.reduce((sum, branch) => sum + (branch.ebitda ?? 0), 0)
+    : null;
+
+  return {
+    currencyConsistent: true,
+    currency: branchCurrencies[0]?.currency ?? "KES",
+    branchCurrencies,
+    revenue,
+    directCosts,
+    grossProfit,
+    grossMarginPercent: revenue > 0 ? (grossProfit / revenue) * 100 : null,
+    expenses,
+    netProfit,
+    ebit,
+    ebitdaAvailable,
+    ebitdaBranchesIncluded: ebitdaBranches.length,
+    ebitdaBranchesTotal: branchFinancials.length,
+    ebitda,
+    branches: branchFinancials,
+  };
+}
+
+/* -------------------------------------- */
 /* Onboarding: multi-branch organization  */
 /* -------------------------------------- */
 
@@ -157,6 +592,80 @@ export async function createOrganizationWithCeo(
   return data[0] as CreatedOrganization;
 }
 
+/**
+ * Mirrors services/clinic.ts#provisionPendingClinicIfNeeded, but for the
+ * Multi-Branch Organization onboarding path - handles the same
+ * deferred-session gap (email confirmation required, so the signup
+ * form's own signUp() call has no immediate session to provision with).
+ * Called both right after MultiBranchSignupForm's signUp() and from
+ * AuthContext.loadProfile. Safe to call more than once for the same
+ * user - getCurrentOrganizationUser() is the idempotency check, exactly
+ * parallel to how provisionPendingClinicIfNeeded checks for an existing
+ * clinic_users row.
+ */
+export async function provisionPendingOrganizationIfNeeded(): Promise<boolean> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return false;
+  }
+
+  // Same in-tab race as services/clinic.ts#provisionPendingClinicIfNeeded:
+  // MultiBranchSignupForm's own direct call and AuthContext's call can
+  // both fire for the same freshly-signed-in user at once. Sharing the
+  // same in-flight guard collapses the second caller onto the first's
+  // result instead of letting both run the check-then-create RPC.
+  return runExclusive(`provision-organization:${user.id}`, async () => {
+    const pendingOrganizationName = user.user_metadata
+      ?.pending_organization_name as string | undefined;
+
+    const pendingBranchName = user.user_metadata
+      ?.pending_branch_name as string | undefined;
+
+    const pendingFullName = user.user_metadata
+      ?.pending_full_name as string | undefined;
+
+    if (!pendingOrganizationName || !pendingBranchName || !pendingFullName) {
+      return false;
+    }
+
+    const existing = await getCurrentOrganizationUser();
+
+    if (existing) {
+      return false;
+    }
+
+    try {
+      await createOrganizationWithCeo({
+        organizationName: pendingOrganizationName,
+        branchName: pendingBranchName,
+        fullName: pendingFullName,
+        email: user.email ?? "",
+      });
+    } catch (error) {
+      // A concurrent call from a different tab/device may have already
+      // created it - that's a benign race, not a real failure, so don't
+      // surface it. Both of create_organization_with_ceo's own
+      // precondition errors are covered, matching its exact wording.
+      const message =
+        error instanceof Error ? error.message : String(error);
+
+      if (
+        message.includes("already linked") ||
+        message.includes("already belongs to an organization")
+      ) {
+        return false;
+      }
+
+      throw error;
+    }
+
+    return true;
+  });
+}
+
 /* -------------------------------------- */
 /* Branch creation (CEO only)             */
 /* -------------------------------------- */
@@ -173,6 +682,182 @@ export async function createBranch(branchName: string): Promise<string> {
   }
 
   return data[0].clinic_id as string;
+}
+
+/* -------------------------------------- */
+/* Branch invitations (CEO)               */
+/* -------------------------------------- */
+
+export interface CreateBranchInvitationInput {
+  email: string;
+  full_name: string;
+  role: InvitableRole;
+}
+
+function buildInviteLink(token: string): string {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "";
+
+  return `${origin}/invite/${token}`;
+}
+
+/**
+ * Invites someone to a SPECIFIC branch, chosen explicitly by the caller
+ * (p_clinic_id) rather than inferred from "whichever clinic is currently
+ * active" - lets a CEO invite to any branch they own without first
+ * switching into it. Wraps create_branch_invitation (migration 0055), a
+ * function entirely separate from the independent-clinic
+ * create_staff_invitation - never merged, never shared logic beyond the
+ * staff_invitations table both happen to write to.
+ */
+export async function createBranchInvitation(
+  clinicId: string,
+  input: CreateBranchInvitationInput
+): Promise<{
+  invitationId: string;
+  token: string;
+  expiresAt: string;
+  link: string;
+  emailSent: boolean;
+}> {
+  const token = generateToken();
+
+  const { data, error } = await supabase.rpc(
+    "create_branch_invitation",
+    {
+      p_clinic_id: clinicId,
+      p_email: input.email.trim(),
+      p_full_name: input.full_name.trim(),
+      p_role: input.role,
+      p_token: token,
+    }
+  );
+
+  if (error) {
+    logError("[organizations] createBranchInvitation failed:", error);
+
+    throw toError(error);
+  }
+
+  const result = data[0] as {
+    invitation_id: string;
+    token: string;
+    expires_at: string;
+  };
+
+  // Best-effort inviter name for the email's "Invited by" line only -
+  // never used for authorization (the RPC above already did every real
+  // check). A failure here must never fail invitation creation, which
+  // has already succeeded by this point.
+  const inviterName = await getCurrentClinicUser()
+    .then(
+      (clinicUser) => (clinicUser?.full_name as string | undefined) ?? null
+    )
+    .catch(() => null);
+
+  const emailSent = await sendInvitationEmail(result.token, inviterName);
+
+  return {
+    invitationId: result.invitation_id,
+    token: result.token,
+    expiresAt: result.expires_at,
+    link: buildInviteLink(result.token),
+    emailSent,
+  };
+}
+
+/**
+ * Every pending/accepted/expired invitation across every branch of
+ * `organizationId`, for the CEO's organization-wide invitations view -
+ * so they don't have to switch into each branch individually just to
+ * see who's been invited where. Relies on the same
+ * clinic_users_select_own_clinic_staff_admins-backed access a CEO
+ * already has to every branch's clinic_users (see
+ * getOrganizationStaff) - staff_invitations' own select policy is the
+ * identical shape (`is_clinic_owner_or_admin(staff_invitations.clinic_id)`),
+ * so no new grant is needed here either.
+ */
+export async function getOrganizationInvitations(
+  organizationId: string
+): Promise<OrganizationInvitation[]> {
+  await assertOrganizationCeo();
+
+  const branches = await getOrganizationBranches(organizationId);
+
+  const branchIds = branches.map((branch) => branch.id);
+
+  if (branchIds.length === 0) {
+    return [];
+  }
+
+  const branchNameById = new Map(
+    branches.map((branch) => [branch.id, branch.name])
+  );
+
+  const { data: invitations, error: invitationsError } = await supabase
+    .from("staff_invitations")
+    .select(
+      "id, clinic_id, email, full_name, role, invited_by, accepted_at, expires_at, created_at"
+    )
+    .in("clinic_id", branchIds)
+    .order("created_at", { ascending: false });
+
+  if (invitationsError) {
+    logError(
+      "[organizations] getOrganizationInvitations failed to load invitations:",
+      invitationsError
+    );
+
+    throw toError(invitationsError);
+  }
+
+  const inviterIds = Array.from(
+    new Set(
+      (invitations ?? [])
+        .map((row) => row.invited_by as string | null)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  let inviterNameById = new Map<string, string>();
+
+  if (inviterIds.length > 0) {
+    const { data: inviters, error: invitersError } = await supabase
+      .from("clinic_users")
+      .select("id, full_name")
+      .in("id", inviterIds);
+
+    if (invitersError) {
+      logError(
+        "[organizations] getOrganizationInvitations failed to load inviters:",
+        invitersError
+      );
+
+      throw toError(invitersError);
+    }
+
+    inviterNameById = new Map(
+      (inviters ?? []).map((row) => [
+        row.id as string,
+        row.full_name as string,
+      ])
+    );
+  }
+
+  return (invitations ?? []).map((row) => ({
+    id: row.id as string,
+    clinic_id: row.clinic_id as string,
+    clinic_name: branchNameById.get(row.clinic_id as string) ?? "Unknown branch",
+    email: row.email as string,
+    full_name: row.full_name as string,
+    role: row.role as InvitableRole,
+    invited_by_name: row.invited_by
+      ? inviterNameById.get(row.invited_by as string) ?? null
+      : null,
+    accepted_at: row.accepted_at as string | null,
+    expires_at: row.expires_at as string,
+    created_at: row.created_at as string,
+  }));
 }
 
 /* -------------------------------------- */

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import Link from "next/link";
 
 import Card from "@/components/ui/Card";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import {
   ClinicInvoice,
@@ -14,7 +15,7 @@ import {
 
 import { getClinicSettings } from "@/services/settings";
 
-export default function InvoiceListPage() {
+function InvoiceListPageContent() {
   const [loading, setLoading] =
     useState(true);
 
@@ -166,5 +167,13 @@ export default function InvoiceListPage() {
       </Card>
 
     </div>
+  );
+}
+
+export default function InvoiceListPage() {
+  return (
+    <PermissionGuard permission="billing">
+      <InvoiceListPageContent />
+    </PermissionGuard>
   );
 }

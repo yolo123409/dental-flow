@@ -55,9 +55,10 @@ function resolveDateBounds(
 }
 
 export async function getExpenses(
-  filters: ExpenseFilters = {}
+  filters: ExpenseFilters = {},
+  overrideClinicId?: string
 ): Promise<Expense[]> {
-  const clinicId = await getCurrentClinicId();
+  const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
   let query = supabase
     .from("clinic_expenses")

@@ -20,8 +20,9 @@ import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
-export default function DentistsPage() {
+function DentistsPageContent() {
   const [dentists, setDentists] = useState<Dentist[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -186,5 +187,13 @@ export default function DentistsPage() {
       />
 
     </div>
+  );
+}
+
+export default function DentistsPage() {
+  return (
+    <PermissionGuard permission="patients">
+      <DentistsPageContent />
+    </PermissionGuard>
   );
 }

@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 
 import {
   OutstandingGrn,
@@ -23,6 +24,8 @@ interface RawOutstandingGrn {
 export async function getSupplierOutstandingGrns(
   supplierId: string
 ): Promise<OutstandingGrn[]> {
+  await assertPermission("accounts_payable");
+
   const { data, error } = await supabase.rpc("get_supplier_outstanding_grns", {
     p_supplier_id: supplierId,
   });
@@ -60,6 +63,8 @@ function summaryStatus(totalPaid: number, outstanding: number): SupplierApSummar
 }
 
 export async function getSupplierApSummaries(): Promise<SupplierApSummary[]> {
+  await assertPermission("accounts_payable");
+
   const { data, error } = await supabase.rpc("get_supplier_ap_summary");
 
   if (error) {
@@ -133,6 +138,7 @@ const PAYMENT_SELECT = `
 `;
 
 export async function getSupplierPayments(supplierId: string): Promise<SupplierPayment[]> {
+  await assertPermission("accounts_payable");
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -154,6 +160,8 @@ export async function getSupplierPayments(supplierId: string): Promise<SupplierP
 export async function recordSupplierPayment(
   input: RecordSupplierPaymentInput
 ): Promise<string> {
+  await assertPermission("accounts_payable_manage");
+
   const { data, error } = await supabase.rpc("record_supplier_payment", {
     p_supplier_id: input.supplierId,
     p_payment_date: input.paymentDate,
@@ -191,6 +199,8 @@ interface RawRepairedGrnPosting {
 export async function repairSupplierGrnLedgerPostings(
   supplierId: string
 ): Promise<RepairedGrnPosting[]> {
+  await assertPermission("accounts_payable_manage");
+
   const { data, error } = await supabase.rpc("repair_supplier_grn_ledger_postings", {
     p_supplier_id: supplierId,
   });
@@ -209,6 +219,8 @@ export async function repairSupplierGrnLedgerPostings(
 }
 
 export async function voidSupplierPayment(paymentId: string, reason?: string): Promise<void> {
+  await assertPermission("accounts_payable_manage");
+
   const { error } = await supabase.rpc("void_supplier_payment", {
     p_payment_id: paymentId,
     p_reason: reason ?? null,

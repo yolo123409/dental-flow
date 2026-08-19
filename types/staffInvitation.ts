@@ -25,6 +25,18 @@ export interface CreatedInvitation {
 }
 
 /**
+ * Invitation creation and email delivery are separate concerns - the
+ * invitation row (and its link) always exists once this resolves;
+ * emailSent only reflects whether the notification email additionally
+ * went out. A false emailSent is never an error to throw/catch on, it's
+ * a normal outcome the UI shows a fallback message for.
+ */
+export interface InvitationCreationResult {
+  link: string;
+  emailSent: boolean;
+}
+
+/**
  * Return shape of the existing, unmodified get_invitation_details(text)
  * RPC (migration 0008) - independent-clinic invitations only. Kept
  * byte-for-byte as it always was; see OrganizationInvitationDetails in

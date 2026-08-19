@@ -33,6 +33,7 @@ export default function InviteStaffModal({
   const [inviteLink, setInviteLink] = useState<string | null>(
     null
   );
+  const [emailSent, setEmailSent] = useState(false);
   const [copied, setCopied] = useState(false);
 
   function reset() {
@@ -40,6 +41,7 @@ export default function InviteStaffModal({
     setEmail("");
     setRole("Receptionist");
     setInviteLink(null);
+    setEmailSent(false);
     setCopied(false);
   }
 
@@ -64,15 +66,20 @@ export default function InviteStaffModal({
     try {
       setSending(true);
 
-      const { link } = await createInvitation({
+      const { link, emailSent } = await createInvitation({
         full_name: fullName.trim(),
         email: email.trim(),
         role,
       });
 
       setInviteLink(link);
+      setEmailSent(emailSent);
 
-      toast.success("Invitation created.");
+      toast.success(
+        emailSent
+          ? "Invitation sent successfully."
+          : "Invitation created, but the email could not be sent. You can copy the invitation link and send it manually."
+      );
 
       await onSuccess();
     } catch (error) {
@@ -134,8 +141,16 @@ export default function InviteStaffModal({
       {inviteLink ? (
         <div className="space-y-4">
           <p className="text-slate-600">
-            Share this link with <strong>{fullName}</strong> so
-            they can set a password and join as{" "}
+            {emailSent ? (
+              <>
+                An email was sent to <strong>{email}</strong>
+              </>
+            ) : (
+              <>
+                Share this link with <strong>{fullName}</strong>
+              </>
+            )}{" "}
+            so they can set a password and join as{" "}
             <strong>{role}</strong>. It expires in 7 days.
           </p>
 
@@ -158,9 +173,14 @@ export default function InviteStaffModal({
             </button>
           </div>
 
-          <p className="text-sm text-slate-400">
-            Email delivery isn&apos;t connected yet, so share
-            this link directly for now.
+          <p
+            className={`text-sm ${
+              emailSent ? "text-slate-400" : "text-amber-600"
+            }`}
+          >
+            {emailSent
+              ? "You can also copy the link above and share it directly."
+              : "The invitation email could not be sent. Copy the link above and send it manually."}
           </p>
         </div>
       ) : (

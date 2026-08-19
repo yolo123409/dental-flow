@@ -1,5 +1,6 @@
 import { getBalanceSheet, getLedgerSettings, getLedgerTransactions, getProfitAndLoss, getTrialBalance } from "./ledger";
 import { getInventoryItems } from "./inventory";
+import { assertPermission } from "./authorization";
 
 import { InventoryMovementBridge, MetricValue, StockDaysReport } from "@/types/stockDays";
 import { BalanceSheetPeriod } from "@/types/ledger";
@@ -78,6 +79,8 @@ export async function getStockDaysReport(
   end: Date,
   periodLabel: string
 ): Promise<StockDaysReport> {
+  await assertPermission("ledger");
+
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
   const dayBeforeStart = new Date(start.getTime() - DAY_MS);
