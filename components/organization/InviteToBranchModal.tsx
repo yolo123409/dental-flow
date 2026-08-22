@@ -10,7 +10,7 @@ import FormInput from "@/components/ui/FormInput";
 
 import { createBranchInvitation } from "@/services/organizations";
 import { INVITABLE_ROLES, InvitableRole } from "@/lib/permissions";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { OrganizationBranch } from "@/types/organization";
 
@@ -101,12 +101,12 @@ export default function InviteToBranchModal({
 
       await onSuccess();
     } catch (error) {
-      logError("[InviteToBranchModal] createBranchInvitation failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to create invitation."
+        getSafeErrorMessage(
+          error,
+          "Unable to create invitation.",
+          "[InviteToBranchModal] createBranchInvitation failed:"
+        )
       );
     } finally {
       setSending(false);

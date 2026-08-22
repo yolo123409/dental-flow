@@ -15,6 +15,7 @@ import {
 } from "@/services/inventory";
 import { getPatientOptions } from "@/services/patients";
 import { getTreatments, ClinicTreatment } from "@/services/treatments";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface PatientOption {
   id: string;
@@ -109,12 +110,8 @@ export default function RecordConsumptionModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to record consumption."
+        getSafeErrorMessage(error, "Unable to record consumption.")
       );
     } finally {
       setSaving(false);

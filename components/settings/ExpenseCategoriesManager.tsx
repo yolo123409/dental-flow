@@ -19,7 +19,7 @@ import {
   reactivateExpenseCategory,
   reorderExpenseCategories,
 } from "@/services/expenseCategories";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { ExpenseCategory } from "@/types/expenses";
 
@@ -57,12 +57,12 @@ export default function ExpenseCategoriesManager() {
 
       setCategories(data);
     } catch (error) {
-      logError("[ExpenseCategoriesManager] load failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load expense categories."
+        getSafeErrorMessage(
+          error,
+          "Failed to load expense categories.",
+          "[ExpenseCategoriesManager] load failed:"
+        )
       );
     } finally {
       setLoading(false);
@@ -120,10 +120,12 @@ export default function ExpenseCategoriesManager() {
 
       await load();
     } catch (error) {
-      logError("[ExpenseCategoriesManager] save failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save category."
+        getSafeErrorMessage(
+          error,
+          "Failed to save category.",
+          "[ExpenseCategoriesManager] save failed:"
+        )
       );
     } finally {
       setBusy(false);
@@ -138,10 +140,12 @@ export default function ExpenseCategoriesManager() {
 
       await load();
     } catch (error) {
-      logError("[ExpenseCategoriesManager] archive failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to archive category."
+        getSafeErrorMessage(
+          error,
+          "Failed to archive category.",
+          "[ExpenseCategoriesManager] archive failed:"
+        )
       );
     }
   }
@@ -154,12 +158,12 @@ export default function ExpenseCategoriesManager() {
 
       await load();
     } catch (error) {
-      logError("[ExpenseCategoriesManager] reactivate failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to reactivate category."
+        getSafeErrorMessage(
+          error,
+          "Failed to reactivate category.",
+          "[ExpenseCategoriesManager] reactivate failed:"
+        )
       );
     }
   }

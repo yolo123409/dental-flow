@@ -23,6 +23,7 @@ import { exportReportToCsv } from "@/lib/reports/exportCsv";
 import { exportReportToPdf } from "@/lib/reports/exportPdf";
 import { exportReportToExcel } from "@/lib/reports/exportExcel";
 import { formatReportCell } from "@/lib/reports/format";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import {
   ReportCategory,
@@ -175,11 +176,7 @@ function ReportsCenterContent() {
 
       setReport(result);
     } catch (error) {
-      console.error(error);
-
-      toast.error(
-        error instanceof Error ? error.message : "Failed to generate report."
-      );
+      toast.error(getSafeErrorMessage(error, "Failed to generate report."));
     } finally {
       setGenerating(false);
     }
@@ -195,10 +192,8 @@ function ReportsCenterContent() {
       else if (format === "csv") exportReportToCsv(report);
       else await exportReportToExcel(report);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error ? error.message : `Failed to export ${format.toUpperCase()}.`
+        getSafeErrorMessage(error, `Failed to export ${format.toUpperCase()}.`)
       );
     } finally {
       setExporting(null);

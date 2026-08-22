@@ -2,11 +2,14 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 import { runExclusive } from "@/lib/inFlightGuard";
 import { generateToken } from "@/lib/generateToken";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { InvitableRole } from "@/lib/permissions";
-import { getPeriodFinancials } from "./reports/shared";
-import { getEbitEbitda } from "./ledger";
+import { getEbitEbitdaForClinics } from "./ledger";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { sendInvitationEmail } from "./invitationEmail";
+import { getRevenueTotalsByClinic } from "./analytics/revenue";
+import { getPaidExpenseTotalsByClinic } from "./expenses";
+import { getTreatmentProfitabilityForClinics } from "./treatmentProfitability";
 
 import {
   OrganizationUser,
@@ -183,24 +186,42 @@ export async function getOrganizationStaff(
     branches.map((branch) => [branch.id, branch.name])
   );
 
-  const [clinicUsersResult, organizationUsersResult] = await Promise.all([
-    supabase
-      .from("clinic_users")
-      .select("auth_user_id, full_name, email, role, status, clinic_id")
-      .in("clinic_id", branchIds),
-    supabase
-      .from("organization_users")
-      .select("auth_user_id, role")
-      .eq("organization_id", organizationId),
-  ]);
+  // clinic_users paged rather than a single unbounded fetch - one row
+  // per staff-per-branch membership across up to 50 branches, which can
+  // plausibly cross 1,000 for a large organization and would otherwise
+  // silently drop staff from this list with no error. organization_users
+  // has at most one row per person org-wide, inherently bounded by
+  // realistic staff counts - left as a plain fetch.
+  let clinicUsersRows: {
+    auth_user_id: string;
+    full_name: string;
+    email: string;
+    role: string;
+    status: string;
+    clinic_id: string;
+  }[];
 
-  if (clinicUsersResult.error) {
+  const organizationUsersResult = await supabase
+    .from("organization_users")
+    .select("auth_user_id, role")
+    .eq("organization_id", organizationId);
+
+  try {
+    clinicUsersRows = await fetchAllRows((from, to) =>
+      supabase
+        .from("clinic_users")
+        .select("auth_user_id, full_name, email, role, status, clinic_id")
+        .in("clinic_id", branchIds)
+        .order("clinic_id")
+        .range(from, to)
+    );
+  } catch (error) {
     logError(
       "[organizations] getOrganizationStaff failed to load clinic_users:",
-      clinicUsersResult.error
+      error
     );
 
-    throw toError(clinicUsersResult.error);
+    throw error;
   }
 
   if (organizationUsersResult.error) {
@@ -221,7 +242,7 @@ export async function getOrganizationStaff(
 
   const staffByAuthUserId = new Map<string, OrganizationStaffMember>();
 
-  for (const row of clinicUsersResult.data ?? []) {
+  for (const row of clinicUsersRows) {
     const branchEntry = {
       clinic_id: row.clinic_id as string,
       clinic_name:
@@ -298,45 +319,52 @@ export async function getOrganizationOverview(
   }
 
   const today = new Date().toISOString().split("T")[0];
+  const branchIds = branches.map((branch) => branch.id);
 
-  const [branchCounts, staff] = await Promise.all([
-    Promise.all(
-      branches.map(async (branch) => {
-        const [patients, appointments] = await Promise.all([
-          supabase
-            .from("patients")
-            .select("*", { count: "exact", head: true })
-            .eq("clinic_id", branch.id),
-          supabase
-            .from("appointments")
-            .select("*", { count: "exact", head: true })
-            .eq("clinic_id", branch.id)
-            .eq("appointment_date", today),
-        ]);
-
-        const firstError = [patients, appointments].find(
-          (result) => result.error
-        )?.error;
-
-        if (firstError) {
-          logError(
-            "[organizations] getOrganizationOverview failed to count a branch's activity:",
-            firstError
-          );
-
-          throw toError(firstError);
-        }
-
-        return {
-          clinic_id: branch.id,
-          clinic_name: branch.name,
-          patients: patients.count ?? 0,
-          appointments_today: appointments.count ?? 0,
-        };
-      })
-    ),
+  // ONE aggregate RPC (migration 0065) instead of fetching one row per
+  // patient/appointment and counting client-side - that row-fetching
+  // approach (a production-hardening fix earlier in this same pass,
+  // replacing an N-branch count-query loop) was found during the Part 2
+  // 50-branch scale test to silently truncate at PostgREST's default
+  // 1,000-row response cap once total patients/appointments across all
+  // branches crossed that number, undercounting with no error at all.
+  // get_organization_branch_counts returns one row PER BRANCH (pre-
+  // aggregated in SQL), never per patient/appointment, so it can't hit
+  // that cap at any realistic organization size.
+  const [countsResult, staff] = await Promise.all([
+    supabase.rpc("get_organization_branch_counts", {
+      p_clinic_ids: branchIds,
+      p_today: today,
+    }),
     getOrganizationStaff(organizationId),
   ]);
+
+  if (countsResult.error) {
+    logError(
+      "[organizations] getOrganizationOverview failed to load branch counts:",
+      countsResult.error
+    );
+
+    throw toError(countsResult.error);
+  }
+
+  const patientCountByBranch = new Map<string, number>();
+  const appointmentCountByBranch = new Map<string, number>();
+
+  for (const row of countsResult.data ?? []) {
+    patientCountByBranch.set(row.clinic_id, Number(row.patient_count));
+    appointmentCountByBranch.set(
+      row.clinic_id,
+      Number(row.appointments_today_count)
+    );
+  }
+
+  const branchCounts = branches.map((branch) => ({
+    clinic_id: branch.id,
+    clinic_name: branch.name,
+    patients: patientCountByBranch.get(branch.id) ?? 0,
+    appointments_today: appointmentCountByBranch.get(branch.id) ?? 0,
+  }));
 
   const staffCountByBranch = new Map<string, number>();
 
@@ -383,17 +411,26 @@ export async function getOrganizationOverview(
  * naively sum or average across branches, and are left for a dedicated,
  * separately-reviewed pass rather than being rushed here.
  *
- * Revenue/Direct Costs/Gross Profit/Expenses/Net Profit come from
- * getPeriodFinancials (services/reports/shared.ts, invoice/expense-table
- * based) - the SAME calculation each branch's own Reports Center uses,
- * called once per branch with an explicit clinic id override so the
- * blended total is provably the sum of the exact figures a CEO would see
- * by visiting each branch individually. EBIT/EBITDA come from
- * getEbitEbitda (services/ledger.ts, ledger-based) - a SEPARATE,
- * already-existing, intentionally non-reconciled calculation (the same
+ * Revenue and Expenses are fetched via getRevenueTotalsByClinic /
+ * getPaidExpenseTotalsByClinic (services/analytics/revenue.ts,
+ * services/expenses.ts) - ONE batched `.in('clinic_id', ...)` query each
+ * for every branch, rather than the original per-branch
+ * getPeriodFinancials call (found during a production-hardening audit to
+ * cost ~14 requests x N branches - ~700 requests at 50 branches, enough
+ * to stall the page). Direct Costs (from treatment profitability) and
+ * EBIT/EBITDA (services/ledger.ts, ledger-based - a SEPARATE,
+ * already-existing, intentionally non-reconciled calculation, the same
  * dual P&L definition this codebase already documents for single-clinic
- * pages), included because it is the only place EBIT/EBITDA exists at
- * all - never blended with the invoice/expense figures above.
+ * pages) are fetched via getTreatmentProfitabilityForClinics /
+ * getEbitEbitdaForClinics (migration 0066) - also one query/RPC round
+ * trip each for every branch, previously the dominant remaining cost on
+ * this page (~5.4s of a ~10.6s total load at 50 branches, live-measured
+ * before that fix). Gross Profit/Net Profit are recomputed from
+ * the batched revenue/expenses + the per-branch direct costs, using the
+ * exact same formula getPeriodFinancials used (grossProfit = revenue -
+ * directCosts, netProfit = grossProfit - expenses), so the blended total
+ * is still provably the sum of the exact figures a CEO would see by
+ * visiting each branch individually.
  *
  * Currency safety: every branch's clinic_settings.currency is checked
  * before any blended total is computed. If branches don't all share one
@@ -472,27 +509,51 @@ export async function getOrganizationFinancials(
   const currencyConsistent =
     new Set(branchCurrencies.map((branch) => branch.currency)).size <= 1;
 
-  const branchFinancials: OrganizationBranchFinancials[] = await Promise.all(
-    branches.map(async (branch) => {
-      const [periodFinancials, ebitEbitda] = await Promise.all([
-        getPeriodFinancials(start, end, branch.id),
-        getEbitEbitda(start, end, branch.id),
-      ]);
+  const [revenueByClinic, expensesByClinic] = await Promise.all([
+    getRevenueTotalsByClinic(start, end, branchIds),
+    getPaidExpenseTotalsByClinic(start, end, branchIds),
+  ]);
+
+  // Treatment Profitability and EBIT/EBITDA batched to one query/RPC
+  // round-trip each across every branch (migration 0066), same as
+  // Revenue/Expenses above - previously the dominant remaining cost on
+  // this page (~5.4s of a ~10.6s total load at 50 branches, live-measured
+  // before this fix), since each ran once per branch even with the
+  // mapWithConcurrency(8) cap that used to be here. Both batched
+  // functions reuse the exact same per-clinic computation the single-
+  // clinic versions use (see their own doc comments in ledger.ts /
+  // treatmentProfitability.ts) - only how the underlying rows are
+  // fetched changed, never the arithmetic.
+  const [profitabilityByClinic, ebitEbitdaByClinic] = await Promise.all([
+    getTreatmentProfitabilityForClinics(branchIds, start, end, "period"),
+    getEbitEbitdaForClinics(branchIds, start, end),
+  ]);
+
+  const branchFinancials: OrganizationBranchFinancials[] = branches.map(
+    (branch) => {
+      const profitabilityReport = profitabilityByClinic.get(branch.id);
+      const ebitEbitda = ebitEbitdaByClinic.get(branch.id);
+
+      const revenue = revenueByClinic.get(branch.id) ?? 0;
+      const expenses = expensesByClinic.get(branch.id) ?? 0;
+      const directCosts = profitabilityReport?.summary.totalDirectCosts ?? 0;
+      const grossProfit = revenue - directCosts;
+      const netProfit = grossProfit - expenses;
 
       return {
         clinic_id: branch.id,
         clinic_name: branch.name,
         currency: currencyByClinicId.get(branch.id) ?? "KES",
-        revenue: periodFinancials.revenue,
-        directCosts: periodFinancials.directCosts,
-        grossProfit: periodFinancials.grossProfit,
-        expenses: periodFinancials.expenses,
-        netProfit: periodFinancials.netProfit,
-        ebit: ebitEbitda.ebit,
-        ebitdaAvailable: ebitEbitda.ebitdaAvailable,
-        ebitda: ebitEbitda.ebitda,
+        revenue,
+        directCosts,
+        grossProfit,
+        expenses,
+        netProfit,
+        ebit: ebitEbitda?.ebit ?? 0,
+        ebitdaAvailable: ebitEbitda?.ebitdaAvailable ?? false,
+        ebitda: ebitEbitda?.ebitda ?? null,
       };
-    })
+    }
   );
 
   if (!currencyConsistent) {
@@ -794,21 +855,41 @@ export async function getOrganizationInvitations(
     branches.map((branch) => [branch.id, branch.name])
   );
 
-  const { data: invitations, error: invitationsError } = await supabase
-    .from("staff_invitations")
-    .select(
-      "id, clinic_id, email, full_name, role, invited_by, accepted_at, expires_at, created_at"
-    )
-    .in("clinic_id", branchIds)
-    .order("created_at", { ascending: false });
+  // Paged rather than a single unbounded fetch - staff_invitations
+  // accumulates every invitation ever sent (not just pending ones)
+  // across up to 50 branches, which can plausibly cross 1,000 for a
+  // long-lived large organization and would otherwise silently drop
+  // invitations from this list with no error.
+  let invitations: {
+    id: string;
+    clinic_id: string;
+    email: string;
+    full_name: string;
+    role: string;
+    invited_by: string | null;
+    accepted_at: string | null;
+    expires_at: string;
+    created_at: string;
+  }[];
 
-  if (invitationsError) {
+  try {
+    invitations = await fetchAllRows((from, to) =>
+      supabase
+        .from("staff_invitations")
+        .select(
+          "id, clinic_id, email, full_name, role, invited_by, accepted_at, expires_at, created_at"
+        )
+        .in("clinic_id", branchIds)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    );
+  } catch (error) {
     logError(
       "[organizations] getOrganizationInvitations failed to load invitations:",
-      invitationsError
+      error
     );
 
-    throw toError(invitationsError);
+    throw error;
   }
 
   const inviterIds = Array.from(

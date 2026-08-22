@@ -16,6 +16,7 @@ import usePermissions from "@/hooks/usePermissions";
 import { getClinicSettings } from "@/services/settings";
 import { getLedgerTransaction, reverseLedgerTransaction } from "@/services/ledger";
 import { LedgerTransaction } from "@/types/ledger";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 const REFERENCE_ROUTES: Record<string, (id: string) => string> = {
   invoice: (id) => `/admin/billing/${id}`,
@@ -51,8 +52,7 @@ function TransactionDetailPage() {
       setCurrency(clinicSettings.currency || "KES");
       setTransaction(data);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load transaction.");
+      toast.error(getSafeErrorMessage(error, "Failed to load transaction."));
     } finally {
       setLoading(false);
     }
@@ -86,8 +86,7 @@ function TransactionDetailPage() {
 
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to reverse transaction.");
+      toast.error(getSafeErrorMessage(error, "Unable to reverse transaction."));
     } finally {
       setReversing(false);
     }

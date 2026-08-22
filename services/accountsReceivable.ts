@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCashFlowStatement, getLedgerSettings, getProfitAndLoss, getTrialBalance } from "./ledger";
@@ -29,23 +30,37 @@ interface RawOutstandingInvoiceRow {
 async function getOutstandingInvoiceRows(): Promise<ArInvoiceRow[]> {
   const clinicId = await getCurrentClinicId();
 
-  const { data, error } = await supabase
-    .from("clinic_invoices")
-    .select(
-      "id, invoice_number, created_at, total, amount_paid, balance, patient_id, patients ( first_name, last_name )"
-    )
-    .eq("clinic_id", clinicId)
-    .gt("balance", 0)
-    .order("created_at", { ascending: true });
+  // Paged rather than a single unbounded fetch - every individual
+  // outstanding invoice's detail is genuinely needed here (both for the
+  // aging buckets and the per-invoice AR table), so this can't be
+  // reduced to a SQL sum the way pure totals were elsewhere. A clinic
+  // with more than 1,000 currently-outstanding invoices would otherwise
+  // silently lose rows from both the aging report and the invoice list.
+  let data: RawOutstandingInvoiceRow[];
 
-  if (error) {
+  try {
+    data = await fetchAllRows<RawOutstandingInvoiceRow>((from, to) =>
+      supabase
+        .from("clinic_invoices")
+        .select(
+          "id, invoice_number, created_at, total, amount_paid, balance, patient_id, patients ( first_name, last_name )"
+        )
+        .eq("clinic_id", clinicId)
+        .gt("balance", 0)
+        .order("created_at", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{
+        data: RawOutstandingInvoiceRow[] | null;
+        error: unknown;
+      }>
+    );
+  } catch (error) {
     logError("[accountsReceivable] getOutstandingInvoiceRows failed:", error);
-    throw toError(error);
+    throw error;
   }
 
   const now = Date.now();
 
-  return ((data ?? []) as unknown as RawOutstandingInvoiceRow[]).map((row) => {
+  return data.map((row) => {
     const daysOutstanding = Math.max(
       0,
       Math.floor((now - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))

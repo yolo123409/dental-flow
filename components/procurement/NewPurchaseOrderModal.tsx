@@ -7,7 +7,7 @@ import FormModal from "@/components/ui/FormModal";
 
 import { getSuppliers } from "@/services/suppliers";
 import { createDraftPurchaseOrder } from "@/services/purchaseOrders";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { Supplier } from "@/types/procurement";
 
@@ -59,12 +59,12 @@ export default function NewPurchaseOrderModal({
       onClose();
       onCreated(po.id);
     } catch (error) {
-      logError("[NewPurchaseOrderModal] create failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to create purchase order."
+        getSafeErrorMessage(
+          error,
+          "Failed to create purchase order.",
+          "[NewPurchaseOrderModal] create failed:"
+        )
       );
     } finally {
       setCreating(false);

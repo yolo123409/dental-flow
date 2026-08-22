@@ -16,7 +16,7 @@ import SupplierFormModal from "@/components/procurement/SupplierFormModal";
 
 import usePermissions from "@/hooks/usePermissions";
 import { getSuppliers } from "@/services/suppliers";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { Supplier } from "@/types/procurement";
 
@@ -41,10 +41,8 @@ function SuppliersPageContent() {
 
       setSuppliers(data);
     } catch (error) {
-      logError("[SuppliersPage] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load suppliers."
+        getSafeErrorMessage(error, "Failed to load suppliers.", "[SuppliersPage] load failed:")
       );
     } finally {
       setLoading(false);

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import Link from "next/link";
 
 import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import {
@@ -14,6 +15,9 @@ import {
 } from "@/services/billing";
 
 import { getClinicSettings } from "@/services/settings";
+import { getSafeErrorMessage } from "@/lib/logError";
+
+const PAGE_SIZE = 50;
 
 function InvoiceListPageContent() {
   const [loading, setLoading] =
@@ -22,39 +26,42 @@ function InvoiceListPageContent() {
   const [invoices, setInvoices] =
     useState<ClinicInvoice[]>([]);
 
+  const [totalInvoices, setTotalInvoices] =
+    useState(0);
+
+  const [currentPage, setCurrentPage] =
+    useState(1);
+
   const [currency, setCurrency] =
     useState("KES");
 
-  async function loadInvoices() {
+  const loadInvoices = useCallback(async (page: number) => {
     try {
       setLoading(true);
 
-      const [result, clinicSettings] =
+      const [{ rows, count }, clinicSettings] =
         await Promise.all([
-          getInvoices(),
+          getInvoices(page, PAGE_SIZE),
           getClinicSettings(),
         ]);
 
-      setInvoices(result);
+      setInvoices(rows);
+      setTotalInvoices(count);
       setCurrency(
         clinicSettings.currency || "KES"
       );
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load invoices."
+        getSafeErrorMessage(error, "Failed to load invoices.")
       );
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadInvoices();
-  }, []);
+    loadInvoices(currentPage);
+  }, [currentPage, loadInvoices]);
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat(undefined, {
@@ -62,6 +69,8 @@ function InvoiceListPageContent() {
       currency,
       maximumFractionDigits: 0,
     }).format(amount);
+
+  const totalPages = Math.max(1, Math.ceil(totalInvoices / PAGE_SIZE));
 
   return (
     <div className="space-y-8">
@@ -165,6 +174,53 @@ function InvoiceListPageContent() {
         )}
 
       </Card>
+
+      {!loading && totalInvoices > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
+
+          <div className="text-sm text-slate-600">
+            Showing{" "}
+            <span className="font-semibold">
+              {(currentPage - 1) * PAGE_SIZE + 1}
+            </span>
+            {" - "}
+            <span className="font-semibold">
+              {Math.min(currentPage * PAGE_SIZE, totalInvoices)}
+            </span>
+            {" "}of{" "}
+            <span className="font-semibold">
+              {totalInvoices.toLocaleString()}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+
+            <Button
+              disabled={currentPage === 1}
+              onClick={() =>
+                setCurrentPage((page) => Math.max(1, page - 1))
+              }
+            >
+              Previous
+            </Button>
+
+            <div className="text-sm font-medium">
+              Page {currentPage} of {totalPages}
+            </div>
+
+            <Button
+              disabled={currentPage >= totalPages}
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+            >
+              Next
+            </Button>
+
+          </div>
+
+        </div>
+      )}
 
     </div>
   );

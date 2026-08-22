@@ -16,6 +16,7 @@ import { getMarginsMarkupReport } from "@/services/marginsMarkup";
 import { MarginsMarkupReport, TreatmentMarkupRow } from "@/types/marginsMarkup";
 
 import { REPORT_RANGE_OPTIONS, ResolvedPeriod, resolveCurrentPeriod } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function formatPercent(value: number | null): string {
   return value == null ? "Not available" : `${value.toFixed(1)}%`;
@@ -87,8 +88,7 @@ function MarginsMarkupPageContent() {
       setCurrency(clinicSettings.currency || "KES");
       setReport(data);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Margins & Markup.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Margins & Markup."));
     } finally {
       setLoading(false);
     }

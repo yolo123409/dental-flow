@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import { getPurchaseOrders } from "@/services/purchaseOrders";
 import { getSuppliers } from "@/services/suppliers";
 import { createGRNFromPurchaseOrder, createManualGRN } from "@/services/grns";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { PurchaseOrder, Supplier } from "@/types/procurement";
 
@@ -88,10 +88,8 @@ export default function NewGRNModal({ open, onClose, onCreated }: Props) {
         onCreated(grn.id);
       }
     } catch (error) {
-      logError("[NewGRNModal] create failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to create GRN."
+        getSafeErrorMessage(error, "Failed to create GRN.", "[NewGRNModal] create failed:")
       );
     } finally {
       setCreating(false);

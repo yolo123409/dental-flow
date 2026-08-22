@@ -100,9 +100,14 @@ export async function getSupplierApSummary(
 export async function getSupplierApReconciliation(
   supplierId: string
 ): Promise<{ grnBased: number; ledgerBased: number; matches: boolean }> {
+  const clinicId = await getCurrentClinicId();
+
   const [summary, ledgerBalanceResult] = await Promise.all([
     getSupplierApSummary(supplierId),
-    supabase.rpc("get_supplier_ledger_ap_balance", { p_supplier_id: supplierId }),
+    supabase.rpc("get_supplier_ledger_ap_balance", {
+      p_clinic_id: clinicId,
+      p_supplier_id: supplierId,
+    }),
   ]);
 
   if (ledgerBalanceResult.error) {
@@ -162,7 +167,10 @@ export async function recordSupplierPayment(
 ): Promise<string> {
   await assertPermission("accounts_payable_manage");
 
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase.rpc("record_supplier_payment", {
+    p_clinic_id: clinicId,
     p_supplier_id: input.supplierId,
     p_payment_date: input.paymentDate,
     p_payment_method: input.paymentMethod,
@@ -201,7 +209,10 @@ export async function repairSupplierGrnLedgerPostings(
 ): Promise<RepairedGrnPosting[]> {
   await assertPermission("accounts_payable_manage");
 
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase.rpc("repair_supplier_grn_ledger_postings", {
+    p_clinic_id: clinicId,
     p_supplier_id: supplierId,
   });
 
@@ -221,7 +232,10 @@ export async function repairSupplierGrnLedgerPostings(
 export async function voidSupplierPayment(paymentId: string, reason?: string): Promise<void> {
   await assertPermission("accounts_payable_manage");
 
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase.rpc("void_supplier_payment", {
+    p_clinic_id: clinicId,
     p_payment_id: paymentId,
     p_reason: reason ?? null,
   });

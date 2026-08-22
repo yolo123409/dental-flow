@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase";
-import { logError, toError } from "@/lib/logError";
+import { logError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "@/services/clinic";
+import { assertPermission } from "@/services/authorization";
 
 import { getDateRange } from "./dateRange";
 
@@ -82,35 +84,44 @@ function nextBucket(
 export async function getRevenueChartData(
   range: string
 ): Promise<RevenueChartPoint[]> {
+  await assertPermission("analytics");
+
   const clinicId = await getCurrentClinicId();
 
   const { start, end } = getDateRange(range);
 
   const granularity = granularityFor(range);
 
-  let query = supabase
-    .from("clinic_invoices")
-    .select("total, tax, created_at")
-    .eq("clinic_id", clinicId)
-    .eq("status", "Paid");
+  // Paged rather than a single unbounded fetch - "All Time" (and other
+  // wide ranges) can plausibly return more than 1,000 Paid invoices for
+  // an established clinic, which would otherwise silently drop
+  // invoices from the chart with no error.
+  let data: { total: number; tax: number; created_at: string }[];
 
-  if (start) {
-    query = query.gte("created_at", start.toISOString());
-  }
+  try {
+    data = await fetchAllRows<{ total: number; tax: number; created_at: string }>(
+      (from, to) => {
+        let query = supabase
+          .from("clinic_invoices")
+          .select("total, tax, created_at")
+          .eq("clinic_id", clinicId)
+          .eq("status", "Paid");
 
-  if (end) {
-    query = query.lte("created_at", end.toISOString());
-  }
+        if (start) {
+          query = query.gte("created_at", start.toISOString());
+        }
 
-  const { data, error } = await query;
+        if (end) {
+          query = query.lte("created_at", end.toISOString());
+        }
 
-  if (error) {
-    logError(
-      "[analytics] getRevenueChartData query failed:",
-      error
+        return query.range(from, to);
+      }
     );
+  } catch (error) {
+    logError("[analytics] getRevenueChartData query failed:", error);
 
-    throw toError(error);
+    throw error;
   }
 
   const revenueByBucket = new Map<

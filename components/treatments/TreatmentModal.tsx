@@ -11,6 +11,7 @@ import {
   createTreatment,
   updateTreatment,
 } from "@/services/treatments";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -112,12 +113,8 @@ export default function TreatmentModal({
 
       onClose();
     } catch (error) {
-      console.error("Failed to save treatment:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to save treatment."
+        getSafeErrorMessage(error, "Unable to save treatment.", "Failed to save treatment:")
       );
     } finally {
       setSaving(false);

@@ -51,6 +51,7 @@ import {
 } from "@/types/ledger";
 
 import ManualJournalEntryModal from "@/components/ledger/ManualJournalEntryModal";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 const DATE_RANGES = [
   "Today",
@@ -133,8 +134,7 @@ function LedgerPageContent() {
       setIssues(issueRows);
       setAccounts(accountRows);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load the ledger.");
+      toast.error(getSafeErrorMessage(error, "Failed to load the ledger."));
     }
   }, [period]);
 
@@ -157,8 +157,7 @@ function LedgerPageContent() {
       setTransactions(page.rows);
       setTotalCount(page.count);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load ledger transactions.");
+      toast.error(getSafeErrorMessage(error, "Failed to load ledger transactions."));
     } finally {
       setLoading(false);
     }
@@ -271,9 +270,8 @@ function LedgerPageContent() {
       else if (format === "csv") exportReportToCsv(report);
       else await exportReportToExcel(report);
     } catch (error) {
-      console.error(error);
       toast.error(
-        error instanceof Error ? error.message : `Failed to export ${format.toUpperCase()}.`
+        getSafeErrorMessage(error, `Failed to export ${format.toUpperCase()}.`)
       );
     } finally {
       setExporting(null);

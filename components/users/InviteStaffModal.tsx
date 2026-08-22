@@ -10,7 +10,7 @@ import FormInput from "@/components/ui/FormInput";
 
 import { createInvitation } from "@/services/staffInvitations";
 import { INVITABLE_ROLES, InvitableRole } from "@/lib/permissions";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -83,12 +83,12 @@ export default function InviteStaffModal({
 
       await onSuccess();
     } catch (error) {
-      logError("[InviteStaffModal] createInvitation failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to create invitation."
+        getSafeErrorMessage(
+          error,
+          "Unable to create invitation.",
+          "[InviteStaffModal] createInvitation failed:"
+        )
       );
     } finally {
       setSending(false);

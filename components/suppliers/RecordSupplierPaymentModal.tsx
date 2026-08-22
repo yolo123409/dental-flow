@@ -10,6 +10,7 @@ import FormTextarea from "@/components/ui/FormTextarea";
 
 import { getSupplierOutstandingGrns, recordSupplierPayment } from "@/services/supplierPayments";
 import { OutstandingGrn } from "@/types/supplierPayments";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -162,8 +163,7 @@ export default function RecordSupplierPaymentModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to record payment.");
+      toast.error(getSafeErrorMessage(error, "Unable to record payment."));
     } finally {
       setSaving(false);
     }

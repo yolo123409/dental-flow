@@ -34,11 +34,6 @@ interface CreateClinicWithAdminInput {
 export async function createClinicWithAdmin(
   input: CreateClinicWithAdminInput
 ) {
-  console.log(
-    "[onboarding] calling supabase.rpc('create_clinic_with_admin')",
-    input
-  );
-
   const { data, error } = await supabase.rpc(
     "create_clinic_with_admin",
     {
@@ -122,8 +117,7 @@ export async function provisionPendingClinicIfNeeded() {
     }
 
     console.log(
-      "[onboarding] provisionPendingClinicIfNeeded: no clinic yet, creating one now:",
-      pendingClinicName
+      "[onboarding] provisionPendingClinicIfNeeded: no clinic yet, creating one now"
     );
 
     try {

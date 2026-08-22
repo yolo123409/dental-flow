@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
 import { createBranch } from "@/services/organizations";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -52,12 +52,12 @@ export default function CreateBranchModal({
 
       onClose();
     } catch (error) {
-      logError("[CreateBranchModal] Failed to create branch:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to create branch."
+        getSafeErrorMessage(
+          error,
+          "Unable to create branch.",
+          "[CreateBranchModal] Failed to create branch:"
+        )
       );
     } finally {
       setCreating(false);

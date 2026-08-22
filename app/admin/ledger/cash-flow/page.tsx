@@ -24,6 +24,7 @@ import {
   percentChange,
   resolveCurrentPeriod,
 } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function CashFlowPageContent() {
   const [loading, setLoading] = useState(true);
@@ -62,8 +63,7 @@ function CashFlowPageContent() {
       setCurrentLabel(resolvedCurrent.label);
       setPreviousLabel(previousPeriod.label);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Cash Flow Statement.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Cash Flow Statement."));
     } finally {
       setLoading(false);
     }

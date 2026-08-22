@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getRevenueAnalyticsForPeriod } from "@/services/analytics/revenue";
 import { getTreatmentProfitabilityReportForPeriod } from "@/services/treatmentProfitability";
@@ -30,33 +31,43 @@ export async function generateRevenueReport(
     getRevenueAnalyticsForPeriod(period.start, period.end),
   ]);
 
-  let invoiceQuery = supabase
-    .from("clinic_invoices")
-    .select("created_at, total, payment_method")
-    .eq("clinic_id", clinicMeta.clinicId)
-    .eq("status", "Paid");
+  // Paged rather than a single unbounded fetch - feeds the by-day and
+  // by-payment-method breakdowns, and a clinic with more than 1,000
+  // Paid invoices in the selected period would otherwise silently lose
+  // rows from both with no error.
+  let rows: InvoiceRow[];
+  let treatmentReport: Awaited<ReturnType<typeof getTreatmentProfitabilityReportForPeriod>>;
 
-  if (period.start && period.end) {
-    invoiceQuery = invoiceQuery
-      .gte("created_at", period.start.toISOString())
-      .lte("created_at", period.end.toISOString());
-  }
+  try {
+    const [fetchedRows, treatmentReportResult] = await Promise.all([
+      fetchAllRows((from, to) => {
+        let invoiceQuery = supabase
+          .from("clinic_invoices")
+          .select("created_at, total, payment_method")
+          .eq("clinic_id", clinicMeta.clinicId)
+          .eq("status", "Paid");
 
-  if (filters.paymentMethod) {
-    invoiceQuery = invoiceQuery.eq("payment_method", filters.paymentMethod);
-  }
+        if (period.start && period.end) {
+          invoiceQuery = invoiceQuery
+            .gte("created_at", period.start.toISOString())
+            .lte("created_at", period.end.toISOString());
+        }
 
-  const [{ data: invoiceRows, error }, treatmentReport] = await Promise.all([
-    invoiceQuery,
-    getTreatmentProfitabilityReportForPeriod(period.start, period.end, period.label),
-  ]);
+        if (filters.paymentMethod) {
+          invoiceQuery = invoiceQuery.eq("payment_method", filters.paymentMethod);
+        }
 
-  if (error) {
+        return invoiceQuery.range(from, to);
+      }),
+      getTreatmentProfitabilityReportForPeriod(period.start, period.end, period.label),
+    ]);
+
+    rows = fetchedRows as unknown as InvoiceRow[];
+    treatmentReport = treatmentReportResult;
+  } catch (error) {
     logError("[reports] generateRevenueReport failed:", error);
-    throw toError(error);
+    throw error;
   }
-
-  const rows = (invoiceRows ?? []) as InvoiceRow[];
 
   const filteredTotal = rows.reduce((sum, row) => sum + Number(row.total), 0);
   const filteredCount = rows.length;

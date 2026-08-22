@@ -10,7 +10,7 @@ import InsuranceProviderChecklist from "@/components/insurance/InsuranceProvider
 import { supabase } from "@/lib/supabase";
 import { provisionPendingClinicIfNeeded } from "@/services/clinic";
 import { getInsuranceProviders } from "@/services/insurance";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { InsuranceProvider } from "@/types/insurance";
 
@@ -87,12 +87,6 @@ export default function SignupForm() {
         },
       });
 
-      console.log("[onboarding] signUp() result:", {
-        hasSession: !!data.session,
-        userId: data.user?.id,
-        error,
-      });
-
       if (error) throw error;
 
       if (data.session) {
@@ -122,13 +116,7 @@ export default function SignupForm() {
         router.push("/auth/login");
       }
     } catch (error: unknown) {
-      console.error(error);
-
-      if (error instanceof Error) {
-        toast.error(error.message || "Unable to create account.");
-      } else {
-        toast.error("Unable to create account.");
-      }
+      toast.error(getSafeErrorMessage(error, "Unable to create account."));
     } finally {
       setLoading(false);
     }

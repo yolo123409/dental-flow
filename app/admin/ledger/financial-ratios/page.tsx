@@ -13,6 +13,7 @@ import { getFinancialRatiosReport } from "@/services/financialRatios";
 import { FinancialRatiosReport, RatioValue } from "@/types/financialRatios";
 
 import { REPORT_RANGE_OPTIONS, ResolvedPeriod, resolveCurrentPeriod, shortDate } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function RatioCard({
   title,
@@ -79,8 +80,7 @@ function FinancialRatiosPageContent() {
       setReport(data);
       setBalanceSheetAsOfLabel(shortDate(resolvedPeriod.end));
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Financial Ratios.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Financial Ratios."));
     } finally {
       setLoading(false);
     }

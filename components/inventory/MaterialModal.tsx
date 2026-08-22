@@ -16,6 +16,7 @@ import {
   calculateMarkupFromPrices,
   calculateGrossMargin,
 } from "@/services/inventory";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -330,12 +331,8 @@ export default function MaterialModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to save material."
+        getSafeErrorMessage(error, "Unable to save material.")
       );
     } finally {
       setSaving(false);

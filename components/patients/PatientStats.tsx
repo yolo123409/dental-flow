@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getInvoices, calculateBalance } from "@/services/billing";
+import { getInvoiceBalanceTotals } from "@/services/billing";
 import { getClinicSettings } from "@/services/settings";
 import { getNewPatientsThisMonthCount } from "@/services/patients";
 import { getTodaysAppointmentCount } from "@/services/appointments";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 export default function PatientStats() {
   const [newThisMonth, setNewThisMonth] = useState<number | null>(null);
@@ -35,26 +36,22 @@ export default function PatientStats() {
       const [
         newPatientCount,
         appointmentCount,
-        invoices,
+        balanceTotals,
         clinicSettings,
       ] = await Promise.all([
         getNewPatientsThisMonthCount(),
         getTodaysAppointmentCount(),
-        getInvoices(),
+        getInvoiceBalanceTotals(),
         getClinicSettings(),
       ]);
 
       setNewThisMonth(newPatientCount);
       setTodaysVisits(appointmentCount);
-      setOutstanding(calculateBalance(invoices).outstanding);
+      setOutstanding(balanceTotals.outstanding);
       setCurrency(clinicSettings.currency || "KES");
     } catch (err) {
-      console.error("Failed to load patient stats:", err);
-
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load stats."
+        getSafeErrorMessage(err, "Failed to load stats.", "Failed to load patient stats:")
       );
     } finally {
       setLoading(false);

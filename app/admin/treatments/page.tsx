@@ -17,6 +17,7 @@ import {
 } from "@/services/treatments";
 
 import { getClinicSettings } from "@/services/settings";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import TreatmentModal from "@/components/treatments/TreatmentModal";
 import PermissionGuard from "@/components/auth/PermissionGuard";
@@ -67,12 +68,8 @@ const [deleting, setDeleting] =
         clinicSettings.currency || "KES"
       );
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load treatments."
+        getSafeErrorMessage(error, "Failed to load treatments.")
       );
     } finally {
       setLoading(false);
@@ -117,12 +114,8 @@ function handleEdit(
       setShowDeleteDialog(false);
       setSelectedTreatment(null);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete treatment."
+        getSafeErrorMessage(error, "Failed to delete treatment.")
       );
     } finally {
       setDeleting(false);

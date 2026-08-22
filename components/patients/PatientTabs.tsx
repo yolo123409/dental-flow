@@ -3,6 +3,7 @@
 interface Props {
   active: string;
   onChange: (tab: string) => void;
+  hiddenTabs?: string[];
 }
 
 const tabs = [
@@ -18,11 +19,14 @@ const tabs = [
 export default function PatientTabs({
   active,
   onChange,
+  hiddenTabs = [],
 }: Props) {
+  const visibleTabs = tabs.filter((tab) => !hiddenTabs.includes(tab));
+
   return (
     <div className="mb-8 flex gap-3 overflow-x-auto pb-1">
 
-      {tabs.map((tab) => (
+      {visibleTabs.map((tab) => (
 
         <button
           key={tab}

@@ -20,7 +20,7 @@ import {
   getOrganizationBranches,
   switchActiveBranch,
 } from "@/services/organizations";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { OrganizationBranch } from "@/types/organization";
 
@@ -75,9 +75,7 @@ function BranchesPageContent() {
       logError("[Branches page] Failed to switch branch:", error);
 
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to open this branch."
+        getSafeErrorMessage(error, "Unable to open this branch.")
       );
 
       setSwitchingId(null);

@@ -24,6 +24,7 @@ import {
   percentChange,
   resolveCurrentPeriod,
 } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function formatPercent(value: number | null): string {
   return value == null ? "N/A" : `${value.toFixed(1)}%`;
@@ -66,8 +67,7 @@ function EbitEbitdaPageContent() {
       setCurrentLabel(resolvedCurrent.label);
       setPreviousLabel(previousPeriod.label);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load EBIT/EBITDA.");
+      toast.error(getSafeErrorMessage(error, "Failed to load EBIT/EBITDA."));
     } finally {
       setLoading(false);
     }

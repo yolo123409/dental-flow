@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { runExclusive } from "@/lib/inFlightGuard";
 
 import { getCurrentOrganizationUser, switchActiveBranch } from "./organizations";
 
@@ -11,8 +12,25 @@ import { getCurrentOrganizationUser, switchActiveBranch } from "./organizations"
  * than one branch) can ever have more than one row, which is resolved
  * via the org-level active-branch selection (never a client-supplied
  * value - see services/organizations.ts#switchActiveBranch).
+ *
+ * Wrapped in runExclusive (same in-flight dedup already used for
+ * onboarding provisioning): nearly every services/*.ts function calls
+ * this at its top, and a single page load commonly fires several of
+ * them at once (e.g. the Dashboard's parallel widget fetches) - each
+ * independently re-running auth.getUser() (a real network round trip,
+ * not a local session read) and the clinic_users query for the identical
+ * result. Found during a production-hardening audit to be a systemic
+ * request-count amplifier. This only collapses calls that are
+ * genuinely concurrent (in flight at the same instant); the in-flight
+ * entry is removed as soon as it resolves, so it never becomes a
+ * time-based cache and can never serve stale data across a branch
+ * switch or separate page load.
  */
-export async function getCurrentClinicUser() {
+export function getCurrentClinicUser() {
+  return runExclusive("getCurrentClinicUser", getCurrentClinicUserUncached);
+}
+
+async function getCurrentClinicUserUncached() {
   const {
     data: { user },
     error: authError,

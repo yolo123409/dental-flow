@@ -9,6 +9,7 @@ import FormInput from "@/components/ui/FormInput";
 import { updateTreatmentDirectCost } from "@/services/treatmentProfitability";
 
 import { TreatmentProfitabilityRow } from "@/types/treatmentProfitability";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -63,12 +64,12 @@ export default function ConfigureCostModal({
 
       onClose();
     } catch (error) {
-      console.error("Failed to save treatment direct cost:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to save direct cost."
+        getSafeErrorMessage(
+          error,
+          "Unable to save direct cost.",
+          "Failed to save treatment direct cost:"
+        )
       );
     } finally {
       setSaving(false);

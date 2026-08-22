@@ -12,6 +12,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import { getClinicSettings } from "@/services/settings";
 import { getTrialBalance } from "@/services/ledger";
 import { TrialBalance } from "@/types/ledger";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function TrialBalancePageContent() {
   const [loading, setLoading] = useState(true);
@@ -31,8 +32,7 @@ function TrialBalancePageContent() {
         setCurrency(clinicSettings.currency || "KES");
         setTrialBalance(data);
       } catch (error) {
-        console.error(error);
-        toast.error(error instanceof Error ? error.message : "Failed to load trial balance.");
+        toast.error(getSafeErrorMessage(error, "Failed to load trial balance."));
       } finally {
         setLoading(false);
       }

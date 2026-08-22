@@ -26,6 +26,7 @@ import {
 } from "@/services/billing";
 
 import { getClinicSettings } from "@/services/settings";
+import usePermissions from "@/hooks/usePermissions";
 
 import {
   Patient,
@@ -44,6 +45,9 @@ function PatientProfilePageContent() {
   const params = useParams();
 
   const id = params.id as string;
+
+  const { hasPermission } = usePermissions();
+  const canViewBilling = hasPermission("billing");
 
   const [patient, setPatient] =
     useState<Patient | null>(null);
@@ -92,7 +96,10 @@ function PatientProfilePageContent() {
         getPatientProfile(id),
         getPatientAppointments(id),
         getPatientTimeline(id),
-        getPatientInvoices(id),
+        // Billing is financial data - a role without the `billing`
+        // permission (Dentist) never fetches or sees it here either,
+        // matching that they don't see the Billing section elsewhere.
+        canViewBilling ? getPatientInvoices(id) : Promise.resolve([]),
         getClinicSettings(),
       ]);
 
@@ -110,7 +117,7 @@ function PatientProfilePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, canViewBilling]);
 
   useEffect(() => {
     loadPatient();
@@ -151,11 +158,12 @@ function PatientProfilePageContent() {
       <PatientTabs
         active={activeTab}
         onChange={setActiveTab}
+        hiddenTabs={canViewBilling ? [] : ["Billing"]}
       />
 
       {/* Overview */}
 
-      {activeTab === "Overview" && (
+      {activeTab === "Overview" && canViewBilling && (
         <BillingSummary
           total={billing.total}
           paid={billing.paid}
@@ -247,7 +255,7 @@ function PatientProfilePageContent() {
 
       {/* Billing */}
 
-      {activeTab === "Billing" && (
+      {activeTab === "Billing" && canViewBilling && (
         <BillingSummary
           total={billing.total}
           paid={billing.paid}

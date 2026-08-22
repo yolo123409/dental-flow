@@ -1,8 +1,10 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getPurchaseOrder } from "./purchaseOrders";
+import { assertPermission } from "./authorization";
 import { generateDocumentNumber } from "@/lib/documentNumber";
 
 import {
@@ -42,38 +44,49 @@ export async function getGRNs(
     supplierId?: string;
   } = {}
 ): Promise<GRN[]> {
+  await assertPermission("procurement");
+
   const clinicId = await getCurrentClinicId();
 
-  let query = supabase
-    .from("clinic_goods_received_notes")
-    .select(GRN_LIST_SELECT)
-    .eq("clinic_id", clinicId)
-    .order("created_at", { ascending: false });
+  // Paged rather than a single unbounded fetch - procurement volume is
+  // typically far lower than patient/invoice volume, but a long-lived
+  // busy clinic could still plausibly cross 1,000 GRNs over time.
+  let data: GRN[];
 
-  if (filters.status) {
-    query = query.eq("status", filters.status);
-  }
+  try {
+    data = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("clinic_goods_received_notes")
+        .select(GRN_LIST_SELECT)
+        .eq("clinic_id", clinicId)
+        .order("created_at", { ascending: false });
 
-  if (filters.purchaseOrderId) {
-    query = query.eq("purchase_order_id", filters.purchaseOrderId);
-  }
+      if (filters.status) {
+        query = query.eq("status", filters.status);
+      }
 
-  if (filters.supplierId) {
-    query = query.eq("supplier_id", filters.supplierId);
-  }
+      if (filters.purchaseOrderId) {
+        query = query.eq("purchase_order_id", filters.purchaseOrderId);
+      }
 
-  const { data, error } = await query;
+      if (filters.supplierId) {
+        query = query.eq("supplier_id", filters.supplierId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as GRN[];
+  } catch (error) {
     logError("[grns] getGRNs failed:", error);
 
-    throw toError(error);
+    throw error;
   }
 
-  return (data ?? []) as unknown as GRN[];
+  return data;
 }
 
 export async function getGRN(id: string): Promise<GRNWithItems> {
+  await assertPermission("procurement");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -136,6 +149,8 @@ async function getAlreadyReceived(
 export async function createGRNFromPurchaseOrder(
   poId: string
 ): Promise<GRN> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
   const po = await getPurchaseOrder(poId);
 
@@ -197,6 +212,8 @@ export async function createGRNFromPurchaseOrder(
 }
 
 export async function createManualGRN(input: GRNHeaderInput): Promise<GRN> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const prefix = await getGrnPrefix(clinicId);
@@ -230,6 +247,8 @@ export async function updateGRNHeader(
   id: string,
   input: GRNHeaderInput
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -255,6 +274,8 @@ export async function addGRNItem(
   input: GRNItemInput,
   displayOrder: number
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase.from("clinic_grn_items").insert({
@@ -285,6 +306,8 @@ export async function updateGRNItem(
   itemId: string,
   input: GRNItemInput
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -311,6 +334,8 @@ export async function updateGRNItem(
 }
 
 export async function removeGRNItem(itemId: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -327,6 +352,8 @@ export async function removeGRNItem(itemId: string): Promise<void> {
 }
 
 export async function confirmGRNReceipt(id: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const { error } = await supabase.rpc("confirm_grn_receipt", {
     p_grn_id: id,
   });
@@ -343,6 +370,8 @@ export async function sendGRN(
   via: "Email" | "WhatsApp",
   contactId: string | null
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const { error } = await supabase.rpc("mark_grn_sent", {
     p_grn_id: id,
     p_via: via,
@@ -357,6 +386,8 @@ export async function sendGRN(
 }
 
 export async function cancelGRN(id: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const { error } = await supabase.rpc("cancel_grn", { p_grn_id: id });
 
   if (error) {

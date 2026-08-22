@@ -13,6 +13,7 @@ import {
   MovementReason,
   adjustStock,
 } from "@/services/inventory";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -121,12 +122,8 @@ export default function AdjustStockModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to adjust stock."
+        getSafeErrorMessage(error, "Unable to adjust stock.")
       );
     } finally {
       setSaving(false);

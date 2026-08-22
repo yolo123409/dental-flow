@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, periodLabel } from "./shared";
@@ -29,31 +30,37 @@ export async function generateDentistRevenueReport(
 ): Promise<ReportResult> {
   const clinicMeta = await getClinicMeta();
 
-  let query = supabase
-    .from("appointments")
-    .select("dentist_id, patient_id, dentists(full_name)")
-    .eq("clinic_id", clinicMeta.clinicId)
-    .eq("status", "Completed")
-    .not("dentist_id", "is", null);
+  // Paged rather than a single unbounded fetch - a busy clinic can
+  // plausibly have more than 1,000 completed appointments in a wide
+  // period (a full year, "All Time"), which would otherwise silently
+  // undercount both patients and appointments per dentist with no error.
+  let rows: AppointmentRow[];
 
-  if (period.start && period.end) {
-    query = query
-      .gte("appointment_date", period.start.toISOString().slice(0, 10))
-      .lte("appointment_date", period.end.toISOString().slice(0, 10));
-  }
+  try {
+    rows = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("appointments")
+        .select("dentist_id, patient_id, dentists(full_name)")
+        .eq("clinic_id", clinicMeta.clinicId)
+        .eq("status", "Completed")
+        .not("dentist_id", "is", null);
 
-  if (filters.dentistId) {
-    query = query.eq("dentist_id", filters.dentistId);
-  }
+      if (period.start && period.end) {
+        query = query
+          .gte("appointment_date", period.start.toISOString().slice(0, 10))
+          .lte("appointment_date", period.end.toISOString().slice(0, 10));
+      }
 
-  const { data, error } = await query;
+      if (filters.dentistId) {
+        query = query.eq("dentist_id", filters.dentistId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as AppointmentRow[];
+  } catch (error) {
     logError("[reports] generateDentistRevenueReport failed:", error);
-    throw toError(error);
+    throw error;
   }
-
-  const rows = (data ?? []) as unknown as AppointmentRow[];
 
   const byDentist = new Map<
     string,

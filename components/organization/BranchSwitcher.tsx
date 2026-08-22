@@ -7,7 +7,7 @@ import { Check, ChevronDown } from "lucide-react";
 
 import useOrganization from "@/hooks/useOrganization";
 import { switchActiveBranch } from "@/services/organizations";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 /**
  * Quick branch switcher, rendered in the persistent Sidebar so it's
@@ -82,12 +82,12 @@ export default function BranchSwitcher() {
       router.push("/admin");
       router.refresh();
     } catch (error) {
-      logError("[BranchSwitcher] Failed to switch branch:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to switch branches."
+        getSafeErrorMessage(
+          error,
+          "Unable to switch branches.",
+          "[BranchSwitcher] Failed to switch branch:"
+        )
       );
     } finally {
       setSwitchingId(null);

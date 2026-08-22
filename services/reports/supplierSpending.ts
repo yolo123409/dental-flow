@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, periodLabel } from "./shared";
@@ -27,32 +28,38 @@ export async function generateSupplierSpendingReport(
 ): Promise<ReportResult> {
   const clinicMeta = await getClinicMeta();
 
-  let query = supabase
-    .from("clinic_goods_received_notes")
-    .select(
-      "id, supplier_id, clinic_suppliers(name), clinic_grn_items(quantity_received, unit_cost)"
-    )
-    .eq("clinic_id", clinicMeta.clinicId)
-    .eq("status", "Received");
+  // Paged rather than a single unbounded fetch - procurement volume is
+  // typically far lower than patient/invoice volume, but a long-lived
+  // busy clinic could still plausibly cross 1,000 received GRNs in the
+  // selected period.
+  let grns: GrnRow[];
 
-  if (period.start && period.end) {
-    query = query
-      .gte("received_at", period.start.toISOString())
-      .lte("received_at", period.end.toISOString());
-  }
+  try {
+    grns = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("clinic_goods_received_notes")
+        .select(
+          "id, supplier_id, clinic_suppliers(name), clinic_grn_items(quantity_received, unit_cost)"
+        )
+        .eq("clinic_id", clinicMeta.clinicId)
+        .eq("status", "Received");
 
-  if (filters.supplierId) {
-    query = query.eq("supplier_id", filters.supplierId);
-  }
+      if (period.start && period.end) {
+        query = query
+          .gte("received_at", period.start.toISOString())
+          .lte("received_at", period.end.toISOString());
+      }
 
-  const { data, error } = await query;
+      if (filters.supplierId) {
+        query = query.eq("supplier_id", filters.supplierId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as GrnRow[];
+  } catch (error) {
     logError("[reports] generateSupplierSpendingReport failed:", error);
-    throw toError(error);
+    throw error;
   }
-
-  const grns = (data ?? []) as unknown as GrnRow[];
 
   const bySupplier = new Map<
     string,

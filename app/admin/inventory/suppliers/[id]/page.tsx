@@ -38,7 +38,7 @@ import {
   repairSupplierGrnLedgerPostings,
   voidSupplierPayment,
 } from "@/services/supplierPayments";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import {
   SupplierWithContacts,
@@ -111,10 +111,8 @@ function SupplierDetailContent() {
       setPayments(paymentData);
       setReconciliation(reconciliationData);
     } catch (error) {
-      logError("[SupplierDetail] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load supplier."
+        getSafeErrorMessage(error, "Failed to load supplier.", "[SupplierDetail] load failed:")
       );
     } finally {
       setLoading(false);
@@ -147,10 +145,12 @@ function SupplierDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[SupplierDetail] toggle active failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to update supplier."
+        getSafeErrorMessage(
+          error,
+          "Failed to update supplier.",
+          "[SupplierDetail] toggle active failed:"
+        )
       );
     } finally {
       setBusy(false);
@@ -167,12 +167,12 @@ function SupplierDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[SupplierDetail] setPrimaryContact failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to set primary contact."
+        getSafeErrorMessage(
+          error,
+          "Failed to set primary contact.",
+          "[SupplierDetail] setPrimaryContact failed:"
+        )
       );
     }
   }
@@ -192,10 +192,12 @@ function SupplierDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[SupplierDetail] archiveSupplierContact failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to archive contact."
+        getSafeErrorMessage(
+          error,
+          "Failed to archive contact.",
+          "[SupplierDetail] archiveSupplierContact failed:"
+        )
       );
     } finally {
       setBusy(false);
@@ -224,10 +226,12 @@ function SupplierDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[SupplierDetail] repairSupplierGrnLedgerPostings failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to repair ledger postings."
+        getSafeErrorMessage(
+          error,
+          "Failed to repair ledger postings.",
+          "[SupplierDetail] repairSupplierGrnLedgerPostings failed:"
+        )
       );
     } finally {
       setRepairing(false);
@@ -248,10 +252,12 @@ function SupplierDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[SupplierDetail] voidSupplierPayment failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to void payment."
+        getSafeErrorMessage(
+          error,
+          "Failed to void payment.",
+          "[SupplierDetail] voidSupplierPayment failed:"
+        )
       );
     } finally {
       setBusy(false);

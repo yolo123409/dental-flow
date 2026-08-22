@@ -69,6 +69,35 @@ export async function POST(request: Request) {
     });
   }
 
+  // Postgres-backed limit (see migration 0063) - this route is
+  // deliberately unauthenticated/token-gated, so without a shared
+  // counter anyone holding a token could trigger unlimited real emails
+  // to the invited person. An in-memory counter would not work here
+  // (Vercel serverless - many stateless instances).
+  const { data: allowed, error: rateLimitError } = await supabase.rpc(
+    "check_invitation_email_rate_limit",
+    { p_token: token }
+  );
+
+  if (rateLimitError) {
+    logError(
+      "[api/invitations/send-email] Rate limit check failed:",
+      rateLimitError
+    );
+
+    return NextResponse.json({
+      emailSent: false,
+      reason: "Email delivery failed",
+    });
+  }
+
+  if (!allowed) {
+    return NextResponse.json({
+      emailSent: false,
+      reason: "Too many email attempts for this invitation. Please try again later.",
+    });
+  }
+
   try {
     const { data: branchData, error: branchError } = await supabase.rpc(
       "get_organization_invitation_details",

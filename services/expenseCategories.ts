@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 
 import { ExpenseCategory, ExpenseCategoryInput } from "@/types/expenses";
 
@@ -34,6 +35,8 @@ export async function getExpenseCategories(
 export async function createExpenseCategory(
   input: ExpenseCategoryInput
 ): Promise<ExpenseCategory> {
+  await assertPermission("settings");
+
   const clinicId = await getCurrentClinicId();
 
   const { count } = await supabase
@@ -65,6 +68,8 @@ export async function updateExpenseCategory(
   id: string,
   input: ExpenseCategoryInput
 ): Promise<void> {
+  await assertPermission("settings");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -85,6 +90,8 @@ export async function updateExpenseCategory(
 }
 
 export async function archiveExpenseCategory(id: string): Promise<void> {
+  await assertPermission("settings");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -101,6 +108,8 @@ export async function archiveExpenseCategory(id: string): Promise<void> {
 }
 
 export async function reactivateExpenseCategory(id: string): Promise<void> {
+  await assertPermission("settings");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -126,6 +135,8 @@ export async function reactivateExpenseCategory(id: string): Promise<void> {
 export async function reorderExpenseCategories(
   orderedIds: string[]
 ): Promise<void> {
+  await assertPermission("settings");
+
   const results = await Promise.all(
     orderedIds.map((id, index) =>
       supabase

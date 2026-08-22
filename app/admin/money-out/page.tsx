@@ -16,7 +16,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import RecordExpenseModal from "@/components/moneyOut/RecordExpenseModal";
 
 import usePermissions from "@/hooks/usePermissions";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import {
   getExpenses,
@@ -81,10 +81,8 @@ function MoneyOutPageContent() {
       setSuppliers(suppliersData);
       setCurrency(clinicSettings.currency || "KES");
     } catch (error) {
-      logError("[MoneyOutPage] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load Money Out."
+        getSafeErrorMessage(error, "Failed to load Money Out.", "[MoneyOutPage] load failed:")
       );
     } finally {
       setLoading(false);

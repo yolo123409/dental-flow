@@ -16,7 +16,7 @@ import NewGRNModal from "@/components/procurement/NewGRNModal";
 
 import usePermissions from "@/hooks/usePermissions";
 import { getGRNs } from "@/services/grns";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { GRN, GRNStatus } from "@/types/procurement";
 
@@ -51,10 +51,8 @@ function GRNsPageContent() {
 
       setGrns(data);
     } catch (error) {
-      logError("[GRNsPage] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load GRNs."
+        getSafeErrorMessage(error, "Failed to load GRNs.", "[GRNsPage] load failed:")
       );
     } finally {
       setLoading(false);

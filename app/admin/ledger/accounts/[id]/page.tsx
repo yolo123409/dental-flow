@@ -12,6 +12,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import { getClinicSettings } from "@/services/settings";
 import { getAccountLedger } from "@/services/ledger";
 import { AccountLedger } from "@/types/ledger";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 const DATE_RANGES = ["This Month", "Last Month", "This Year", "All Time"];
 
@@ -65,8 +66,7 @@ function AccountLedgerPage() {
       setCurrency(clinicSettings.currency || "KES");
       setLedger(data);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load account ledger.");
+      toast.error(getSafeErrorMessage(error, "Failed to load account ledger."));
     } finally {
       setLoading(false);
     }

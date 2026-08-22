@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "@/services/clinic";
 
@@ -147,21 +148,34 @@ export async function getVisitAnalyticsReport(
   const startIso = toDateOnly(start);
   const endIso = toDateOnly(end);
 
-  const { data, error } = await supabase
-    .from("appointments")
-    .select(
-      "patient_id, appointment_date, patients ( first_name, last_name, acquisition_source, referral_source )"
-    )
-    .eq("clinic_id", clinicId)
-    .eq("status", "Completed")
-    .order("appointment_date", { ascending: true });
+  // Paged rather than a single unbounded fetch - this deliberately reads
+  // EVERY completed appointment ever (not just those in the current
+  // period), since determining "New vs. Returning" requires knowing each
+  // patient's first-ever visit date. Found live during the Part 2 row-
+  // cap audit to be the single most severe instance of this bug: once a
+  // clinic accumulates more than 1,000 completed appointments all-time,
+  // the truncated (oldest-first, per the .order() below) result set
+  // would silently contain none of the CURRENT period's appointments at
+  // all, making New/Returning/retention figures read as zero with no
+  // error - not just an undercount, a complete false negative.
+  let allCompleted: CompletedVisitRow[];
 
-  if (error) {
+  try {
+    allCompleted = (await fetchAllRows((from, to) =>
+      supabase
+        .from("appointments")
+        .select(
+          "patient_id, appointment_date, patients ( first_name, last_name, acquisition_source, referral_source )"
+        )
+        .eq("clinic_id", clinicId)
+        .eq("status", "Completed")
+        .order("appointment_date", { ascending: true })
+        .range(from, to)
+    )) as unknown as CompletedVisitRow[];
+  } catch (error) {
     logError("[analytics/visits] getVisitAnalyticsReport failed:", error);
     throw toError(error);
   }
-
-  const allCompleted = (data ?? []) as unknown as CompletedVisitRow[];
 
   const firstVisitByPatient = new Map<string, string>();
   for (const row of allCompleted) {

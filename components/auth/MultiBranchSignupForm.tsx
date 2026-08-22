@@ -10,7 +10,7 @@ import InsuranceProviderChecklist from "@/components/insurance/InsuranceProvider
 import { supabase } from "@/lib/supabase";
 import { provisionPendingOrganizationIfNeeded } from "@/services/organizations";
 import { getInsuranceProviders } from "@/services/insurance";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { InsuranceProvider } from "@/types/insurance";
 
@@ -103,12 +103,6 @@ export default function MultiBranchSignupForm() {
         },
       });
 
-      console.log("[onboarding] signUp() result (multi-branch):", {
-        hasSession: !!data.session,
-        userId: data.user?.id,
-        error,
-      });
-
       if (error) throw error;
 
       if (data.session) {
@@ -138,13 +132,7 @@ export default function MultiBranchSignupForm() {
         router.push("/auth/login");
       }
     } catch (error: unknown) {
-      console.error(error);
-
-      if (error instanceof Error) {
-        toast.error(error.message || "Unable to create account.");
-      } else {
-        toast.error("Unable to create account.");
-      }
+      toast.error(getSafeErrorMessage(error, "Unable to create account."));
     } finally {
       setLoading(false);
     }

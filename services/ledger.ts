@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { assertPermission } from "./authorization";
@@ -286,19 +287,23 @@ export async function getLedgerTransactions(
   let transactionIdsForAccount: string[] | null = null;
 
   if (filters.accountId) {
-    const { data: entryRows, error: entryError } = await supabase
-      .from("clinic_ledger_entries")
-      .select("transaction_id")
-      .eq("clinic_id", clinicId)
-      .eq("account_id", filters.accountId);
-
-    if (entryError) {
-      logError("[ledger] getLedgerTransactions (account filter) failed:", entryError);
-      throw toError(entryError);
-    }
+    // Paged rather than a single unbounded fetch - an active Cash or
+    // Accounts Receivable account can plausibly accumulate more than
+    // 1,000 entries over a clinic's lifetime, which would otherwise
+    // silently truncate `transactionIdsForAccount` and make this filter
+    // miss real transactions with no error.
+    const entryRows = await fetchAllRows<{ transaction_id: string }>((from, to) =>
+      supabase
+        .from("clinic_ledger_entries")
+        .select("transaction_id")
+        .eq("clinic_id", clinicId)
+        .eq("account_id", filters.accountId as string)
+        .order("transaction_id")
+        .range(from, to)
+    );
 
     transactionIdsForAccount = Array.from(
-      new Set((entryRows ?? []).map((row) => row.transaction_id))
+      new Set(entryRows.map((row) => row.transaction_id))
     );
 
     if (transactionIdsForAccount.length === 0) {
@@ -338,6 +343,46 @@ export async function getLedgerTransactions(
   return { rows: (data ?? []) as unknown as LedgerTransaction[], count: count ?? 0 };
 }
 
+/**
+ * Fetches every matching transaction for a report that genuinely needs
+ * full transaction detail (not just a sum) - Cash Flow, the AP Days
+ * ratio, Stock Days - by paging through getLedgerTransactions's own
+ * real `.range()` pagination instead of asking for one giant page.
+ *
+ * Found live during the Part 2 row-cap audit: all three of those callers
+ * previously called `getLedgerTransactions({ ..., limit: 10000 })`,
+ * which is still just ONE request for `.range(0, 9999)` - Supabase/
+ * PostgREST caps the actual rows returned at 1,000 (the project's
+ * max-rows setting) regardless of how large a range is requested, with
+ * no error. Cash Flow could silently omit real cash movements past the
+ * 1,000th transaction; AP Days/Stock Days could silently understate.
+ */
+export async function getAllLedgerTransactions(
+  filters: Omit<LedgerTransactionFilters, "limit" | "offset">
+): Promise<LedgerTransaction[]> {
+  const PAGE_SIZE = 1000;
+  const all: LedgerTransaction[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const page = await getLedgerTransactions({
+      ...filters,
+      limit: PAGE_SIZE,
+      offset,
+    });
+
+    all.push(...page.rows);
+
+    if (page.rows.length < PAGE_SIZE) {
+      break;
+    }
+
+    offset += PAGE_SIZE;
+  }
+
+  return all;
+}
+
 export async function getLedgerTransaction(id: string): Promise<LedgerTransaction> {
   await assertPermission("ledger");
   const clinicId = await getCurrentClinicId();
@@ -375,7 +420,10 @@ export async function createManualJournalEntry(
 ): Promise<string> {
   await assertPermission("ledger_manage");
 
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase.rpc("create_manual_journal_entry", {
+    p_clinic_id: clinicId,
     p_transaction_date: input.transactionDate,
     p_description: input.description,
     p_debit_account_id: input.debitAccountId,
@@ -398,7 +446,10 @@ export async function reverseLedgerTransaction(
 ): Promise<string> {
   await assertPermission("ledger_manage");
 
+  const clinicId = await getCurrentClinicId();
+
   const { data, error } = await supabase.rpc("reverse_ledger_transaction", {
+    p_clinic_id: clinicId,
     p_transaction_id: transactionId,
     p_notes: notes ?? null,
   });
@@ -418,7 +469,10 @@ export async function setOpeningBalance(
 ): Promise<void> {
   await assertPermission("ledger_manage");
 
+  const clinicId = await getCurrentClinicId();
+
   const { error } = await supabase.rpc("set_opening_balance", {
+    p_clinic_id: clinicId,
     p_account_id: accountId,
     p_amount: amount,
     p_as_of: asOf ?? new Date().toISOString().slice(0, 10),
@@ -511,7 +565,7 @@ export async function getAccountLedger(
   await assertPermission("ledger");
   const clinicId = await getCurrentClinicId();
 
-  const [{ data: accountData, error: accountError }, openingResult, rowsResult] =
+  const [{ data: accountData, error: accountError }, openingResult, rawRows] =
     await Promise.all([
       supabase
         .from("clinic_ledger_accounts")
@@ -522,11 +576,26 @@ export async function getAccountLedger(
       start
         ? supabase.rpc("get_account_opening_balance", { p_account_id: accountId, p_start: start })
         : Promise.resolve({ data: 0, error: null }),
-      supabase.rpc("get_account_ledger", {
-        p_account_id: accountId,
-        p_start: start,
-        p_end: end,
-      }),
+      // get_account_ledger's own SQL orders deterministically
+      // (transaction_date, transaction_id - the same order its running-
+      // balance window function uses), which is what makes paging
+      // through it via .range() safe: each page is a stable slice of the
+      // same ordering, not a single `select *` that PostgREST would
+      // silently cap at 1,000 rows regardless of how many ledger entries
+      // this account actually has in the period - found live during the
+      // Part 2 row-cap audit to corrupt closingBalance below (it read
+      // the LAST row of whatever the server happened to return, not the
+      // account's true final balance) for any account with more than
+      // 1,000 entries in the queried range.
+      fetchAllRows<RawAccountLedgerRow>((from, to) =>
+        supabase
+          .rpc("get_account_ledger", {
+            p_account_id: accountId,
+            p_start: start,
+            p_end: end,
+          })
+          .range(from, to)
+      ),
     ]);
 
   if (accountError) {
@@ -539,14 +608,9 @@ export async function getAccountLedger(
     throw toError(openingResult.error);
   }
 
-  if (rowsResult.error) {
-    logError("[ledger] getAccountLedger (rows) failed:", rowsResult.error);
-    throw toError(rowsResult.error);
-  }
-
   const openingBalance = Number(openingResult.data ?? 0);
 
-  const rows = ((rowsResult.data ?? []) as RawAccountLedgerRow[]).map((row) => ({
+  const rows = rawRows.map((row) => ({
     transactionId: row.transaction_id,
     transactionDate: row.transaction_date,
     description: row.description,
@@ -667,7 +731,95 @@ interface RawProfitAndLossRow {
   total_credit: number;
 }
 
+interface RawProfitAndLossRowMulti extends RawProfitAndLossRow {
+  clinic_id: string;
+}
+
 const DEPRECIATION_NAME_PATTERN = /deprecia|amortiz/i;
+
+/**
+ * Pure: given one clinic's raw get_profit_and_loss rows and that same
+ * clinic's ledger settings, computes its ProfitAndLossPeriod. Extracted
+ * so the batched multi-clinic path (getProfitAndLossForClinics, used by
+ * the CEO Consolidated Financials page) and the single-clinic path
+ * (getProfitAndLoss) share one computation - the only thing that differs
+ * between them is how the rows/settings are fetched (one query per
+ * clinic vs. one batched query for every clinic), never the arithmetic.
+ * That's what makes "the batched total is the same number a CEO would
+ * see visiting each branch individually" true by construction rather
+ * than by hoping two hand-written copies never drift apart.
+ */
+function computeProfitAndLossFromRows(
+  rows: RawProfitAndLossRow[],
+  settings: LedgerSettings,
+  startIso: string,
+  endIso: string
+): ProfitAndLossPeriod {
+  const incomeRows = rows
+    .filter((row) => row.account_type === "Income")
+    .map((row) => ({
+      accountId: row.account_id,
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      // Income accounts are credit-normal: net credit movement is the
+      // period's revenue for that account.
+      amount: Number(row.total_credit) - Number(row.total_debit),
+    }));
+
+  const expenseRows = rows.filter((row) => row.account_type === "Expense");
+
+  const directCostRows = expenseRows
+    .filter((row) => row.account_id === settings.supplies_used_account_id)
+    .map((row) => ({
+      accountId: row.account_id,
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      // Expense accounts are debit-normal: net debit movement is the
+      // period's cost for that account.
+      amount: Number(row.total_debit) - Number(row.total_credit),
+    }));
+
+  const operatingExpenseRows = expenseRows
+    .filter((row) => row.account_id !== settings.supplies_used_account_id)
+    .map((row) => ({
+      accountId: row.account_id,
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      amount: Number(row.total_debit) - Number(row.total_credit),
+    }));
+
+  const revenue = buildSection(incomeRows);
+  const directCosts = buildSection(directCostRows);
+  const operatingExpenses = buildSection(operatingExpenseRows);
+
+  const grossProfit = revenue.total - directCosts.total;
+  const totalOperatingExpenses = operatingExpenses.total;
+  const ebit = grossProfit - totalOperatingExpenses;
+
+  // No interest/tax accounts exist in this clinic's ledger design, so
+  // there is nothing to separate out below EBIT - Net Profit and EBIT
+  // are the same figure until such accounts exist.
+  const netProfit = ebit;
+
+  const depreciationTotal = operatingExpenses.lines
+    .filter((line) => DEPRECIATION_NAME_PATTERN.test(line.accountName))
+    .reduce((sum, line) => sum + line.amount, 0);
+
+  const ebitda = depreciationTotal > 0 ? ebit + depreciationTotal : null;
+
+  return {
+    start: startIso,
+    end: endIso,
+    revenue,
+    directCosts,
+    grossProfit,
+    operatingExpenses,
+    totalOperatingExpenses,
+    ebit,
+    netProfit,
+    ebitda,
+  };
+}
 
 function buildSection(
   rows: { accountId: string; accountCode: string; accountName: string; amount: number }[]
@@ -736,70 +888,116 @@ export async function getProfitAndLoss(
 
   const rows = (rpcResult.data ?? []) as RawProfitAndLossRow[];
 
-  const incomeRows = rows
-    .filter((row) => row.account_type === "Income")
-    .map((row) => ({
-      accountId: row.account_id,
-      accountCode: row.account_code,
-      accountName: row.account_name,
-      // Income accounts are credit-normal: net credit movement is the
-      // period's revenue for that account.
-      amount: Number(row.total_credit) - Number(row.total_debit),
-    }));
+  return computeProfitAndLossFromRows(rows, settings, startIso, endIso);
+}
 
-  const expenseRows = rows.filter((row) => row.account_type === "Expense");
+/**
+ * Batched form of getProfitAndLoss for every branch of an organization at
+ * once - one ensure-provisioned call, one settings query, one RPC call,
+ * regardless of branch count, instead of 3 x N. Used by the CEO
+ * Consolidated Financials page's EBIT/EBITDA figures (via
+ * getEbitEbitdaForClinics below) and available directly for any future
+ * multi-branch P&L view. Returns a Map so a caller can look up any
+ * branch's period by its clinic id; a branch with no ledger activity at
+ * all in the period still gets an entry (all-zero sections), matching
+ * what calling getProfitAndLoss for that one branch would return.
+ */
+export async function getProfitAndLossForClinics(
+  clinicIds: string[],
+  start: Date,
+  end: Date
+): Promise<Map<string, ProfitAndLossPeriod>> {
+  await assertPermission("ledger");
 
-  const directCostRows = expenseRows
-    .filter((row) => row.account_id === settings.supplies_used_account_id)
-    .map((row) => ({
-      accountId: row.account_id,
-      accountCode: row.account_code,
-      accountName: row.account_name,
-      // Expense accounts are debit-normal: net debit movement is the
-      // period's cost for that account.
-      amount: Number(row.total_debit) - Number(row.total_credit),
-    }));
+  const results = new Map<string, ProfitAndLossPeriod>();
 
-  const operatingExpenseRows = expenseRows
-    .filter((row) => row.account_id !== settings.supplies_used_account_id)
-    .map((row) => ({
-      accountId: row.account_id,
-      accountCode: row.account_code,
-      accountName: row.account_name,
-      amount: Number(row.total_debit) - Number(row.total_credit),
-    }));
+  if (clinicIds.length === 0) {
+    return results;
+  }
 
-  const revenue = buildSection(incomeRows);
-  const directCosts = buildSection(directCostRows);
-  const operatingExpenses = buildSection(operatingExpenseRows);
+  const startIso = start.toISOString().slice(0, 10);
+  const endIso = end.toISOString().slice(0, 10);
 
-  const grossProfit = revenue.total - directCosts.total;
-  const totalOperatingExpenses = operatingExpenses.total;
-  const ebit = grossProfit - totalOperatingExpenses;
+  const { error: provisionError } = await supabase.rpc(
+    "ensure_ledger_provisioned_multi",
+    { p_clinic_ids: clinicIds }
+  );
 
-  // No interest/tax accounts exist in this clinic's ledger design, so
-  // there is nothing to separate out below EBIT - Net Profit and EBIT
-  // are the same figure until such accounts exist.
-  const netProfit = ebit;
+  if (provisionError) {
+    logError(
+      "[ledger] getProfitAndLossForClinics failed to provision:",
+      provisionError
+    );
 
-  const depreciationTotal = operatingExpenses.lines
-    .filter((line) => DEPRECIATION_NAME_PATTERN.test(line.accountName))
-    .reduce((sum, line) => sum + line.amount, 0);
+    throw toError(provisionError);
+  }
 
-  const ebitda = depreciationTotal > 0 ? ebit + depreciationTotal : null;
+  const [settingsResult, rpcResult] = await Promise.all([
+    supabase
+      .from("clinic_ledger_settings")
+      .select("*")
+      .in("clinic_id", clinicIds),
+    supabase.rpc("get_profit_and_loss_multi", {
+      p_clinic_ids: clinicIds,
+      p_start: startIso,
+      p_end: endIso,
+    }),
+  ]);
 
-  return {
-    start: startIso,
-    end: endIso,
-    revenue,
-    directCosts,
-    grossProfit,
-    operatingExpenses,
-    totalOperatingExpenses,
-    ebit,
-    netProfit,
-    ebitda,
-  };
+  if (settingsResult.error) {
+    logError(
+      "[ledger] getProfitAndLossForClinics failed to load settings:",
+      settingsResult.error
+    );
+
+    throw toError(settingsResult.error);
+  }
+
+  if (rpcResult.error) {
+    logError(
+      "[ledger] getProfitAndLossForClinics failed:",
+      rpcResult.error
+    );
+
+    throw toError(rpcResult.error);
+  }
+
+  const settingsByClinicId = new Map<string, LedgerSettings>(
+    (settingsResult.data ?? []).map((row) => [
+      row.clinic_id as string,
+      row as LedgerSettings,
+    ])
+  );
+
+  const rowsByClinicId = new Map<string, RawProfitAndLossRow[]>();
+
+  for (const row of (rpcResult.data ?? []) as RawProfitAndLossRowMulti[]) {
+    const existing = rowsByClinicId.get(row.clinic_id) ?? [];
+    existing.push(row);
+    rowsByClinicId.set(row.clinic_id, existing);
+  }
+
+  for (const clinicId of clinicIds) {
+    const settings = settingsByClinicId.get(clinicId);
+
+    // No settings row - branch has never had any ledger activity and was
+    // never lazily provisioned before now (ensure_ledger_provisioned_multi
+    // above only provisions branches the caller is a genuine member of;
+    // if this ever happens it means the caller isn't actually a member of
+    // this branch, so it's correctly excluded rather than guessed at).
+    if (!settings) {
+      continue;
+    }
+
+    const rows = rowsByClinicId.get(clinicId) ?? [];
+
+    results.set(
+      clinicId,
+      computeProfitAndLossFromRows(rows, settings, startIso, endIso)
+    );
+  }
+
+  return results;
 }
 
 /* -------------------------------------- */
@@ -885,7 +1083,7 @@ export async function getCashFlowStatement(start: Date, end: Date): Promise<Cash
   const inventoryId = settings.inventory_account_id;
   const openingBalanceEquityId = settings.opening_balance_equity_account_id;
 
-  const [openingBalanceResults, transactionPages] = await Promise.all([
+  const [openingBalanceResults, transactionsByAccount] = await Promise.all([
     Promise.all(
       Array.from(cashAccountIds).map((id) =>
         supabase.rpc("get_account_opening_balance", { p_account_id: id, p_start: startIso })
@@ -893,7 +1091,7 @@ export async function getCashFlowStatement(start: Date, end: Date): Promise<Cash
     ),
     Promise.all(
       Array.from(cashAccountIds).map((id) =>
-        getLedgerTransactions({ accountId: id, startDate: startIso, endDate: endIso, limit: 10000 })
+        getAllLedgerTransactions({ accountId: id, startDate: startIso, endDate: endIso })
       )
     ),
   ]);
@@ -918,8 +1116,8 @@ export async function getCashFlowStatement(start: Date, end: Date): Promise<Cash
 
   const seenTransactionIds = new Set<string>();
 
-  for (const page of transactionPages) {
-    for (const txn of page.rows) {
+  for (const txns of transactionsByAccount) {
+    for (const txn of txns) {
       if (seenTransactionIds.has(txn.id)) continue;
 
       const entries = txn.clinic_ledger_entries ?? [];
@@ -1220,15 +1418,15 @@ const EBIT_AMORTIZATION_PATTERN = /amortiz/i;
  * is null (rendered as "Not available" by the UI, never estimated or
  * silently set equal to EBIT).
  */
-export async function getEbitEbitda(
-  start: Date,
-  end: Date,
-  overrideClinicId?: string
-): Promise<EbitEbitdaPeriod> {
-  await assertPermission("ledger");
-
-  const pl = await getProfitAndLoss(start, end, overrideClinicId);
-
+/**
+ * Pure: given one clinic's already-computed ProfitAndLossPeriod, derives
+ * its EbitEbitdaPeriod. Extracted for the same reason as
+ * computeProfitAndLossFromRows above - the batched
+ * getEbitEbitdaForClinics (CEO Consolidated Financials) and the
+ * single-clinic getEbitEbitda share this one computation, so batching
+ * the data fetch can never silently change the numbers.
+ */
+function computeEbitEbitdaFromPL(pl: ProfitAndLossPeriod): EbitEbitdaPeriod {
   const interestLines = pl.operatingExpenses.lines.filter((line) =>
     INTEREST_NAME_PATTERN.test(line.accountName)
   );
@@ -1306,4 +1504,43 @@ export async function getEbitEbitda(
     ebitMarginPercent,
     ebitdaMarginPercent,
   };
+}
+
+export async function getEbitEbitda(
+  start: Date,
+  end: Date,
+  overrideClinicId?: string
+): Promise<EbitEbitdaPeriod> {
+  await assertPermission("ledger");
+
+  const pl = await getProfitAndLoss(start, end, overrideClinicId);
+
+  return computeEbitEbitdaFromPL(pl);
+}
+
+/**
+ * Batched form of getEbitEbitda for every branch of an organization at
+ * once - built on getProfitAndLossForClinics (one query round-trip
+ * regardless of branch count) instead of calling getEbitEbitda once per
+ * branch. This is the piece that was the dominant cost in the CEO
+ * Consolidated Financials page at 50-branch scale (~5.4s of a ~10.6s
+ * total load) - live-verified before/after in the Production Readiness
+ * 2.0 report.
+ */
+export async function getEbitEbitdaForClinics(
+  clinicIds: string[],
+  start: Date,
+  end: Date
+): Promise<Map<string, EbitEbitdaPeriod>> {
+  await assertPermission("ledger");
+
+  const plByClinicId = await getProfitAndLossForClinics(clinicIds, start, end);
+
+  const results = new Map<string, EbitEbitdaPeriod>();
+
+  for (const [clinicId, pl] of plByClinicId) {
+    results.set(clinicId, computeEbitEbitdaFromPL(pl));
+  }
+
+  return results;
 }

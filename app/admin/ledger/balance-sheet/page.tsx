@@ -17,6 +17,7 @@ import { getBalanceSheet } from "@/services/ledger";
 import { BalanceSheetPeriod } from "@/types/ledger";
 
 import { AS_OF_DATE_PRESETS, resolveAsOfDate, shortDate } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function BalanceSheetPageContent() {
   const [loading, setLoading] = useState(true);
@@ -44,8 +45,7 @@ function BalanceSheetPageContent() {
       setBalanceSheet(sheet);
       setAsOfLabel(shortDate(resolvedAsOf));
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load the Balance Sheet.");
+      toast.error(getSafeErrorMessage(error, "Failed to load the Balance Sheet."));
     } finally {
       setLoading(false);
     }

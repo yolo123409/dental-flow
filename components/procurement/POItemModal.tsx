@@ -11,7 +11,7 @@ import Button from "@/components/ui/Button";
 import MaterialModal from "@/components/inventory/MaterialModal";
 
 import { getInventoryItems, ClinicInventoryItem } from "@/services/inventory";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { PurchaseOrderItem } from "@/types/procurement";
 
@@ -156,10 +156,8 @@ export default function POItemModal({ open, item, onClose, onSave }: Props) {
 
       onClose();
     } catch (error) {
-      logError("[POItemModal] save failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save item."
+        getSafeErrorMessage(error, "Failed to save item.", "[POItemModal] save failed:")
       );
     } finally {
       setSaving(false);

@@ -9,7 +9,7 @@ import Input from "@/components/ui/Input";
 import Badge from "@/components/ui/Badge";
 
 import { supabase } from "@/lib/supabase";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 import { acceptPendingInvitationIfNeeded } from "@/services/clinic";
 import {
   acceptInvitation,
@@ -211,15 +211,12 @@ export default function AcceptInvitationForm({
         router.push("/auth/login");
       }
     } catch (error: unknown) {
-      logError(
-        "[AcceptInvitationForm] Failed to accept invitation:",
-        error
-      );
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to accept this invitation."
+        getSafeErrorMessage(
+          error,
+          "Unable to accept this invitation.",
+          "[AcceptInvitationForm] Failed to accept invitation:"
+        )
       );
     } finally {
       setSubmitting(false);
@@ -251,15 +248,12 @@ export default function AcceptInvitationForm({
       router.push("/admin");
       router.refresh();
     } catch (error: unknown) {
-      logError(
-        "[AcceptInvitationForm] Failed to accept invitation with existing session:",
-        error
-      );
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to accept this invitation."
+        getSafeErrorMessage(
+          error,
+          "Unable to accept this invitation.",
+          "[AcceptInvitationForm] Failed to accept invitation with existing session:"
+        )
       );
     } finally {
       setSubmitting(false);

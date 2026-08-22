@@ -15,6 +15,7 @@ import {
 } from "@/services/inventory";
 import { getSuppliers } from "@/services/suppliers";
 import { Supplier } from "@/types/procurement";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -102,12 +103,8 @@ export default function ReturnToSupplierModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to record return to supplier."
+        getSafeErrorMessage(error, "Unable to record return to supplier.")
       );
     } finally {
       setSaving(false);

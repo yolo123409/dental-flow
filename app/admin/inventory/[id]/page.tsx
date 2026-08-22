@@ -36,6 +36,7 @@ import {
   updateInventoryItemPricing,
 } from "@/services/inventory";
 import { getClinicSettings, ClinicSettings } from "@/services/settings";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 type Tab = "overview" | "batches" | "history" | "details";
 
@@ -125,12 +126,8 @@ function MaterialDetailPage() {
       setBatches(itemBatches);
       setClinic(clinicSettings);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load material."
+        getSafeErrorMessage(error, "Failed to load material.")
       );
     } finally {
       setLoading(false);
@@ -152,12 +149,8 @@ function MaterialDetailPage() {
 
       setHistoryPage(page);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load stock history."
+        getSafeErrorMessage(error, "Failed to load stock history.")
       );
     } finally {
       setHistoryLoading(false);
@@ -253,12 +246,8 @@ function MaterialDetailPage() {
 
       await loadMaterial();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update selling price."
+        getSafeErrorMessage(error, "Failed to update selling price.")
       );
     } finally {
       setApplyingMarkup(false);

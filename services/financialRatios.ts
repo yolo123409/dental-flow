@@ -1,9 +1,9 @@
 import {
   getAccountLedger,
+  getAllLedgerTransactions,
   getBalanceSheet,
   getEbitEbitda,
   getLedgerSettings,
-  getLedgerTransactions,
   getProfitAndLoss,
 } from "./ledger";
 import { getAccountsReceivableReport } from "./accountsReceivable";
@@ -100,7 +100,7 @@ export async function getFinancialRatiosReport(
     receivableId ? getAccountLedger(receivableId, startIso, endIso) : Promise.resolve(null),
     payableId ? getAccountLedger(payableId, startIso, endIso) : Promise.resolve(null),
     payableId
-      ? getLedgerTransactions({ accountId: payableId, startDate: startIso, endDate: endIso, limit: 10000 })
+      ? getAllLedgerTransactions({ accountId: payableId, startDate: startIso, endDate: endIso })
       : Promise.resolve(null),
   ]);
 
@@ -210,7 +210,7 @@ export async function getFinancialRatiosReport(
   if (!payableId || !payableLedger || !payableTransactions) {
     accountsPayableDays = unavailable("Not available — no Accounts Payable account configured");
   } else {
-    const purchases = payableTransactions.rows.reduce((sum, txn) => {
+    const purchases = payableTransactions.reduce((sum, txn) => {
       const entries = txn.clinic_ledger_entries ?? [];
       const payableCredits = entries
         .filter((entry) => entry.account_id === payableId)

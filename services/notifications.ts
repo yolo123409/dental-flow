@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
@@ -364,14 +365,25 @@ export async function checkOverdueInvoices(): Promise<void> {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - OVERDUE_AFTER_DAYS);
 
-    const { data: overdueInvoices, error } = await supabase
-      .from("clinic_invoices")
-      .select("id, invoice_number, balance")
-      .eq("clinic_id", clinicId)
-      .neq("status", "Paid")
-      .lt("created_at", cutoff.toISOString());
+    // Paged rather than a single unbounded fetch - a best-effort
+    // background check, but still shouldn't silently miss overdue
+    // invoices past the 1,000th row for a clinic with a genuinely large
+    // unpaid backlog.
+    const overdueInvoices = await fetchAllRows<{
+      id: string;
+      invoice_number: string;
+      balance: number;
+    }>((from, to) =>
+      supabase
+        .from("clinic_invoices")
+        .select("id, invoice_number, balance")
+        .eq("clinic_id", clinicId)
+        .neq("status", "Paid")
+        .lt("created_at", cutoff.toISOString())
+        .range(from, to)
+    ).catch(() => []);
 
-    if (error || !overdueInvoices || overdueInvoices.length === 0) {
+    if (overdueInvoices.length === 0) {
       return;
     }
 

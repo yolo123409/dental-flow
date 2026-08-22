@@ -42,6 +42,7 @@ import {
   getRecentMovements,
   calculateMarkupFromPrices,
 } from "@/services/inventory";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 type StatusFilter =
   | "All"
@@ -223,12 +224,8 @@ function InventoryPageContent() {
 
       setItems(data);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load inventory."
+        getSafeErrorMessage(error, "Failed to load inventory.")
       );
     } finally {
       setLoading(false);
@@ -508,12 +505,8 @@ function InventoryPageContent() {
       setShowDeleteDialog(false);
       setSelected(null);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete material."
+        getSafeErrorMessage(error, "Failed to delete material.")
       );
     } finally {
       setDeleting(false);

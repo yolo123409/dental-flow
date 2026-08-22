@@ -32,6 +32,7 @@ import {
   formatAppointmentDateTime,
 } from "@/lib/whatsapp";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -153,12 +154,8 @@ export default function WhatsAppReminderModal({
 
       setStep("select-appointment");
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to prepare the reminder."
+        getSafeErrorMessage(error, "Failed to prepare the reminder.")
       );
 
       onClose();

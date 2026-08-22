@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, periodLabel } from "./shared";
@@ -27,36 +28,42 @@ export async function generatePaymentsReport(
 ): Promise<ReportResult> {
   const clinicMeta = await getClinicMeta();
 
-  let query = supabase
-    .from("clinic_payments")
-    .select(
-      "id, received_at, amount, payment_method, reference, patients(first_name, last_name), clinic_invoices(invoice_number)"
-    )
-    .eq("clinic_id", clinicMeta.clinicId)
-    .order("received_at", { ascending: false });
+  // Paged rather than a single unbounded fetch - this report exports
+  // every matching payment row, and a clinic with more than 1,000
+  // payments in the selected period would otherwise silently lose rows
+  // from both the totals and the exported table with no error.
+  let rows: PaymentRow[];
 
-  if (period.start && period.end) {
-    query = query
-      .gte("received_at", period.start.toISOString())
-      .lte("received_at", period.end.toISOString());
-  }
+  try {
+    rows = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("clinic_payments")
+        .select(
+          "id, received_at, amount, payment_method, reference, patients(first_name, last_name), clinic_invoices(invoice_number)"
+        )
+        .eq("clinic_id", clinicMeta.clinicId)
+        .order("received_at", { ascending: false });
 
-  if (filters.paymentMethod) {
-    query = query.eq("payment_method", filters.paymentMethod);
-  }
+      if (period.start && period.end) {
+        query = query
+          .gte("received_at", period.start.toISOString())
+          .lte("received_at", period.end.toISOString());
+      }
 
-  if (filters.patientId) {
-    query = query.eq("patient_id", filters.patientId);
-  }
+      if (filters.paymentMethod) {
+        query = query.eq("payment_method", filters.paymentMethod);
+      }
 
-  const { data, error } = await query;
+      if (filters.patientId) {
+        query = query.eq("patient_id", filters.patientId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as PaymentRow[];
+  } catch (error) {
     logError("[reports] generatePaymentsReport failed:", error);
-    throw toError(error);
+    throw error;
   }
-
-  const rows = (data ?? []) as unknown as PaymentRow[];
 
   const total = rows.reduce((sum, row) => sum + Number(row.amount), 0);
 

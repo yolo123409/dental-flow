@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, periodLabel } from "./shared";
@@ -30,40 +31,46 @@ export async function generateInvoiceReport(
 ): Promise<ReportResult> {
   const clinicMeta = await getClinicMeta();
 
-  let query = supabase
-    .from("clinic_invoices")
-    .select(
-      "invoice_number, created_at, total, amount_paid, balance, status, payment_method, patients(first_name, last_name)"
-    )
-    .eq("clinic_id", clinicMeta.clinicId)
-    .order("created_at", { ascending: false });
+  // Paged rather than a single unbounded fetch - this report exports
+  // every matching invoice, and a clinic with more than 1,000 matching
+  // the selected period/filters would otherwise silently lose rows from
+  // both the totals and the exported table with no error.
+  let rows: InvoiceRow[];
 
-  if (period.start && period.end) {
-    query = query
-      .gte("created_at", period.start.toISOString())
-      .lte("created_at", period.end.toISOString());
-  }
+  try {
+    rows = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("clinic_invoices")
+        .select(
+          "invoice_number, created_at, total, amount_paid, balance, status, payment_method, patients(first_name, last_name)"
+        )
+        .eq("clinic_id", clinicMeta.clinicId)
+        .order("created_at", { ascending: false });
 
-  if (filters.invoiceStatus) {
-    query = query.eq("status", filters.invoiceStatus);
-  }
+      if (period.start && period.end) {
+        query = query
+          .gte("created_at", period.start.toISOString())
+          .lte("created_at", period.end.toISOString());
+      }
 
-  if (filters.paymentMethod) {
-    query = query.eq("payment_method", filters.paymentMethod);
-  }
+      if (filters.invoiceStatus) {
+        query = query.eq("status", filters.invoiceStatus);
+      }
 
-  if (filters.patientId) {
-    query = query.eq("patient_id", filters.patientId);
-  }
+      if (filters.paymentMethod) {
+        query = query.eq("payment_method", filters.paymentMethod);
+      }
 
-  const { data, error } = await query;
+      if (filters.patientId) {
+        query = query.eq("patient_id", filters.patientId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as InvoiceRow[];
+  } catch (error) {
     logError("[reports] generateInvoiceReport failed:", error);
-    throw toError(error);
+    throw error;
   }
-
-  const rows = (data ?? []) as unknown as InvoiceRow[];
 
   const totalInvoiced = rows.reduce((sum, row) => sum + Number(row.total), 0);
   const totalPaid = rows.reduce((sum, row) => sum + Number(row.amount_paid), 0);

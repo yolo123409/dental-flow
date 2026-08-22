@@ -84,8 +84,6 @@ export function AuthProvider({
   async function loadProfileInner(
     user: User
   ) {
-    console.log("[auth] loading clinic profile for", user.id);
-
     // getCurrentClinicUser() (services/clinicUsers.ts) resolves 0 or 1
     // clinic_users rows exactly like the old direct .maybeSingle() query
     // did, and additionally resolves 2+ rows via the organization's
@@ -114,20 +112,10 @@ export function AuthProvider({
       !clinicUser &&
       user.user_metadata?.pending_clinic_name
     ) {
-      console.log(
-        "[auth] no clinic_users row yet but pending clinic metadata found - provisioning now:",
-        user.user_metadata.pending_clinic_name
-      );
-
       try {
         await provisionPendingClinicIfNeeded();
 
         clinicUser = (await getCurrentClinicUser()) as ClinicUser | null;
-
-        console.log(
-          "[auth] provisioning finished, clinic profile loaded:",
-          clinicUser
-        );
       } catch (provisionError) {
         logError(
           "[auth] Clinic provisioning failed:",
@@ -143,20 +131,10 @@ export function AuthProvider({
       !clinicUser &&
       user.user_metadata?.pending_organization_name
     ) {
-      console.log(
-        "[auth] no clinic_users row yet but pending organization metadata found - provisioning now:",
-        user.user_metadata.pending_organization_name
-      );
-
       try {
         await provisionPendingOrganizationIfNeeded();
 
         clinicUser = (await getCurrentClinicUser()) as ClinicUser | null;
-
-        console.log(
-          "[auth] organization provisioning finished, clinic profile loaded:",
-          clinicUser
-        );
       } catch (provisionError) {
         logError(
           "[auth] Organization provisioning failed:",

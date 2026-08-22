@@ -18,6 +18,7 @@ import {
   isImage,
   renameFile,
 } from "@/services/patientToothFiles";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   patientId: string;
@@ -182,12 +183,8 @@ export default function FileBrowser({
       await loadFiles();
 
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete file."
+        getSafeErrorMessage(error, "Failed to delete file.")
       );
 
     } finally {
@@ -224,12 +221,8 @@ export default function FileBrowser({
       await loadFiles();
 
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to rename file."
+        getSafeErrorMessage(error, "Failed to rename file.")
       );
 
     } finally {

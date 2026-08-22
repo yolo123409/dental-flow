@@ -11,7 +11,7 @@ import {
   createSupplierContact,
   updateSupplierContact,
 } from "@/services/suppliers";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { SupplierContact } from "@/types/procurement";
 
@@ -84,10 +84,12 @@ export default function SupplierContactFormModal({
       onClose();
       onSaved();
     } catch (error) {
-      logError("[SupplierContactFormModal] save failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save contact."
+        getSafeErrorMessage(
+          error,
+          "Failed to save contact.",
+          "[SupplierContactFormModal] save failed:"
+        )
       );
     } finally {
       setSaving(false);

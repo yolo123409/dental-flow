@@ -20,6 +20,7 @@ import {
   ClinicSettings,
   getClinicSettings,
 } from "@/services/settings";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function BillingPageContent() {
   const [loading, setLoading] =
@@ -65,12 +66,8 @@ function BillingPageContent() {
       );
       setClinicSettings(settingsResult);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load pending charges."
+        getSafeErrorMessage(error, "Failed to load pending charges.")
       );
     } finally {
       setLoading(false);
@@ -118,12 +115,8 @@ function BillingPageContent() {
         "Invoice created successfully."
       );
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to create invoice."
+        getSafeErrorMessage(error, "Failed to create invoice.")
       );
     }
   }

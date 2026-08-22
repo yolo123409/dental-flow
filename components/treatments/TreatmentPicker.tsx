@@ -37,11 +37,6 @@ export default function TreatmentPicker({
       const result =
         await searchTreatments();
 
-      console.log(
-        "Treatment search result:",
-        result
-      );
-
       setTreatments(
         result as Treatment[]
       );
@@ -78,16 +73,6 @@ export default function TreatmentPicker({
             .includes(term)
       );
     }, [query, treatments]);
-
-  console.log(
-    "Loaded treatments:",
-    treatments
-  );
-
-  console.log(
-    "Filtered treatments:",
-    filtered
-  );
 
   return (
     <div className="space-y-2">

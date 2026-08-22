@@ -16,7 +16,7 @@ import NewPurchaseOrderModal from "@/components/procurement/NewPurchaseOrderModa
 
 import usePermissions from "@/hooks/usePermissions";
 import { getPurchaseOrders } from "@/services/purchaseOrders";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { PurchaseOrder, PurchaseOrderStatus } from "@/types/procurement";
 
@@ -63,12 +63,12 @@ function PurchaseOrdersPageContent() {
 
       setOrders(data);
     } catch (error) {
-      logError("[PurchaseOrdersPage] load failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load purchase orders."
+        getSafeErrorMessage(
+          error,
+          "Failed to load purchase orders.",
+          "[PurchaseOrdersPage] load failed:"
+        )
       );
     } finally {
       setLoading(false);

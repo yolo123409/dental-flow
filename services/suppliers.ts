@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 
 import {
   Supplier,
@@ -40,6 +41,8 @@ export async function getSuppliers(
 export async function getSupplier(
   id: string
 ): Promise<SupplierWithContacts> {
+  await assertPermission("procurement");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -61,6 +64,8 @@ export async function getSupplier(
 export async function createSupplier(
   input: SupplierInput
 ): Promise<Supplier> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -87,6 +92,8 @@ export async function updateSupplier(
   id: string,
   input: SupplierInput
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -108,6 +115,8 @@ export async function updateSupplier(
 }
 
 export async function archiveSupplier(id: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -124,6 +133,8 @@ export async function archiveSupplier(id: string): Promise<void> {
 }
 
 export async function reactivateSupplier(id: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -143,6 +154,8 @@ export async function createSupplierContact(
   supplierId: string,
   input: SupplierContactInput
 ): Promise<SupplierContact> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -175,6 +188,8 @@ export async function updateSupplierContact(
   id: string,
   input: SupplierContactInput
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -201,6 +216,8 @@ export async function updateSupplierContact(
 }
 
 export async function archiveSupplierContact(id: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -232,6 +249,8 @@ export async function setPrimaryContact(
   supplierId: string,
   contactId: string
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error: unsetError } = await supabase

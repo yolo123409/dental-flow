@@ -2,10 +2,25 @@ import { supabase } from "@/lib/supabase";
 
 import { getCurrentClinicId } from "./clinic";
 
+const ALLOWED_PATIENT_FILE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/pdf",
+];
+
 export async function uploadPatientFile(
   patientId: string,
   file: File
 ) {
+  if (!ALLOWED_PATIENT_FILE_TYPES.includes(file.type)) {
+    throw new Error("Please upload a PNG, JPG, WEBP, or PDF file.");
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("File must be smaller than 10MB.");
+  }
+
   const extension = file.name.split(".").pop();
 
   const fileName =

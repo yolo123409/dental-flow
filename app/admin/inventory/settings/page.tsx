@@ -16,7 +16,7 @@ import {
   getProcurementSettings,
   updateProcurementSettings,
 } from "@/services/procurementSettings";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { ProcurementSettings, CustomFieldDefinition } from "@/types/procurement";
 
@@ -38,10 +38,8 @@ function ProcurementSettingsContent() {
 
       setSettings(data);
     } catch (error) {
-      logError("[ProcurementSettings] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load settings."
+        getSafeErrorMessage(error, "Failed to load settings.", "[ProcurementSettings] load failed:")
       );
     } finally {
       setLoading(false);
@@ -71,10 +69,12 @@ function ProcurementSettingsContent() {
 
       toast.success("Purchase Order template saved.");
     } catch (error) {
-      logError("[ProcurementSettings] save PO settings failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save settings."
+        getSafeErrorMessage(
+          error,
+          "Failed to save settings.",
+          "[ProcurementSettings] save PO settings failed:"
+        )
       );
     } finally {
       setSavingPo(false);
@@ -99,10 +99,12 @@ function ProcurementSettingsContent() {
 
       toast.success("GRN template saved.");
     } catch (error) {
-      logError("[ProcurementSettings] save GRN settings failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save settings."
+        getSafeErrorMessage(
+          error,
+          "Failed to save settings.",
+          "[ProcurementSettings] save GRN settings failed:"
+        )
       );
     } finally {
       setSavingGrn(false);

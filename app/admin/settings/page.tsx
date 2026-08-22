@@ -26,6 +26,7 @@ import {
   updateClinicInsuranceProviders,
 } from "@/services/insurance";
 import { getCurrentClinicId } from "@/services/clinic";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import { InsuranceProvider } from "@/types/insurance";
 
@@ -167,12 +168,8 @@ function SettingsPageContent() {
       setSettings(result);
       savedSnapshotRef.current = result;
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load settings."
+        getSafeErrorMessage(error, "Failed to load settings.")
       );
     } finally {
       setLoading(false);
@@ -200,12 +197,8 @@ function SettingsPageContent() {
         accepted.map((provider) => provider.id)
       );
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load insurance providers."
+        getSafeErrorMessage(error, "Failed to load insurance providers.")
       );
     }
   }
@@ -231,12 +224,8 @@ function SettingsPageContent() {
 
       toast.success("Insurance providers updated.");
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update insurance providers."
+        getSafeErrorMessage(error, "Failed to update insurance providers.")
       );
     } finally {
       setSavingInsurance(false);
@@ -319,12 +308,8 @@ function SettingsPageContent() {
 
       toast.success("Settings saved.");
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save settings."
+        getSafeErrorMessage(error, "Failed to save settings.")
       );
     } finally {
       setSaving(false);
@@ -352,12 +337,8 @@ function SettingsPageContent() {
 
       toast.success("Logo updated.");
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to upload logo."
+        getSafeErrorMessage(error, "Failed to upload logo.")
       );
     } finally {
       setUploadingLogo(false);
@@ -385,12 +366,8 @@ function SettingsPageContent() {
 
       toast.success("Logo removed.");
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to remove logo."
+        getSafeErrorMessage(error, "Failed to remove logo.")
       );
     } finally {
       setRemovingLogo(false);

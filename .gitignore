@@ -40,6 +40,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local backup staging (never commit real DB/Storage backups)
+/.backups/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

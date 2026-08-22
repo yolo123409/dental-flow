@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, periodLabel } from "./shared";
@@ -27,35 +28,43 @@ export async function generateOutstandingBalancesReport(
 ): Promise<ReportResult> {
   const clinicMeta = await getClinicMeta();
 
-  let query = supabase
-    .from("clinic_invoices")
-    .select(
-      "id, invoice_number, created_at, total, amount_paid, patients(first_name, last_name)"
-    )
-    .eq("clinic_id", clinicMeta.clinicId)
-    .neq("status", "Paid")
-    .order("created_at", { ascending: true });
+  // Paged rather than a single unbounded fetch - this report exports
+  // every matching outstanding invoice, and a clinic with more than
+  // 1,000 in the selected period would otherwise silently lose rows
+  // from both the totals and the exported table with no error.
+  let invoiceRows: InvoiceRow[];
 
-  if (period.start && period.end) {
-    query = query
-      .gte("created_at", period.start.toISOString())
-      .lte("created_at", period.end.toISOString());
-  }
+  try {
+    invoiceRows = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("clinic_invoices")
+        .select(
+          "id, invoice_number, created_at, total, amount_paid, patients(first_name, last_name)"
+        )
+        .eq("clinic_id", clinicMeta.clinicId)
+        .neq("status", "Paid")
+        .order("created_at", { ascending: true });
 
-  if (filters.patientId) {
-    query = query.eq("patient_id", filters.patientId);
-  }
+      if (period.start && period.end) {
+        query = query
+          .gte("created_at", period.start.toISOString())
+          .lte("created_at", period.end.toISOString());
+      }
 
-  const { data, error } = await query;
+      if (filters.patientId) {
+        query = query.eq("patient_id", filters.patientId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as InvoiceRow[];
+  } catch (error) {
     logError("[reports] generateOutstandingBalancesReport failed:", error);
-    throw toError(error);
+    throw error;
   }
 
   const now = Date.now();
 
-  const rows = ((data ?? []) as unknown as InvoiceRow[]).map((row) => {
+  const rows = invoiceRows.map((row) => {
     const outstanding = Number(row.total) - Number(row.amount_paid);
     const daysOutstanding = Math.max(
       0,

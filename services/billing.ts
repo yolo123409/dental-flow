@@ -4,6 +4,7 @@ import { roundMoney } from "@/lib/currency";
 
 import { getCurrentClinicId } from "./clinic";
 import { getClinicSettings } from "./settings";
+import { assertPermission } from "./authorization";
 import {
   notifyInvoiceCreated,
   notifyPaymentRecorded,
@@ -127,18 +128,43 @@ export interface ClinicCharge {
 /* Get Invoices                           */
 /* -------------------------------------- */
 
-export async function getInvoices() {
+// Safety cap, not a real pagination boundary - protects against an
+// unbounded full-table fetch for a clinic that has accumulated many
+// years of invoices (found during a production-hardening audit). A
+// clinic actually approaching this many invoices needs real pagination
+// UI on the Invoices page, which is a larger change than this fix.
+export interface InvoiceListResult {
+  rows: ClinicInvoice[];
+  count: number;
+}
+
+/**
+ * Real server-side pagination (Production Readiness 2.0), replacing the
+ * previous 2,000-row safety cap - which was an explicitly-documented
+ * stopgap, not real pagination, and would have started silently
+ * dropping a clinic's oldest invoices past that count.
+ */
+export async function getInvoices(
+  page = 1,
+  pageSize = 50
+): Promise<InvoiceListResult> {
+  await assertPermission("billing");
+
   const clinicId =
     await getCurrentClinicId();
 
-  const { data, error } =
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } =
     await supabase
       .from("clinic_invoices")
-      .select("*, insurance_provider:insurance_providers(name)")
+      .select("*, insurance_provider:insurance_providers(name)", { count: "exact" })
       .eq("clinic_id", clinicId)
       .order("created_at", {
         ascending: false,
-      });
+      })
+      .range(from, to);
 
   if (error) {
     logError("[billing] getInvoices failed:", error);
@@ -146,9 +172,52 @@ export async function getInvoices() {
     throw toError(error);
   }
 
-  return (
-    data ?? []
-  ) as ClinicInvoice[];
+  return {
+    rows: (data ?? []) as ClinicInvoice[],
+    count: count ?? 0,
+  };
+}
+
+/**
+ * Lightweight alternative to getInvoices()+calculateBalance() for
+ * callers that only need the clinic-wide outstanding balance total (e.g.
+ * PatientStats on the Patients page) - selects just the two columns the
+ * calculation actually needs instead of every invoice column plus the
+ * insurance-provider join, and isn't capped by INVOICE_LIST_SAFETY_LIMIT
+ * since a balance total must reflect every invoice, not just the most
+ * recent ones. Uses the exact same calculateBalance() formula, so this
+ * can never drift from what getInvoices()+calculateBalance() would
+ * compute.
+ */
+export async function getInvoiceBalanceTotals(): Promise<
+  ReturnType<typeof calculateBalance>
+> {
+  const clinicId = await getCurrentClinicId();
+
+  // Aggregate RPC (migration 0067), not a `.select('total, amount_paid')`
+  // fetch of every invoice row summed in JS - found to have the same
+  // silent-truncation risk as the other unbounded sum queries fixed in
+  // this pass. Same total/paid/outstanding formula as calculateBalance,
+  // computed server-side instead.
+  const { data, error } = await supabase.rpc("get_invoice_balance_totals", {
+    p_clinic_id: clinicId,
+  });
+
+  if (error) {
+    logError("[billing] getInvoiceBalanceTotals failed:", error);
+
+    throw toError(error);
+  }
+
+  const row = (data?.[0] ?? { total: 0, paid: 0 }) as {
+    total: number;
+    paid: number;
+  };
+
+  const total = Number(row.total ?? 0);
+  const paid = Number(row.paid ?? 0);
+
+  return { total, paid, outstanding: total - paid };
 }
 
 /* -------------------------------------- */
@@ -156,6 +225,8 @@ export async function getInvoices() {
 /* -------------------------------------- */
 
 export async function getPendingCharges() {
+  await assertPermission("billing");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -187,6 +258,8 @@ export async function getPendingCharges() {
 export async function getInvoice(
   invoiceId: string
 ) {
+  await assertPermission("billing");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -349,6 +422,8 @@ export async function createInvoice(
   paymentMethod?: string | null,
   insuranceProviderId?: string | null
 ) {
+  await assertPermission("billing");
+
   // Mirrors the DB's clinic_invoices_insurance_provider_requires_method
   // constraint - checked here too so a missing provider produces a clear
   // toast instead of a raw constraint-violation message reaching the UI.
@@ -481,6 +556,8 @@ export async function createInvoice(
 export async function getPatientInvoices(
   patientId: string
 ): Promise<ClinicInvoice[]> {
+  await assertPermission("billing");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -552,6 +629,8 @@ export async function recordPayment(
   notes?: string,
   insuranceProviderId?: string | null
 ) {
+  await assertPermission("billing");
+
   // Mirrors clinic_payments_insurance_provider_requires_method - checked
   // here too so a missing provider produces a clear toast instead of a
   // raw constraint-violation message.

@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 
 import { AcquisitionSource, PatientGender, ReferralSource } from "@/types";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -119,12 +120,8 @@ export default function AddPatientModal({
       setForm(emptyForm());
 
     } catch (error) {
-      console.error("Save patient error:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to save patient."
+        getSafeErrorMessage(error, "Unable to save patient.", "Save patient error:")
       );
     } finally {
       setLoading(false);

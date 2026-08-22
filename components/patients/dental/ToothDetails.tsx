@@ -21,6 +21,7 @@ import {
   getToothHistory,
   saveTooth,
 } from "@/services/patientTeeth";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 type Tab =
   | "details"
@@ -86,12 +87,8 @@ export default function ToothDetails({
 
       await loadHistory();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save tooth record."
+        getSafeErrorMessage(error, "Failed to save tooth record.")
       );
     } finally {
       setSaving(false);

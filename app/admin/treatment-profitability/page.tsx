@@ -14,7 +14,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import ConfigureCostModal from "@/components/treatmentProfitability/ConfigureCostModal";
 
 import usePermissions from "@/hooks/usePermissions";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { getTreatmentProfitabilityReport } from "@/services/treatmentProfitability";
 import { getClinicSettings } from "@/services/settings";
@@ -64,12 +64,12 @@ function TreatmentProfitabilityPageContent() {
       setReport(reportData);
       setCurrency(clinicSettings.currency || "KES");
     } catch (error) {
-      logError("[TreatmentProfitabilityPage] load failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load treatment profitability."
+        getSafeErrorMessage(
+          error,
+          "Failed to load treatment profitability.",
+          "[TreatmentProfitabilityPage] load failed:"
+        )
       );
     } finally {
       setLoading(false);

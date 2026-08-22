@@ -24,6 +24,7 @@ import {
   percentChange,
   resolveCurrentPeriod,
 } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function ProfitAndLossPageContent() {
   const [loading, setLoading] = useState(true);
@@ -62,8 +63,7 @@ function ProfitAndLossPageContent() {
       setCurrentLabel(resolvedCurrent.label);
       setPreviousLabel(previousPeriod.label);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Profit & Loss.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Profit & Loss."));
     } finally {
       setLoading(false);
     }

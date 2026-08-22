@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { createInvoice, ChargeSelection } from "./billing";
+import { assertPermission } from "./authorization";
 import {
   notifyTreatmentPlanCreated,
   notifyTreatmentCompleted,
@@ -398,6 +399,13 @@ export async function billTreatmentPlanItems(
   paymentMethod?: string | null,
   insuranceProviderId?: string | null
 ) {
+  // Checked here, before any clinic_charges/treatment_plan_items writes
+  // happen below, rather than relying only on createInvoice()'s own
+  // check at the very end - createInvoice() alone would still leave
+  // behind orphaned Pending charges linked to treatment_plan_items for a
+  // caller who fails the permission check right at the last step.
+  await assertPermission("billing");
+
   const clinicId = await getCurrentClinicId();
 
   let items = plan.treatment_plan_items.filter(

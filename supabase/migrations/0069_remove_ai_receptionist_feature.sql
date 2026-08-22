@@ -1,0 +1,21 @@
+-- Production Readiness 2.0, Section 4 follow-up. The AI Receptionist /
+-- Playground feature (app/admin/receptionist, app/admin/playground) was
+-- confirmed unused (owner does not use it; not linked from any nav/menu
+-- in the app) and its two backing tables, ai_conversations and
+-- ai_receptionists, were confirmed live with RLS disabled, zero
+-- policies, and full anon-key CRUD access - the same exposure migration
+-- 0004 was written to fix. Per owner decision, the feature is removed
+-- outright instead of fixing its RLS: the pages, the (already-missing)
+-- /api/ai route, and both tables.
+--
+-- Migration 0004_fix_ai_receptionist_isolation.sql is removed from the
+-- repo in this same change (it was never applied to any live database,
+-- so this does not modify applied migration history) since it targets
+-- tables this migration drops and would fail if ever run afterward.
+--
+-- Both tables are confirmed to hold at most incidental demo data
+-- (ai_receptionists: 0 rows; ai_conversations: 1 row, a "hi" test
+-- message with no clinic attribution) - nothing of product value is
+-- lost.
+drop table if exists public.ai_conversations;
+drop table if exists public.ai_receptionists;

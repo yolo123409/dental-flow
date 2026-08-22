@@ -11,6 +11,7 @@ import type {
   CreatePatientNoteData,
   UpdatePatientNoteData,
 } from "@/types/patientNote";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface PatientNoteModalProps {
   open: boolean;
@@ -103,12 +104,8 @@ export default function PatientNoteModal({
         note ? "Note updated." : "Note added."
       );
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save note."
+        getSafeErrorMessage(error, "Failed to save note.")
       );
     } finally {
       setSaving(false);

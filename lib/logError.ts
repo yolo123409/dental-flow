@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 interface NormalizedError {
   message: string;
   code?: string;
@@ -129,7 +131,32 @@ export function logError(
   // readable output.
   console.error(normalized);
 
+  reportToMonitoring(context, normalized);
+
   return normalized;
+}
+
+/**
+ * A Postgrest constraint-violation `details` string can embed the
+ * literal conflicting row value (e.g. `Key (email)=(x@y.com) already
+ * exists.`), and `raw` is the full serialized error object - both are
+ * exactly the kind of thing Section 6 says must never reach the
+ * monitoring provider. Only `message` (a fixed, non-parameterized string
+ * for any given error type) and `code` (a short Postgres/Postgrest
+ * error code, e.g. "23505") are forwarded - enough to group and triage
+ * an error, never enough to carry patient/staff data. A no-op if Sentry
+ * was never initialized (see instrumentation.ts).
+ */
+function reportToMonitoring(
+  context: string,
+  normalized: NormalizedError
+): void {
+  const scrubbed = new Error(normalized.message);
+  scrubbed.name = context;
+
+  Sentry.captureException(scrubbed, {
+    tags: normalized.code ? { db_error_code: normalized.code } : undefined,
+  });
 }
 
 /**
@@ -158,4 +185,42 @@ export function toError(error: unknown): Error {
   });
 
   return wrapped;
+}
+
+/**
+ * Safe alternative to `error instanceof Error ? error.message : fallback`
+ * for user-facing toasts/alerts - found during a production-hardening
+ * audit to be the app-wide default pattern (~100 call sites), which
+ * surfaces raw Postgres/PostgREST error text (constraint names, column
+ * names, RLS policy wording) to any authenticated clinic user, not just
+ * Owner/Admin. Always logs the real error via logError() first, so
+ * nothing is lost for debugging - only what reaches the UI changes.
+ *
+ * A Postgrest/DB error that went through toError() always carries a
+ * `code` property (even when its value is undefined - toError's
+ * Object.assign sets the key regardless), because it originated from a
+ * real Postgrest error object which always has that shape. A plain,
+ * hand-written `throw new Error("Please upload a PNG or PDF file.")`
+ * validation error never has a `code` property at all. That's a
+ * reliable, zero-configuration way to tell "safe, app-authored message"
+ * apart from "raw DB error" without needing every validation throw site
+ * to be rewritten to use a special error class - own-property presence,
+ * not value, is what's checked, so it also still works even if a real
+ * Postgrest error happens to have a null/undefined code.
+ */
+export function getSafeErrorMessage(
+  error: unknown,
+  fallback: string,
+  context = "[ui]"
+): string {
+  logError(context, error);
+
+  if (
+    error instanceof Error &&
+    !Object.prototype.hasOwnProperty.call(error, "code")
+  ) {
+    return error.message;
+  }
+
+  return fallback;
 }

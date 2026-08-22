@@ -14,9 +14,7 @@ export default function OdontogramPage() {
       <Odontogram
         showLabels
         theme="light"
-        onChange={(selected) => {
-          console.log(selected);
-        }}
+        onChange={() => {}}
       />
 
     </div>

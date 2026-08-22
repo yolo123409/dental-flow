@@ -35,7 +35,7 @@ import {
 } from "@/services/grns";
 import { getClinicSettings, ClinicSettings } from "@/services/settings";
 import { getProcurementSettings } from "@/services/procurementSettings";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import {
   GRNWithItems,
@@ -96,10 +96,8 @@ function GRNDetailContent() {
       setDateReceived(data.date_received);
       setNotes(data.notes ?? "");
     } catch (error) {
-      logError("[GRNDetail] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load GRN."
+        getSafeErrorMessage(error, "Failed to load GRN.", "[GRNDetail] load failed:")
       );
     } finally {
       setLoading(false);
@@ -123,10 +121,8 @@ function GRNDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[GRNDetail] save header failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save changes."
+        getSafeErrorMessage(error, "Failed to save changes.", "[GRNDetail] save header failed:")
       );
     } finally {
       setSavingHeader(false);
@@ -160,10 +156,8 @@ function GRNDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[GRNDetail] remove item failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove item."
+        getSafeErrorMessage(error, "Failed to remove item.", "[GRNDetail] remove item failed:")
       );
     } finally {
       setBusy(false);
@@ -184,12 +178,12 @@ function GRNDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[GRNDetail] confirm receipt failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to confirm goods received."
+        getSafeErrorMessage(
+          error,
+          "Failed to confirm goods received.",
+          "[GRNDetail] confirm receipt failed:"
+        )
       );
     } finally {
       setBusy(false);
@@ -210,10 +204,8 @@ function GRNDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[GRNDetail] cancel failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to cancel GRN."
+        getSafeErrorMessage(error, "Failed to cancel GRN.", "[GRNDetail] cancel failed:")
       );
     } finally {
       setBusy(false);

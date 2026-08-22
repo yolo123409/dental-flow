@@ -18,6 +18,7 @@ import { getAccountsReceivableReport } from "@/services/accountsReceivable";
 import { ArInvoiceRow, ArReport } from "@/types/accountsReceivable";
 
 import { REPORT_RANGE_OPTIONS, ResolvedPeriod, resolveCurrentPeriod } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 const BUCKET_FILTERS = ["All", "Current", "Overdue", "1–30", "31–60", "61–90", "90+"];
 
@@ -77,8 +78,7 @@ function AccountsReceivablePageContent() {
       setCurrency(clinicSettings.currency || "KES");
       setReport(data);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Accounts Receivable.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Accounts Receivable."));
     } finally {
       setLoading(false);
     }

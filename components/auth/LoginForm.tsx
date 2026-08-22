@@ -10,6 +10,7 @@ import { signIn } from "@/services/auth";
 import { provisionPendingClinicIfNeeded } from "@/services/clinic";
 
 import { toast } from "sonner";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -42,16 +43,7 @@ export default function LoginForm() {
       router.refresh();
 
     } catch (error: unknown) {
-      console.error(error);
-
-      if (error instanceof Error) {
-        toast.error(
-          error.message || "Unable to sign in."
-        );
-      } else {
-        toast.error("Unable to sign in.");
-      }
-
+      toast.error(getSafeErrorMessage(error, "Unable to sign in."));
     } finally {
       setLoading(false);
     }

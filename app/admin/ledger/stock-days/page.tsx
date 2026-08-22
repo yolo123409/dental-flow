@@ -15,6 +15,7 @@ import { getStockDaysReport } from "@/services/stockDays";
 import { MetricValue, StockDaysReport } from "@/types/stockDays";
 
 import { REPORT_RANGE_OPTIONS, ResolvedPeriod, resolveCurrentPeriod, shortDate } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function MetricCard({
   title,
@@ -78,8 +79,7 @@ function StockDaysPageContent() {
       setReport(data);
       setBalanceSheetAsOfLabel(shortDate(resolvedPeriod.end));
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Stock Days.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Stock Days."));
     } finally {
       setLoading(false);
     }

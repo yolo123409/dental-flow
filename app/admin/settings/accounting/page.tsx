@@ -24,6 +24,7 @@ import { getClinicSettings } from "@/services/settings";
 
 import { LedgerAccount, LedgerAccountType, LedgerSettings } from "@/types/ledger";
 import { ExpenseCategory } from "@/types/expenses";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 const ACCOUNT_TYPES: LedgerAccountType[] = ["Asset", "Liability", "Equity", "Income", "Expense"];
 
@@ -72,8 +73,7 @@ function AccountingSettingsContent() {
       setSettings(settingsRow);
       setCategories(categoryRows);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load accounting settings.");
+      toast.error(getSafeErrorMessage(error, "Failed to load accounting settings."));
     } finally {
       setLoading(false);
     }
@@ -101,8 +101,7 @@ function AccountingSettingsContent() {
 
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to create account.");
+      toast.error(getSafeErrorMessage(error, "Unable to create account."));
     } finally {
       setCreating(false);
     }
@@ -115,8 +114,7 @@ function AccountingSettingsContent() {
       await updateLedgerAccount(account.id, { name: name.trim() });
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to rename account.");
+      toast.error(getSafeErrorMessage(error, "Unable to rename account."));
     }
   }
 
@@ -126,8 +124,7 @@ function AccountingSettingsContent() {
       toast.success(account.active ? "Account deactivated." : "Account reactivated.");
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to update account.");
+      toast.error(getSafeErrorMessage(error, "Unable to update account."));
     }
   }
 
@@ -136,8 +133,7 @@ function AccountingSettingsContent() {
       await updateLedgerSettings({ [key]: accountId || null } as Partial<LedgerSettings>);
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to update mapping.");
+      toast.error(getSafeErrorMessage(error, "Unable to update mapping."));
     }
   }
 
@@ -152,8 +148,7 @@ function AccountingSettingsContent() {
       await updateLedgerSettings({ payment_method_accounts: next });
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to update mapping.");
+      toast.error(getSafeErrorMessage(error, "Unable to update mapping."));
     }
   }
 
@@ -162,8 +157,7 @@ function AccountingSettingsContent() {
       await setExpenseCategoryAccount(categoryId, accountId || null);
       await load();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to update category mapping.");
+      toast.error(getSafeErrorMessage(error, "Unable to update category mapping."));
     }
   }
 
@@ -185,8 +179,7 @@ function AccountingSettingsContent() {
 
       setOpeningAmounts((prev) => ({ ...prev, [account.id]: "" }));
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to set opening balance.");
+      toast.error(getSafeErrorMessage(error, "Unable to set opening balance."));
     } finally {
       setSavingOpening(null);
     }

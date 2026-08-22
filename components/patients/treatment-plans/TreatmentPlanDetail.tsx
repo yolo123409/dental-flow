@@ -31,6 +31,7 @@ import {
   TreatmentPlanWithItems,
   SaveTreatmentItemInput,
 } from "@/types/treatmentPlan";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   plan: TreatmentPlanWithItems;
@@ -128,12 +129,8 @@ export default function TreatmentPlanDetail({
 
       await onReload();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save procedure."
+        getSafeErrorMessage(error, "Failed to save procedure.")
       );
     } finally {
       setSavingItem(false);

@@ -17,6 +17,7 @@ import { EXPENSE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 
 import { Expense, ExpenseCategory } from "@/types/expenses";
 import { Supplier } from "@/types/procurement";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -153,10 +154,8 @@ export default function RecordExpenseModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error ? error.message : "Unable to save expense."
+        getSafeErrorMessage(error, "Unable to save expense.")
       );
     } finally {
       setSaving(false);

@@ -11,7 +11,7 @@ import {
   getClinicInsuranceProviders,
   updateClinicInsuranceProviders,
 } from "@/services/insurance";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { InsuranceProvider } from "@/types/insurance";
 
@@ -87,15 +87,12 @@ export default function ManageInsuranceProvidersModal({
 
       onSuccess(updated);
     } catch (error) {
-      logError(
-        "[ManageInsuranceProvidersModal] updateClinicInsuranceProviders failed:",
-        error
-      );
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to update insurance providers."
+        getSafeErrorMessage(
+          error,
+          "Unable to update insurance providers.",
+          "[ManageInsuranceProvidersModal] updateClinicInsuranceProviders failed:"
+        )
       );
     } finally {
       setSaving(false);

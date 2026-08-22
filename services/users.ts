@@ -4,9 +4,12 @@ import { ClinicUser } from "@/types/clinicUser";
 
 import { getCurrentClinicId } from "./clinic";
 import { notifyStaffRoleChanged } from "./notifications";
+import { assertPermission } from "./authorization";
 
 
 export async function getUsers(): Promise<ClinicUser[]> {
+  await assertPermission("users");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -27,6 +30,8 @@ export async function getUsers(): Promise<ClinicUser[]> {
 export async function getUser(
   id: string
 ): Promise<ClinicUser> {
+  await assertPermission("users");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -49,6 +54,8 @@ export async function updateUser(
   id: string,
   updates: Partial<ClinicUser>
 ): Promise<ClinicUser> {
+  await assertPermission("users");
+
   const clinicId = await getCurrentClinicId();
 
   const { data: existing } = await supabase
@@ -84,6 +91,8 @@ export async function updateUser(
 }
 
 export async function suspendUser(id: string) {
+  await assertPermission("users");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -102,6 +111,8 @@ export async function suspendUser(id: string) {
 }
 
 export async function activateUser(id: string) {
+  await assertPermission("users");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -120,6 +131,8 @@ export async function activateUser(id: string) {
 }
 
 export async function deleteUser(id: string) {
+  await assertPermission("users");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase

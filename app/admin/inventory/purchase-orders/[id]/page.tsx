@@ -33,7 +33,7 @@ import {
 import { createGRNFromPurchaseOrder } from "@/services/grns";
 import { getClinicSettings, ClinicSettings } from "@/services/settings";
 import { getProcurementSettings } from "@/services/procurementSettings";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import {
   PurchaseOrderWithItems,
@@ -95,12 +95,12 @@ function PurchaseOrderDetailContent() {
       setClinic(clinicData);
       setProcurementSettings(settingsData);
     } catch (error) {
-      logError("[PurchaseOrderDetail] load failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load purchase order."
+        getSafeErrorMessage(
+          error,
+          "Failed to load purchase order.",
+          "[PurchaseOrderDetail] load failed:"
+        )
       );
     } finally {
       setLoading(false);
@@ -159,10 +159,12 @@ function PurchaseOrderDetailContent() {
 
       router.push(`/admin/inventory/grns/${grn.id}`);
     } catch (error) {
-      logError("[PurchaseOrderDetail] createGRNFromPurchaseOrder failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to start receiving."
+        getSafeErrorMessage(
+          error,
+          "Failed to start receiving.",
+          "[PurchaseOrderDetail] createGRNFromPurchaseOrder failed:"
+        )
       );
     } finally {
       setReceiving(false);
@@ -206,10 +208,12 @@ function PurchaseOrderDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[PurchaseOrderDetail] remove item failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove item."
+        getSafeErrorMessage(
+          error,
+          "Failed to remove item.",
+          "[PurchaseOrderDetail] remove item failed:"
+        )
       );
     } finally {
       setBusy(false);
@@ -230,12 +234,12 @@ function PurchaseOrderDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[PurchaseOrderDetail] cancel failed:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to cancel purchase order."
+        getSafeErrorMessage(
+          error,
+          "Failed to cancel purchase order.",
+          "[PurchaseOrderDetail] cancel failed:"
+        )
       );
     } finally {
       setBusy(false);

@@ -11,7 +11,8 @@ import {
 import { getClinicSettings } from "@/services/settings";
 import { getExpenseSummary } from "@/services/expenses";
 import useRealtimeDashboard from "@/hooks/useRealtimeDashboard";
-import { logError } from "@/lib/logError";
+import usePermissions from "@/hooks/usePermissions";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import PageContainer from "@/components/ui/PageContainer";
 
@@ -26,6 +27,9 @@ interface DashboardState {
 }
 
 export default function AdminDashboard() {
+  const { hasPermission } = usePermissions();
+  const canViewFinancials = hasPermission("analytics");
+
   const [stats, setStats] = useState<DashboardState>({
     patients: 0,
     appointments: 0,
@@ -80,6 +84,38 @@ export default function AdminDashboard() {
       setLoading(false);
     }
 
+    // clinicName/currency are needed for the welcome banner regardless
+    // of role, so this is always fetched - only the financial figures
+    // below are permission-gated. taxEnabled is read from this local
+    // variable (not the taxEnabled state) below in the same function
+    // call, since the setTaxEnabled state update wouldn't be visible
+    // yet within this same invocation.
+    let taxEnabledForThisLoad = false;
+
+    try {
+      const clinicSettings = await getClinicSettings();
+
+      taxEnabledForThisLoad = Boolean(clinicSettings.tax_enabled);
+
+      setCurrency(clinicSettings.currency || "KES");
+      setClinicName(clinicSettings.clinic_name);
+    } catch (error) {
+      logError(
+        "[dashboard page] Failed to load clinic settings:",
+        error
+      );
+    }
+
+    // Revenue/expense figures are analytics-tier data - a role without
+    // the `analytics` permission (Dentist, Receptionist) sees none of
+    // this on the dashboard either, matching that they don't see the
+    // Analytics/Reports/Visit Analytics sidebar links.
+    if (!canViewFinancials) {
+      setRevenueLoading(false);
+      setMoneyOutLoading(false);
+      return;
+    }
+
     // Same shared revenue source the Analytics page uses
     // (services/analytics/revenue.ts + services/analytics/charts.ts) -
     // isolated in its own try/catch so a revenue-source failure doesn't
@@ -88,25 +124,16 @@ export default function AdminDashboard() {
       setRevenueLoading(true);
       setRevenueError(null);
 
-      const [
-        monthRevenue,
-        chartData,
-        clinicSettings,
-      ] = await Promise.all([
+      const [monthRevenue, chartData] = await Promise.all([
         getRevenueAnalytics("This Month"),
         getRevenueChartData("30 Days"),
-        getClinicSettings(),
       ]);
 
       setRevenue(monthRevenue.totalRevenue);
       setRevenueChart(chartData);
-      setCurrency(clinicSettings.currency || "KES");
-      setClinicName(clinicSettings.clinic_name);
 
       setTaxCollected(
-        clinicSettings.tax_enabled
-          ? monthRevenue.totalTaxCollected
-          : null
+        taxEnabledForThisLoad ? monthRevenue.totalTaxCollected : null
       );
     } catch (error) {
       logError(
@@ -115,9 +142,7 @@ export default function AdminDashboard() {
       );
 
       setRevenueError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load revenue."
+        getSafeErrorMessage(error, "Failed to load revenue.")
       );
     } finally {
       setRevenueLoading(false);
@@ -144,14 +169,12 @@ export default function AdminDashboard() {
       setBreakEven(null);
 
       setMoneyOutError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load Money Out."
+        getSafeErrorMessage(error, "Failed to load Money Out.")
       );
     } finally {
       setMoneyOutLoading(false);
     }
-  }, []);
+  }, [canViewFinancials]);
 
   useEffect(() => {
     loadDashboard();
@@ -184,18 +207,20 @@ export default function AdminDashboard() {
         dentists={stats.dentists}
       />
 
-      <DashboardWidgets
-        revenue={revenue}
-        taxCollected={taxCollected}
-        breakEven={breakEven}
-        moneyOut={moneyOut}
-        moneyOutLoading={moneyOutLoading}
-        moneyOutError={moneyOutError}
-        revenueChart={revenueChart}
-        currency={currency}
-        revenueLoading={revenueLoading}
-        revenueError={revenueError}
-      />
+      {canViewFinancials && (
+        <DashboardWidgets
+          revenue={revenue}
+          taxCollected={taxCollected}
+          breakEven={breakEven}
+          moneyOut={moneyOut}
+          moneyOutLoading={moneyOutLoading}
+          moneyOutError={moneyOutError}
+          revenueChart={revenueChart}
+          currency={currency}
+          revenueLoading={revenueLoading}
+          revenueError={revenueError}
+        />
+      )}
     </PageContainer>
   );
 }

@@ -9,6 +9,7 @@ import { ClinicUser } from "@/types/clinicUser";
 import { INVITABLE_ROLES, InvitableRole } from "@/lib/permissions";
 
 import { updateUser } from "@/services/users";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import { toast } from "sonner";
 
@@ -60,12 +61,8 @@ export default function StaffModal({
 
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to save staff member."
+        getSafeErrorMessage(error, "Unable to save staff member.")
       );
     } finally {
       setLoading(false);

@@ -21,6 +21,7 @@ import {
 } from "@/services/settings";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import PageContainer from "@/components/ui/PageContainer";
 import PermissionGuard from "@/components/auth/PermissionGuard";
@@ -113,9 +114,7 @@ function AnalyticsPageContent() {
         );
 
         setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load analytics."
+          getSafeErrorMessage(err, "Failed to load analytics.")
         );
       } finally {
         setLoading(false);

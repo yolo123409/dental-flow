@@ -24,6 +24,7 @@ import {
 import RecordPaymentModal from "@/components/billing/RecordPaymentModal";
 import ClinicBrandingHeader from "@/components/branding/ClinicBrandingHeader";
 import PermissionGuard from "@/components/auth/PermissionGuard";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface InvoiceDetail extends ClinicInvoice {
   patients: {
@@ -79,12 +80,8 @@ function InvoicePageContent() {
       setInvoice(invoiceResult);
       setClinic(clinicResult);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to load invoice."
+        getSafeErrorMessage(error, "Failed to load invoice.")
       );
     } finally {
       setLoading(false);

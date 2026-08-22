@@ -9,7 +9,7 @@ import FormTextarea from "@/components/ui/FormTextarea";
 import SearchInput from "@/components/ui/SearchInput";
 
 import { getInventoryItems, ClinicInventoryItem } from "@/services/inventory";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { GRNItem, GRNItemInput } from "@/types/procurement";
 
@@ -149,10 +149,8 @@ export default function GRNItemModal({
 
       onClose();
     } catch (error) {
-      logError("[GRNItemModal] save failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save item."
+        getSafeErrorMessage(error, "Failed to save item.", "[GRNItemModal] save failed:")
       );
     } finally {
       setSaving(false);

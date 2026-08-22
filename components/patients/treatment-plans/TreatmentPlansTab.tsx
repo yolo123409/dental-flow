@@ -23,6 +23,7 @@ import {
 } from "@/services/treatmentPlans";
 
 import { TreatmentPlanWithItems } from "@/types/treatmentPlan";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   patientId: string;
@@ -82,12 +83,8 @@ export default function TreatmentPlansTab({
 
       setPlans(data);
     } catch (err) {
-      console.error(err);
-
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load treatment plans."
+        getSafeErrorMessage(err, "Failed to load treatment plans.")
       );
     } finally {
       setLoading(false);
@@ -172,12 +169,8 @@ export default function TreatmentPlansTab({
 
       await loadPlans();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save treatment plan."
+        getSafeErrorMessage(error, "Failed to save treatment plan.")
       );
     } finally {
       setSavingPlan(false);

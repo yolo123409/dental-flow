@@ -10,6 +10,7 @@ import FormTextarea from "@/components/ui/FormTextarea";
 
 import { createManualJournalEntry } from "@/services/ledger";
 import { LedgerAccount } from "@/types/ledger";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -91,8 +92,7 @@ export default function ManualJournalEntryModal({ open, accounts, onClose, onSav
 
       onClose();
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to post journal entry.");
+      toast.error(getSafeErrorMessage(error, "Unable to post journal entry."));
     } finally {
       setSaving(false);
     }

@@ -1,9 +1,11 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 import { roundMoney } from "@/lib/currency";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
+import { assertPermission } from "./authorization";
 
 export interface ClinicInventoryItem {
   id: string;
@@ -155,27 +157,34 @@ export async function getInventoryItems(): Promise<
   const clinicId =
     await getCurrentClinicId();
 
-  const { data, error } =
-    await supabase
-      .from("clinic_inventory_items")
-      .select("*")
-      .eq("clinic_id", clinicId)
-      .order("name");
+  // Paged rather than a single unbounded fetch - the SKU catalog is
+  // realistically much smaller than 1,000 for a dental clinic, but paged
+  // safely anyway rather than trusting that assumption to always hold.
+  let data: ClinicInventoryItem[];
 
-  if (error) {
+  try {
+    data = (await fetchAllRows((from, to) =>
+      supabase
+        .from("clinic_inventory_items")
+        .select("*")
+        .eq("clinic_id", clinicId)
+        .order("name")
+        .range(from, to)
+    )) as unknown as ClinicInventoryItem[];
+  } catch (error) {
     logError("[inventory] getInventoryItems failed:", error);
 
-    throw toError(error);
+    throw error;
   }
 
-  return (
-    data ?? []
-  ) as ClinicInventoryItem[];
+  return data;
 }
 
 export async function getInventoryItem(
   id: string
 ): Promise<ClinicInventoryItem> {
+  await assertPermission("inventory");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -210,29 +219,33 @@ export interface InventoryAttentionRow {
 export async function getInventoryAttentionSummary(): Promise<
   InventoryAttentionRow[]
 > {
+  await assertPermission("inventory");
+
   const clinicId =
     await getCurrentClinicId();
 
-  const { data, error } =
-    await supabase
-      .from("clinic_inventory_items")
-      .select(
-        "quantity, minimum_stock_level, expiry_date"
-      )
-      .eq("clinic_id", clinicId);
+  // Paged rather than a single unbounded fetch - same catalog table as
+  // getInventoryItems above.
+  let data: InventoryAttentionRow[];
 
-  if (error) {
+  try {
+    data = (await fetchAllRows((from, to) =>
+      supabase
+        .from("clinic_inventory_items")
+        .select("quantity, minimum_stock_level, expiry_date")
+        .eq("clinic_id", clinicId)
+        .range(from, to)
+    )) as unknown as InventoryAttentionRow[];
+  } catch (error) {
     logError(
       "[inventory] getInventoryAttentionSummary failed:",
       error
     );
 
-    throw toError(error);
+    throw error;
   }
 
-  return (
-    data ?? []
-  ) as InventoryAttentionRow[];
+  return data;
 }
 
 /**
@@ -282,6 +295,8 @@ export interface InventoryItemInput {
 export async function createInventoryItem(
   input: InventoryItemInput
 ): Promise<ClinicInventoryItem> {
+  await assertPermission("inventory_manage");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -355,6 +370,8 @@ export async function updateInventoryItem(
   id: string,
   input: InventoryItemMetadataInput
 ): Promise<void> {
+  await assertPermission("inventory_manage");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -412,6 +429,8 @@ export async function updateInventoryItemPricing(
     priced_at_cost: number | null;
   }
 ): Promise<void> {
+  await assertPermission("inventory_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -471,6 +490,8 @@ export async function adjustStock(
   notes?: string,
   extras: AdjustStockExtras = {}
 ): Promise<ClinicInventoryItem> {
+  await assertPermission("inventory_manage");
+
   if (delta === 0) {
     throw new Error(
       "Enter a quantity greater than 0."
@@ -517,6 +538,8 @@ export async function recordConsumption(
     batchNumber?: string | null;
   } = {}
 ): Promise<ClinicInventoryItem> {
+  await assertPermission("inventory_manage");
+
   if (quantity <= 0) {
     throw new Error("Enter a quantity greater than 0.");
   }
@@ -542,6 +565,8 @@ export async function returnToSupplier(
     batchNumber?: string | null;
   } = {}
 ): Promise<ClinicInventoryItem> {
+  await assertPermission("inventory_manage");
+
   if (quantity <= 0) {
     throw new Error("Enter a quantity greater than 0.");
   }
@@ -564,6 +589,8 @@ export async function returnToSupplier(
 export async function deleteInventoryItem(
   id: string
 ): Promise<void> {
+  await assertPermission("inventory_manage");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -718,6 +745,8 @@ export async function getMovementHistory(
   inventoryItemId: string,
   filters: MovementHistoryFilters = {}
 ): Promise<MovementHistoryPage> {
+  await assertPermission("inventory");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -765,6 +794,8 @@ export async function getMovementHistory(
 export async function getRecentMovements(
   limit = 8
 ): Promise<InventoryMovement[]> {
+  await assertPermission("inventory");
+
   const clinicId =
     await getCurrentClinicId();
 
@@ -829,22 +860,9 @@ export interface InventoryBatch {
 export async function getInventoryBatches(
   inventoryItemId: string
 ): Promise<InventoryBatch[]> {
+  await assertPermission("inventory");
+
   const clinicId = await getCurrentClinicId();
-
-  const { data, error } = await supabase
-    .from("clinic_inventory_movements")
-    .select(
-      "batch_number, quantity_change, unit_cost, expiry_date, supplier_id, grn_id, created_at, clinic_suppliers(name)"
-    )
-    .eq("clinic_id", clinicId)
-    .eq("inventory_item_id", inventoryItemId)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    logError("[inventory] getInventoryBatches failed:", error);
-
-    throw toError(error);
-  }
 
   interface Row {
     batch_number: string | null;
@@ -857,9 +875,28 @@ export async function getInventoryBatches(
     clinic_suppliers: { name: string } | null;
   }
 
+  // Paged rather than a single unbounded fetch - a high-turnover
+  // consumable can plausibly accumulate more than 1,000 movement rows
+  // over its lifetime (every consumption, receipt, adjustment, and
+  // return posts one), which would otherwise silently truncate this
+  // read and understate quantityRemaining for real stock - a genuine
+  // inventory-safety issue (a batch could read as depleted, or a
+  // stockout could go uncaught), not just a display glitch.
+  const data = (await fetchAllRows((from, to) =>
+    supabase
+      .from("clinic_inventory_movements")
+      .select(
+        "batch_number, quantity_change, unit_cost, expiry_date, supplier_id, grn_id, created_at, clinic_suppliers(name)"
+      )
+      .eq("clinic_id", clinicId)
+      .eq("inventory_item_id", inventoryItemId)
+      .order("created_at", { ascending: true })
+      .range(from, to)
+  )) as unknown as Row[];
+
   const groups = new Map<string, InventoryBatch>();
 
-  for (const row of (data ?? []) as unknown as Row[]) {
+  for (const row of data) {
     const key = row.batch_number ?? "";
 
     const existing = groups.get(key) ?? {

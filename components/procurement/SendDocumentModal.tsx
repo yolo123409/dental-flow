@@ -10,7 +10,7 @@ import FormTextarea from "@/components/ui/FormTextarea";
 
 import { getSupplier } from "@/services/suppliers";
 import { normalizeKenyanPhone, buildWhatsAppLink } from "@/lib/whatsapp";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { SupplierContact } from "@/types/procurement";
 
@@ -120,10 +120,8 @@ export default function SendDocumentModal({
 
       onClose();
     } catch (error) {
-      logError("[SendDocumentModal] send failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to send document."
+        getSafeErrorMessage(error, "Failed to send document.", "[SendDocumentModal] send failed:")
       );
     } finally {
       setSending(false);

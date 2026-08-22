@@ -14,6 +14,7 @@ import {
 } from "@/lib/paymentMethods";
 
 import { InsuranceProvider } from "@/types/insurance";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   invoiceId: string;
@@ -132,12 +133,8 @@ export default function RecordPaymentModal({
 
       toast.success("Payment recorded.");
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to record payment."
+        getSafeErrorMessage(error, "Failed to record payment.")
       );
     } finally {
       setSaving(false);

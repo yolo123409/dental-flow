@@ -16,7 +16,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import RecordExpenseModal from "@/components/moneyOut/RecordExpenseModal";
 
 import usePermissions from "@/hooks/usePermissions";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import {
   getExpense,
@@ -76,10 +76,8 @@ function ExpenseDetailContent() {
       setSuppliers(suppliersData);
       setCurrency(clinicSettings.currency || "KES");
     } catch (error) {
-      logError("[ExpenseDetail] load failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to load expense."
+        getSafeErrorMessage(error, "Failed to load expense.", "[ExpenseDetail] load failed:")
       );
     } finally {
       setLoading(false);
@@ -123,10 +121,12 @@ function ExpenseDetailContent() {
 
       await load();
     } catch (error) {
-      logError("[ExpenseDetail] voidExpense failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to void expense."
+        getSafeErrorMessage(
+          error,
+          "Failed to void expense.",
+          "[ExpenseDetail] voidExpense failed:"
+        )
       );
     } finally {
       setBusy(false);

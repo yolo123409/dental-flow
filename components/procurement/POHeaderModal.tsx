@@ -10,7 +10,7 @@ import FormTextarea from "@/components/ui/FormTextarea";
 import { getSuppliers } from "@/services/suppliers";
 import { getSupplier } from "@/services/suppliers";
 import { updatePurchaseOrderHeader } from "@/services/purchaseOrders";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { PurchaseOrder } from "@/types/procurement";
 import { Supplier, SupplierContact } from "@/types/procurement";
@@ -87,10 +87,8 @@ export default function POHeaderModal({ open, po, onClose, onSaved }: Props) {
       onClose();
       onSaved();
     } catch (error) {
-      logError("[POHeaderModal] save failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save changes."
+        getSafeErrorMessage(error, "Failed to save changes.", "[POHeaderModal] save failed:")
       );
     } finally {
       setSaving(false);

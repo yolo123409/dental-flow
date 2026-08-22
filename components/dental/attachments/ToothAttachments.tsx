@@ -15,6 +15,7 @@ import {
   getFolders,
   renameFolder,
 } from "@/services/patientToothFolders";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   patientId: string;
@@ -103,12 +104,8 @@ export default function ToothAttachments({
     await loadFolders();
 
   } catch (error) {
-    console.error("Failed to create folder:", error);
-
     toast.error(
-      error instanceof Error
-        ? error.message
-        : "Failed to create folder."
+      getSafeErrorMessage(error, "Failed to create folder.", "Failed to create folder:")
     );
 
   } finally {
@@ -172,12 +169,8 @@ async function createDefaultFolders() {
       await loadFolders();
 
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to rename folder."
+        getSafeErrorMessage(error, "Failed to rename folder.")
       );
     } finally {
       setSaving(false);
@@ -203,12 +196,8 @@ async function createDefaultFolders() {
       await loadFolders();
 
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete folder."
+        getSafeErrorMessage(error, "Failed to delete folder.")
       );
     } finally {
       setSaving(false);

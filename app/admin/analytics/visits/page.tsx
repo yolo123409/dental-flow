@@ -21,6 +21,7 @@ import {
 } from "@/types/visitAnalytics";
 
 import { REPORT_RANGE_OPTIONS, ResolvedPeriod, resolveCurrentPeriod } from "@/lib/reports/period";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 function formatMetric(metric: MetricValue, suffix = ""): string {
   return metric.value == null ? "Not available" : `${metric.value.toFixed(1)}${suffix}`;
@@ -174,8 +175,7 @@ function VisitAnalyticsPageContent() {
 
       setReport(data);
     } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to load Visit Analytics.");
+      toast.error(getSafeErrorMessage(error, "Failed to load Visit Analytics."));
     } finally {
       setLoading(false);
     }

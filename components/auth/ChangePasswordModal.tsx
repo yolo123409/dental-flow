@@ -9,6 +9,7 @@ import Input from "@/components/ui/Input";
 
 import { supabase } from "@/lib/supabase";
 import { validatePassword } from "@/lib/passwordPolicy";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -67,12 +68,8 @@ export default function ChangePasswordModal({
       reset();
       onClose();
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update password."
+        getSafeErrorMessage(error, "Failed to update password.")
       );
     } finally {
       setSaving(false);

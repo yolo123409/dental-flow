@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 import { generateDocumentNumber } from "@/lib/documentNumber";
 
 import {
@@ -36,36 +38,48 @@ async function getPoPrefix(clinicId: string): Promise<string> {
 export async function getPurchaseOrders(
   filters: { status?: PurchaseOrderStatus; supplierId?: string } = {}
 ): Promise<PurchaseOrder[]> {
+  await assertPermission("procurement");
+
   const clinicId = await getCurrentClinicId();
 
-  let query = supabase
-    .from("clinic_purchase_orders")
-    .select(PO_LIST_SELECT)
-    .eq("clinic_id", clinicId)
-    .order("created_at", { ascending: false });
+  // Paged rather than a single unbounded fetch - procurement volume is
+  // typically far lower than patient/invoice volume, but a long-lived
+  // busy clinic could still plausibly cross 1,000 purchase orders over
+  // time.
+  let data: PurchaseOrder[];
 
-  if (filters.status) {
-    query = query.eq("status", filters.status);
-  }
+  try {
+    data = (await fetchAllRows((from, to) => {
+      let query = supabase
+        .from("clinic_purchase_orders")
+        .select(PO_LIST_SELECT)
+        .eq("clinic_id", clinicId)
+        .order("created_at", { ascending: false });
 
-  if (filters.supplierId) {
-    query = query.eq("supplier_id", filters.supplierId);
-  }
+      if (filters.status) {
+        query = query.eq("status", filters.status);
+      }
 
-  const { data, error } = await query;
+      if (filters.supplierId) {
+        query = query.eq("supplier_id", filters.supplierId);
+      }
 
-  if (error) {
+      return query.range(from, to);
+    })) as unknown as PurchaseOrder[];
+  } catch (error) {
     logError("[purchaseOrders] getPurchaseOrders failed:", error);
 
-    throw toError(error);
+    throw error;
   }
 
-  return (data ?? []) as unknown as PurchaseOrder[];
+  return data;
 }
 
 export async function getPurchaseOrder(
   id: string
 ): Promise<PurchaseOrderWithItems> {
+  await assertPermission("procurement");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -93,6 +107,8 @@ export async function getPurchaseOrder(
 export async function createDraftPurchaseOrder(
   input: PurchaseOrderHeaderInput
 ): Promise<PurchaseOrder> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const prefix = await getPoPrefix(clinicId);
@@ -142,6 +158,8 @@ export async function updatePurchaseOrderHeader(
   id: string,
   input: PurchaseOrderHeaderInput
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -182,6 +200,8 @@ export async function addPurchaseOrderItem(
   input: PurchaseOrderItemInput,
   displayOrder: number
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const lineTotal = Math.round(input.quantity * input.unit_price * 100) / 100;
@@ -212,6 +232,8 @@ export async function updatePurchaseOrderItem(
   poId: string,
   input: PurchaseOrderItemInput
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const lineTotal = Math.round(input.quantity * input.unit_price * 100) / 100;
@@ -243,6 +265,8 @@ export async function removePurchaseOrderItem(
   itemId: string,
   poId: string
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -265,6 +289,8 @@ export async function sendPurchaseOrder(
   via: "Email" | "WhatsApp",
   contactId: string | null
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const { error } = await supabase.rpc("mark_purchase_order_sent", {
     p_po_id: id,
     p_via: via,
@@ -279,6 +305,8 @@ export async function sendPurchaseOrder(
 }
 
 export async function cancelPurchaseOrder(id: string): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const { error } = await supabase.rpc("cancel_purchase_order", {
     p_po_id: id,
   });

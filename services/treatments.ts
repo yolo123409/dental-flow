@@ -172,16 +172,11 @@ export async function getTreatment(
 export async function searchTreatments() {
   const clinicId = await getCurrentClinicId();
 
-  console.log("Clinic ID:", clinicId);
-
   const { data, error } = await supabase
     .from("clinic_treatments")
     .select("*")
     .eq("clinic_id", clinicId)
     .order("name");
-
-  console.log("Treatments:", data);
-  console.log("Error:", error);
 
   if (error) {
     throw error;

@@ -1,4 +1,4 @@
-import { getBalanceSheet, getLedgerSettings, getLedgerTransactions, getProfitAndLoss, getTrialBalance } from "./ledger";
+import { getAllLedgerTransactions, getBalanceSheet, getLedgerSettings, getProfitAndLoss, getTrialBalance } from "./ledger";
 import { getInventoryItems } from "./inventory";
 import { assertPermission } from "./authorization";
 
@@ -173,11 +173,10 @@ export async function getStockDaysReport(
       ? unavailable("Not available — no inventory consumption/cost of goods sold was recorded during this period")
       : metric(days / rawTurnover);
 
-  const inventoryTxns = await getLedgerTransactions({
+  const inventoryTxns = await getAllLedgerTransactions({
     accountId: inventoryId,
     startDate: startIso,
     endDate: endIso,
-    limit: 10000,
   });
 
   let purchases = 0;
@@ -185,7 +184,7 @@ export async function getStockDaysReport(
   let returnedToSupplier = 0;
   let otherNet = 0;
 
-  for (const txn of inventoryTxns.rows) {
+  for (const txn of inventoryTxns) {
     const entries = (txn.clinic_ledger_entries ?? []).filter((e) => e.account_id === inventoryId);
     const debit = entries.reduce((sum, e) => sum + Number(e.debit), 0);
     const credit = entries.reduce((sum, e) => sum + Number(e.credit), 0);

@@ -16,6 +16,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import { getClinicSettings } from "@/services/settings";
 import { getSupplierApSummaries } from "@/services/supplierPayments";
 import { SupplierApSummary } from "@/types/supplierPayments";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 const STATUSES: (SupplierApSummary["status"] | "All")[] = [
   "All",
@@ -44,9 +45,8 @@ function AccountsPayableContent() {
         setCurrency(clinicSettings.currency || "KES");
         setSummaries(data);
       } catch (error) {
-        console.error(error);
         toast.error(
-          error instanceof Error ? error.message : "Failed to load accounts payable."
+          getSafeErrorMessage(error, "Failed to load accounts payable.")
         );
       } finally {
         setLoading(false);

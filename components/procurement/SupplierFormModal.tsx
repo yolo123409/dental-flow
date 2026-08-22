@@ -8,7 +8,7 @@ import FormInput from "@/components/ui/FormInput";
 import FormTextarea from "@/components/ui/FormTextarea";
 
 import { createSupplier, updateSupplier } from "@/services/suppliers";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { Supplier } from "@/types/procurement";
 
@@ -66,10 +66,8 @@ export default function SupplierFormModal({
       onClose();
       onSaved();
     } catch (error) {
-      logError("[SupplierFormModal] save failed:", error);
-
       toast.error(
-        error instanceof Error ? error.message : "Failed to save supplier."
+        getSafeErrorMessage(error, "Failed to save supplier.", "[SupplierFormModal] save failed:")
       );
     } finally {
       setSaving(false);

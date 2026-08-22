@@ -1,9 +1,11 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 import { roundMoney } from "@/lib/currency";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getDateRange } from "./analytics/dateRange";
+import { assertPermission } from "./authorization";
 
 import {
   Expense,
@@ -60,47 +62,108 @@ export async function getExpenses(
 ): Promise<Expense[]> {
   const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
-  let query = supabase
-    .from("clinic_expenses")
-    .select(EXPENSE_SELECT)
-    .eq("clinic_id", clinicId)
-    .order("expense_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
   const bounds = resolveDateBounds(filters);
 
-  if (bounds) {
-    query = query.gte("expense_date", bounds.start).lte("expense_date", bounds.end);
+  function buildQuery(from: number, to: number) {
+    let query = supabase
+      .from("clinic_expenses")
+      .select(EXPENSE_SELECT)
+      .eq("clinic_id", clinicId)
+      .order("expense_date", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (bounds) {
+      query = query.gte("expense_date", bounds.start).lte("expense_date", bounds.end);
+    }
+
+    if (filters.categoryId) {
+      query = query.eq("category_id", filters.categoryId);
+    }
+
+    if (filters.paymentMethod) {
+      query = query.eq("payment_method", filters.paymentMethod);
+    }
+
+    if (filters.search?.trim()) {
+      const term = filters.search.trim();
+
+      query = query.or(
+        `description.ilike.%${term}%,payee.ilike.%${term}%,reference.ilike.%${term}%`
+      );
+    }
+
+    return query.range(from, to);
   }
 
-  if (filters.categoryId) {
-    query = query.eq("category_id", filters.categoryId);
-  }
+  // Paged rather than a single unbounded fetch - this feeds both the
+  // Money Out list and category-breakdown/P&L aggregation, and a clinic
+  // with more than 1,000 expenses matching the current filters would
+  // otherwise silently lose rows from both with no error.
+  let data: Expense[];
 
-  if (filters.paymentMethod) {
-    query = query.eq("payment_method", filters.paymentMethod);
-  }
-
-  if (filters.search?.trim()) {
-    const term = filters.search.trim();
-
-    query = query.or(
-      `description.ilike.%${term}%,payee.ilike.%${term}%,reference.ilike.%${term}%`
-    );
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
+  try {
+    data = (await fetchAllRows(buildQuery)) as unknown as Expense[];
+  } catch (error) {
     logError("[expenses] getExpenses failed:", error);
 
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Batched sibling of getExpenses for organization-wide aggregation
+ * (services/organizations.ts#getOrganizationFinancials), which
+ * previously called getExpenses (via getPeriodFinancials) once PER
+ * BRANCH - found during a production-hardening audit to be a
+ * contributor to that page's per-branch query fan-out at 50-branch
+ * scale. The org-financials caller only ever sums Paid expenses in a
+ * period, so this fetches just `clinic_id, amount` with a single
+ * `.in('clinic_id', ...)` query instead of the full category/supplier-
+ * joined row set. getExpenses above is untouched - every single-clinic
+ * caller (Money Out page, Reports Center, Dashboard) keeps using it
+ * exactly as before.
+ */
+export async function getPaidExpenseTotalsByClinic(
+  start: Date | null,
+  end: Date | null,
+  clinicIds: string[]
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+
+  if (clinicIds.length === 0) {
+    return totals;
+  }
+
+  // Aggregate RPC (migration 0065), not a `.select('clinic_id, amount')`
+  // fetch of every Paid expense row - that shape was found during the
+  // Part 2 50-branch scale test to silently truncate at PostgREST's
+  // default 1,000-row response cap once total Paid expenses across all
+  // branches crossed that number, under-reporting consolidated expenses
+  // with no error. This RPC returns one row PER BRANCH, never per
+  // expense, so it can't hit that cap at any realistic organization size.
+  const { data, error } = await supabase.rpc("get_organization_expenses_by_clinic", {
+    p_clinic_ids: clinicIds,
+    p_start: start ? start.toISOString().slice(0, 10) : null,
+    p_end: end ? end.toISOString().slice(0, 10) : null,
+  });
+
+  if (error) {
+    logError("[expenses] getPaidExpenseTotalsByClinic failed:", error);
     throw toError(error);
   }
 
-  return (data ?? []) as unknown as Expense[];
+  for (const row of data ?? []) {
+    totals.set(row.clinic_id, Number(row.total ?? 0));
+  }
+
+  return totals;
 }
 
 export async function getExpense(id: string): Promise<Expense> {
+  await assertPermission("money_out");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -120,6 +183,8 @@ export async function getExpense(id: string): Promise<Expense> {
 }
 
 export async function createExpense(input: ExpenseInput): Promise<Expense> {
+  await assertPermission("money_out_manage");
+
   const clinicId = await getCurrentClinicId();
   const clinicUserId = await getCurrentClinicUserId(clinicId);
 
@@ -154,6 +219,8 @@ export async function updateExpense(
   id: string,
   input: ExpenseInput
 ): Promise<void> {
+  await assertPermission("money_out_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -184,6 +251,8 @@ export async function voidExpense(
   id: string,
   reason: string
 ): Promise<void> {
+  await assertPermission("money_out_manage");
+
   const clinicId = await getCurrentClinicId();
   const clinicUserId = await getCurrentClinicUserId(clinicId);
 
@@ -216,6 +285,8 @@ export async function uploadExpenseReceipt(
   expenseId: string,
   file: File
 ): Promise<string> {
+  await assertPermission("money_out_manage");
+
   const allowedTypes = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
 
   if (!allowedTypes.includes(file.type)) {
@@ -267,6 +338,8 @@ export async function uploadExpenseReceipt(
 export async function getExpenseReceiptUrl(
   path: string
 ): Promise<string> {
+  await assertPermission("money_out");
+
   const { data, error } = await supabase.storage
     .from("expense-receipts")
     .createSignedUrl(path, 60);

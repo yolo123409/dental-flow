@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 
 import { ProcurementSettings } from "@/types/procurement";
 
@@ -61,6 +62,8 @@ export async function getProcurementSettings(): Promise<ProcurementSettings> {
 export async function updateProcurementSettings(
   input: Partial<Omit<ProcurementSettings, "clinic_id">>
 ): Promise<void> {
+  await assertPermission("procurement_manage");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase.from("clinic_procurement_settings").upsert(

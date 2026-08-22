@@ -19,6 +19,7 @@ import {
 } from "@/services/settings";
 
 import { TreatmentPlanWithItems } from "@/types/treatmentPlan";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 interface Props {
   open: boolean;
@@ -178,12 +179,8 @@ export default function CreateInvoiceFromPlanModal({
 
       router.push(`/admin/billing/${invoice.id}`);
     } catch (error) {
-      console.error(error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to create invoice."
+        getSafeErrorMessage(error, "Failed to create invoice.")
       );
     } finally {
       setCreating(false);

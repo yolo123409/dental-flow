@@ -28,7 +28,7 @@ import {
 } from "@/components/users";
 
 import useRealtimeTables from "@/hooks/useRealtimeTables";
-import { logError } from "@/lib/logError";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import {
   suspendUser,
@@ -152,12 +152,12 @@ export default function UsersPage() {
 
       await loadAll();
     } catch (error) {
-      logError("[Staff page] Failed to resend invitation:", error);
-
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to resend invitation."
+        getSafeErrorMessage(
+          error,
+          "Unable to resend invitation.",
+          "[Staff page] Failed to resend invitation:"
+        )
       );
     } finally {
       setResendingId(null);

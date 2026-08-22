@@ -11,7 +11,15 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "import:icd10cm": "node scripts/import-icd10cm.js"
+    "import:icd10cm": "node scripts/import-icd10cm.js",
+    "backup:check": "node scripts/backup/check-config.mjs",
+    "backup:db": "node scripts/backup/backup-database.mjs",
+    "backup:storage": "node scripts/backup/backup-storage.mjs",
+    "backup:all": "node scripts/backup/run-backup.mjs",
+    "backup:restore-test": "node scripts/backup/restore-database-test.mjs",
+    "backup:storage-restore-test": "node scripts/backup/restore-storage-test.mjs",
+    "backup:failure-tests": "node scripts/backup/failure-tests.mjs",
+    "backup:retention": "node scripts/backup/apply-retention.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.21",
@@ -19,6 +27,7 @@
     "@fullcalendar/interaction": "^6.1.21",
     "@fullcalendar/react": "^6.1.21",
     "@fullcalendar/timegrid": "^6.1.21",
+    "@sentry/nextjs": "^10.70.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "exceljs": "^4.4.0",
@@ -39,11 +48,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1116.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.3.4",
@@ -51,6 +62,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "jsdom": "^26.1.0",
+    "pg": "^8.23.0",
     "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5",
