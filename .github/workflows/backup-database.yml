@@ -1,20 +1,26 @@
 name: Database & Storage Backup
 
-# Not yet enabled: this workflow has not been pushed to the repository
-# and no scheduled run has ever executed. It is implemented here so
-# that once secrets are configured and the file is committed/pushed,
-# activation is a one-line change (uncomment the `schedule` trigger)
-# rather than new engineering. See docs/DISASTER_RECOVERY.md for the
-# exact list of repository secrets this workflow requires and the
-# manual steps still needed before it can be considered active.
+# Activated (see docs/DISASTER_RECOVERY.md for the full runbook). Runs
+# the existing, already-verified backup:all pipeline (database +
+# storage, read-only against production, upload-verified against R2)
+# on a daily schedule, plus on-demand via workflow_dispatch.
 #
-# on:
-#   schedule:
-#     - cron: "0 3 * * *"   # 03:00 UTC daily
-#   workflow_dispatch: {}
+# concurrency prevents two backup runs from ever overlapping: a second
+# trigger while one is in progress queues behind it rather than running
+# in parallel or cancelling the in-progress run (cancel-in-progress:
+# false), so a backup is never interrupted mid-write.
 
 on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily
   workflow_dispatch: {}
+
+concurrency:
+  group: database-storage-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   backup:
@@ -33,6 +39,11 @@ jobs:
       - name: Run backup (database + storage)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # Required by scripts/backup/check-config.mjs's preflight
+          # (run:all's first step) even though the backup itself never
+          # touches this project - it validates RESTORE_TEST_DB_URL is
+          # present and distinct from SUPABASE_DB_URL before proceeding.
+          RESTORE_TEST_DB_URL: ${{ secrets.RESTORE_TEST_DB_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -41,3 +52,12 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: npm run backup:all
+
+      - name: Apply retention policy (30 daily / 12 weekly / 12 monthly)
+        if: success()
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: npm run backup:retention -- --execute
