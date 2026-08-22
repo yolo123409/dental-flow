@@ -31,7 +31,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22 (not 20): scripts/backup/backup-storage.mjs uses the
+          # @supabase/supabase-js admin client, whose realtime-js
+          # dependency requires a native WebSocket global. Node 22 has
+          # this on by default; Node 20 does not. This is a workflow
+          # runtime version bump only - it does not affect the deployed
+          # application's runtime (no package.json "engines" field
+          # pins a Node version, and this is the only workflow file in
+          # the repo).
+          node-version: 22
 
       - name: Install dependencies
         run: npm ci
