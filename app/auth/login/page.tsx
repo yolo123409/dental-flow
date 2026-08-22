@@ -50,7 +50,7 @@ export default function LoginPage() {
             </h1>
 
             <p className="mt-3 text-slate-500">
-              AI-Powered Dental Clinic Management
+              Dental Practice Management
             </p>
           </div>
 

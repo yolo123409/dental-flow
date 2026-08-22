@@ -330,7 +330,7 @@ export default function Sidebar() {
         </h1>
 
         <p className="mt-2 text-sm text-mineral">
-          AI Clinic Platform
+          Practice Management
         </p>
 
       </div>

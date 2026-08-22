@@ -16,12 +16,31 @@ const fraunces = Fraunces({
   subsets: ["latin"],
 });
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_APP_URL || "https://dentalflow.co.ke";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
-    default: "Dental Flow",
+    default: "Dental Flow | Dental Practice Management Platform",
     template: "%s | Dental Flow",
   },
-  description: "AI-Powered Dental Clinic Management Platform",
+  description:
+    "Dental Flow is a dental practice management platform for clinics and multi-branch dental groups - patient records, appointments, billing, odontogram charting, clinical documents, and analytics in one place.",
+  openGraph: {
+    title: "Dental Flow | Dental Practice Management Platform",
+    description:
+      "Patient records, appointments, billing, odontogram charting, clinical documents, and analytics - built for dental clinics and multi-branch dental groups.",
+    url: siteUrl,
+    siteName: "Dental Flow",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Dental Flow | Dental Practice Management Platform",
+    description:
+      "Patient records, appointments, billing, odontogram charting, clinical documents, and analytics - built for dental clinics and multi-branch dental groups.",
+  },
 };
 
 export default function RootLayout({

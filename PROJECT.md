@@ -2,7 +2,7 @@
 
 ## Vision
 
-Dental Flow is an AI-powered dental clinic management platform built for clinics in Kenya and Africa.
+Dental Flow is a dental practice management platform built for clinics in Kenya and Africa.
 
 ## Tech Stack
 
@@ -10,7 +10,6 @@ Dental Flow is an AI-powered dental clinic management platform built for clinics
 - TypeScript
 - Tailwind CSS
 - Supabase
-- OpenAI
 - Vercel
 
 ## Sprint Progress
@@ -23,7 +22,6 @@ Dental Flow is an AI-powered dental clinic management platform built for clinics
 - Products
 - Patients
 - Checkout
-- AI foundation
 
 ### Sprint 2 🚧
 - Dashboard redesign
@@ -42,6 +40,3 @@ Dental Flow is an AI-powered dental clinic management platform built for clinics
 
 ### Sprint 6
 - WhatsApp
-
-### Sprint 7
-- AI Receptionist v2

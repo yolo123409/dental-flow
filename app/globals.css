@@ -114,6 +114,64 @@ textarea:focus-visible, [role="button"]:focus-visible {
 .text-red-600, .text-red-700 { color: var(--clay-ink) !important; }
 .focus\:border-blue-500:focus { border-color: var(--eucalyptus) !important; }
 
+/* Marketing site: ambient motion + surface texture. Scoped under mkt- so
+   nothing here can collide with application-panel styles above. */
+@keyframes mkt-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes mkt-float-slow {
+  0%, 100% { transform: translateY(0) rotate(-0.4deg); }
+  50% { transform: translateY(-16px) rotate(0.5deg); }
+}
+@keyframes mkt-pulse-soft {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes mkt-draw {
+  from { stroke-dashoffset: var(--mkt-dash, 300); }
+  to { stroke-dashoffset: 0; }
+}
+
+.mkt-animate-float { animation: mkt-float 6.5s ease-in-out infinite; }
+.mkt-animate-float-slow { animation: mkt-float-slow 9s ease-in-out infinite; }
+.mkt-animate-pulse-soft { animation: mkt-pulse-soft 3.4s ease-in-out infinite; }
+.mkt-animate-draw { animation: mkt-draw 1.6s ease-out forwards; }
+
+.mkt-fine-grid {
+  background-image:
+    linear-gradient(var(--sea-glass) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sea-glass) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.mkt-scroll-x {
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.mkt-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+.mkt-radial-glow {
+  background-image: radial-gradient(
+    circle at 50% 0%,
+    color-mix(in srgb, var(--sea-glass) 70%, transparent) 0%,
+    transparent 60%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt-animate-float,
+  .mkt-animate-float-slow,
+  .mkt-animate-pulse-soft,
+  .mkt-animate-draw {
+    animation: none !important;
+  }
+}
+
 @page { size: A4; margin: 12mm; }
 @media print {
   html, body { background: white !important; color: black !important; margin: 0; padding: 0; width: 100%; height: auto; overflow: visible; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
