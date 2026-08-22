@@ -1,17 +1,21 @@
 // Phase 3/4/5 - Restore test in an isolated environment.
 //
-// SAFETY: refuses to run unless RESTORE_TEST_DB_URL resolves to a
-// DIFFERENT host than SUPABASE_DB_URL (see lib/env.mjs
-// assertDistinctProjects). Never writes to SUPABASE_DB_URL. Downloads
-// the latest backup from R2, restores schema + data into
-// RESTORE_TEST_DB_URL only, then verifies structural fidelity, row
-// counts, multi-branch relationships, and financial (debit=credit)
-// integrity. Prints a PASS/FAIL report; never logs row content, only
-// counts/booleans/aggregates.
+// SAFETY: refuses to run unless SUPABASE_DB_URL and RESTORE_TEST_DB_URL
+// are proven, live, to be different physical Postgres clusters (see
+// lib/env.mjs assertDistinctProjects) - verified via each cluster's own
+// system_identifier, NOT by comparing pooler hostnames (Session/
+// Transaction pooler hostnames are region-based, e.g.
+// aws-0-eu-west-1.pooler.supabase.com, and do not contain the project
+// ref, so two unrelated projects in the same region can share one).
+// Never writes to SUPABASE_DB_URL. Downloads the latest backup from
+// R2, restores schema + data into RESTORE_TEST_DB_URL only, then
+// verifies structural fidelity, row counts, multi-branch relationships,
+// and financial (debit=credit) integrity. Prints a PASS/FAIL report;
+// never logs row content, only counts/booleans/aggregates.
 import zlib from "node:zlib";
 import crypto from "node:crypto";
 import pg from "pg";
-import { getProdDbUrl, getRestoreTestDbUrl, assertDistinctProjects } from "./lib/env.mjs";
+import { getProdDbUrl, getRestoreTestDbUrl, getRestoreTestSupabaseUrl, assertDistinctProjects } from "./lib/env.mjs";
 import { r2List, r2Get } from "./lib/r2.mjs";
 import { decryptBuffer } from "./lib/crypto.mjs";
 import {
@@ -100,8 +104,10 @@ function diffSets(a, b, label) {
 async function main() {
   const prodUrl = getProdDbUrl();
   const restoreUrl = getRestoreTestDbUrl();
-  assertDistinctProjects(prodUrl, restoreUrl);
-  console.log("Safety check passed: restore target is a different project than production.\n");
+  const prodSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const restoreSupabaseUrl = getRestoreTestSupabaseUrl();
+  await assertDistinctProjects({ prodDbUrl: prodUrl, prodSupabaseUrl, restoreDbUrl: restoreUrl, restoreSupabaseUrl });
+  console.log("Safety check passed: restore target is a live-verified, different Postgres cluster than production (not just a different pooler hostname).\n");
 
   const meta = await latestBackup();
   console.log(`Restoring backup run ${meta.runId} (${meta.tableCount} tables, ${meta.totalRows} rows, ${meta.sizeBytes} bytes)`);

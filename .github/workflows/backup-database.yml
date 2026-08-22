@@ -42,8 +42,15 @@ jobs:
           # Required by scripts/backup/check-config.mjs's preflight
           # (run:all's first step) even though the backup itself never
           # touches this project - it validates RESTORE_TEST_DB_URL is
-          # present and distinct from SUPABASE_DB_URL before proceeding.
+          # present and, live, a genuinely different Postgres cluster
+          # than SUPABASE_DB_URL before proceeding.
           RESTORE_TEST_DB_URL: ${{ secrets.RESTORE_TEST_DB_URL }}
+          # The restore-test project's Supabase URL (distinct from its
+          # pooler connection string above). Session/Transaction pooler
+          # hostnames are region-based and don't contain the project
+          # ref, so project identity is established from this URL, not
+          # from the pooler hostname.
+          RESTORE_TEST_SUPABASE_URL: ${{ secrets.RESTORE_TEST_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
