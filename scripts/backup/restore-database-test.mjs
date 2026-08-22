@@ -10,8 +10,35 @@
 // Never writes to SUPABASE_DB_URL. Downloads the latest backup from
 // R2, restores schema + data into RESTORE_TEST_DB_URL only, then
 // verifies structural fidelity, row counts, multi-branch relationships,
-// and financial (debit=credit) integrity. Prints a PASS/FAIL report;
-// never logs row content, only counts/booleans/aggregates.
+// and financial integrity. Prints a PASS/FAIL report; never logs row
+// content, only counts/booleans/aggregates.
+//
+// TRIGGERS DURING DATA LOAD: several tables carry application-side
+// AFTER INSERT triggers with side effects (e.g. clinic_invoices/
+// clinic_payments/clinic_expenses each post entries into
+// clinic_ledger_entries). A 2026-08-22 real restore drill found that
+// restoring their backed-up rows via plain INSERT re-fires those
+// triggers, duplicating ledger entries on top of the ones the backup
+// already contains (production: 16 rows/206,400.00; restored:
+// 72 rows/616,640.00 - a real, confirmed defect, not hypothetical).
+// Fixed by disabling only USER triggers (ALTER TABLE ... DISABLE
+// TRIGGER USER) on every target table before the data-load phase, then
+// re-enabling them in a finally block - not DISABLE TRIGGER ALL, which
+// would also blind Postgres's own internal FK-constraint-enforcement
+// triggers. Referential integrity therefore stays enforced by Postgres
+// itself throughout the load, and every trigger is guaranteed back to
+// its normal enabled state before this script exits, success or not.
+//
+// POST-RESTORE RECONCILIATION: row-count verification now runs a live
+// SELECT COUNT(*) per table against the restored database, not the
+// script's own tally of rows it inserted - the earlier version's blind
+// spot (it could report "counts match" while a trigger silently added
+// or duplicated rows behind its back, which is exactly what happened).
+// Financial verification separately compares the restored ledger's
+// SUM(debit)/SUM(credit) against the true backup totals (computed from
+// the backup's own in-memory row data, not the backup file itself),
+// not merely debit=credit self-consistency - a duplicated-but-still-
+// balanced ledger passes the old check and fails this one.
 import zlib from "node:zlib";
 import crypto from "node:crypto";
 import pg from "pg";
@@ -91,6 +118,27 @@ async function insertData(client, tableOrder, data, columnTypes) {
     if (rows.length > 1000) console.log(`  ${table}: ${inserted} rows inserted`);
   }
   return rowCounts;
+}
+
+/**
+ * DISABLE/ENABLE TRIGGER USER, not ALL: USER excludes Postgres's own
+ * internal triggers (foreign-key constraint enforcement among them), so
+ * referential integrity stays enforced by the database itself for the
+ * whole data-load phase - only application-defined triggers (ledger-
+ * posting side effects, insurance/code-system validation of data that
+ * was already valid when the backup captured it) are skipped. A no-op,
+ * not an error, on a table with no user triggers.
+ */
+async function disableUserTriggers(client, tableOrder) {
+  for (const table of tableOrder) {
+    await client.query(`alter table "public"."${table}" disable trigger user`);
+  }
+}
+
+async function enableUserTriggers(client, tableOrder) {
+  for (const table of tableOrder) {
+    await client.query(`alter table "public"."${table}" enable trigger user`);
+  }
 }
 
 function diffSets(a, b, label) {
@@ -215,18 +263,34 @@ async function main() {
       crossSchemaFks.map((f) => `${f.table}.${f.conname}`).join(", ") || "none found"
     );
 
-    console.log("\nInserting data...");
-    const t1 = Date.now();
-    const restoredRowCounts = await insertData(client, payload.tableOrder, payload.data, payload.columnTypes);
-    timings.dataMs = Date.now() - t1;
+    console.log("\nDisabling application-side (USER) triggers on restore-target tables before data load...");
+    await disableUserTriggers(client, payload.tableOrder);
+    let restoredRowCounts;
+    try {
+      console.log("Inserting data...");
+      const t1 = Date.now();
+      restoredRowCounts = await insertData(client, payload.tableOrder, payload.data, payload.columnTypes);
+      timings.dataMs = Date.now() - t1;
+    } finally {
+      await enableUserTriggers(client, payload.tableOrder);
+      console.log("Re-enabled all application-side triggers on restore-target tables.");
+    }
 
+    console.log("\n--- Post-restore reconciliation (live COUNT(*) per table, not self-reported insert counts) ---");
     let rowCountMismatches = [];
     for (const table of payload.tableOrder) {
       const expected = payload.rowCounts[table] ?? 0;
-      const actual = restoredRowCounts[table] ?? 0;
-      if (expected !== actual) rowCountMismatches.push(`${table}: expected ${expected}, got ${actual}`);
+      const { rows: cRows } = await client.query(`select count(*)::int as n from public."${table}"`);
+      const actual = cRows[0].n;
+      if (expected !== actual) {
+        rowCountMismatches.push(`${table}: expected ${expected}, live=${actual} (script-inserted ${restoredRowCounts[table] ?? 0})`);
+      }
     }
-    record("Row counts match backup for every table", rowCountMismatches.length === 0, rowCountMismatches.join("; "));
+    record(
+      "Live row counts match backup for every table (post-restore reconciliation)",
+      rowCountMismatches.length === 0,
+      rowCountMismatches.join("; ")
+    );
 
     console.log("\n--- Named critical-table presence checks ---");
     const criticalTables = [
@@ -270,6 +334,16 @@ async function main() {
     record("No clinics reference a missing organization", orphanedClinics === 0, `orphaned=${orphanedClinics}`);
 
     console.log("\n--- Phase 5: financial integrity checks ---");
+    // clinic_invoices/clinic_expenses row counts are covered by the
+    // general post-restore reconciliation above; this section adds
+    // ledger-specific checks that a plain row count can't express.
+    const ledgerRowCount = (await client.query(`select count(*)::int as n from public.clinic_ledger_entries`)).rows[0].n;
+    record(
+      "clinic_ledger_entries row count matches backup exactly",
+      ledgerRowCount === (payload.rowCounts.clinic_ledger_entries ?? 0),
+      `restored=${ledgerRowCount} backup=${payload.rowCounts.clinic_ledger_entries ?? 0}`
+    );
+
     const ledgerCols = (
       await client.query(
         `select column_name from information_schema.columns where table_schema='public' and table_name='clinic_ledger_entries'`
@@ -278,26 +352,58 @@ async function main() {
     const debitCol = ledgerCols.find((c) => /debit/i.test(c));
     const creditCol = ledgerCols.find((c) => /credit/i.test(c));
     if (debitCol && creditCol) {
-      const sums = (
+      const liveSums = (
         await client.query(
           `select coalesce(sum("${debitCol}"),0)::numeric as total_debit, coalesce(sum("${creditCol}"),0)::numeric as total_credit from public.clinic_ledger_entries`
         )
       ).rows[0];
       record(
-        "Total debits equal total credits in restored ledger",
-        sums.total_debit === sums.total_credit,
-        `debit=${sums.total_debit} credit=${sums.total_credit}`
+        "Total debits equal total credits in restored ledger (internal consistency)",
+        liveSums.total_debit === liveSums.total_credit,
+        `debit=${liveSums.total_debit} credit=${liveSums.total_credit}`
+      );
+
+      // The internal-consistency check above is necessary but not
+      // sufficient - a duplicated ledger (the 2026-08-22 defect) is
+      // still internally balanced, since each duplicated posting is
+      // itself a balanced pair. Compare against the backup's *true*
+      // totals instead: computed from the backup's own in-memory row
+      // data (already downloaded, never re-reading the backup file)
+      // via a Postgres-side numeric sum, not JS floating-point math,
+      // to avoid precision loss on currency values.
+      const backupLedgerRows = payload.data.clinic_ledger_entries || [];
+      const backupDebits = backupLedgerRows.map((r) => r[debitCol] ?? "0");
+      const backupCredits = backupLedgerRows.map((r) => r[creditCol] ?? "0");
+      const expectedSums = (
+        await client.query(
+          `select coalesce(sum(x.d),0)::numeric as total_debit, coalesce(sum(x.c),0)::numeric as total_credit from unnest($1::numeric[], $2::numeric[]) as x(d, c)`,
+          [backupDebits, backupCredits]
+        )
+      ).rows[0];
+      record(
+        "Restored ledger debit total matches the backup's true total (not just internally balanced)",
+        liveSums.total_debit === expectedSums.total_debit,
+        `restored=${liveSums.total_debit} backup=${expectedSums.total_debit}`
+      );
+      record(
+        "Restored ledger credit total matches the backup's true total (not just internally balanced)",
+        liveSums.total_credit === expectedSums.total_credit,
+        `restored=${liveSums.total_credit} backup=${expectedSums.total_credit}`
       );
     } else {
-      record("Total debits equal total credits in restored ledger", false, `could not locate debit/credit columns on clinic_ledger_entries (found: ${ledgerCols.join(",")})`);
+      record("Total debits equal total credits in restored ledger (internal consistency)", false, `could not locate debit/credit columns on clinic_ledger_entries (found: ${ledgerCols.join(",")})`);
     }
 
-    for (const t of ["clinic_invoices", "clinic_expenses"]) {
-      if (tableSet.has(t)) {
-        const n = (await client.query(`select count(*)::int as n from public."${t}"`)).rows[0].n;
-        record(`${t} row count matches backup`, n === (payload.rowCounts[t] ?? 0), `restored=${n}`);
-      }
-    }
+    const orphanedLedgerEntries = (
+      await client.query(
+        `select count(*)::int as n from public.clinic_ledger_entries e where e.transaction_id is not null and not exists (select 1 from public.clinic_ledger_transactions t where t.id = e.transaction_id)`
+      )
+    ).rows[0].n;
+    record(
+      "No clinic_ledger_entries reference a missing clinic_ledger_transactions row",
+      orphanedLedgerEntries === 0,
+      `orphaned=${orphanedLedgerEntries}`
+    );
 
     console.log(`\nTimings: schema=${timings.schemaMs}ms, data=${timings.dataMs}ms`);
   } finally {

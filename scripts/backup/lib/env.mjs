@@ -54,6 +54,22 @@ export function getSupabaseAdminClientConfig() {
   };
 }
 
+/**
+ * Admin client config for the disposable restore-test Supabase project's
+ * Storage API - distinct from getSupabaseAdminClientConfig() above,
+ * which is production. Storage has no "restore into a raw Postgres
+ * connection" path (unlike the database restore, which only needs
+ * RESTORE_TEST_DB_URL); it requires the Storage REST API of a specific
+ * project, so a true second-project storage restore needs this
+ * project's own URL + service-role key, not production's.
+ */
+export function getRestoreTestSupabaseAdminClientConfig() {
+  return {
+    url: getRestoreTestSupabaseUrl(),
+    serviceRoleKey: required("RESTORE_TEST_SUPABASE_SERVICE_ROLE_KEY"),
+  };
+}
+
 export function getR2Config() {
   return {
     accountId: required("R2_ACCOUNT_ID"),

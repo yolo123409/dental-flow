@@ -1,25 +1,23 @@
 // Phase 7 - Storage restore test.
 //
-// IMPORTANT scope note (documented, not fabricated): a fully separate
-// disposable Supabase project's Storage API credentials were not
-// provided (only its Postgres connection string was, for the DB restore
-// test). Storage has no "restore into a raw Postgres connection" path -
-// it requires the Storage REST API of a specific project. So this test
-// restores into a brand-new, empty, PRIVATE bucket inside the SAME
-// production project via the service-role Storage API, verifies
-// integrity and non-public-exposure, then deletes the bucket and every
-// object in it, leaving zero residue. This is a real, isolated
-// (bucket-scoped) restore-and-verify - not a simulation - but it is not
-// a second-project restore. That gap is called out explicitly in the
-// final report.
+// Restores into a brand-new, empty, PRIVATE bucket inside the disposable
+// restore-test Supabase project (RESTORE_TEST_SUPABASE_URL +
+// RESTORE_TEST_SUPABASE_SERVICE_ROLE_KEY) - never production. Storage
+// has no "restore into a raw Postgres connection" path, so this needs
+// that project's own Storage REST API credentials, distinct from
+// RESTORE_TEST_DB_URL (its Postgres connection string, used only by the
+// separate database restore test). Verifies integrity and
+// non-public-exposure, then deletes the bucket and every object in it,
+// leaving zero residue in the restore-test project. Production Storage
+// is never read from or written to by this script.
 //
 // Restores FROM the R2 backup (not re-copied from the live source), so
 // this also proves the R2 copy itself is intact and restorable.
 import crypto from "node:crypto";
 import { r2List, r2Get } from "./lib/r2.mjs";
 import { decryptBuffer } from "./lib/crypto.mjs";
-import { supabaseAdmin } from "./lib/supabase-admin.mjs";
-import { getSupabaseAdminClientConfig } from "./lib/env.mjs";
+import { restoreTestSupabaseAdmin } from "./lib/supabase-admin.mjs";
+import { getRestoreTestSupabaseAdminClientConfig } from "./lib/env.mjs";
 
 const TEST_BUCKET = `dr-restore-test-${Date.now()}`;
 
@@ -35,7 +33,7 @@ async function main() {
   const manifest = JSON.parse((await r2Get(manifestKey)).toString("utf8"));
   console.log(`Using manifest: ${manifestKey} (run ${manifest.runId}, ${manifest.totalObjects} objects)`);
 
-  const admin = supabaseAdmin();
+  const admin = restoreTestSupabaseAdmin();
   const results = [];
   let failures = 0;
 
@@ -88,7 +86,7 @@ async function main() {
     const sampleObj = results.length > 0 ? manifest.buckets[Object.keys(manifest.buckets).find((b) => manifest.buckets[b].objects.length > 0)].objects[0] : null;
     let publicUrlBlocked = null;
     if (sampleObj) {
-      const supaCfg = getSupabaseAdminClientConfig();
+      const supaCfg = getRestoreTestSupabaseAdminClientConfig();
       const publicUrl = `${supaCfg.url}/storage/v1/object/public/${TEST_BUCKET}/${sampleObj.path}`;
       const res = await fetch(publicUrl);
       publicUrlBlocked = res.status !== 200;
@@ -109,7 +107,7 @@ async function main() {
     }
   } finally {
     // Cleanup: remove every object then the bucket itself, regardless of
-    // pass/fail, so no residue is left behind in production.
+    // pass/fail, so no residue is left behind in the restore-test project.
     console.log(`\nCleaning up disposable bucket ${TEST_BUCKET}...`);
     const allPaths = [];
     for (const bucketInfo of Object.values(manifest.buckets)) {
@@ -121,7 +119,7 @@ async function main() {
     }
     const { error: delBucketErr } = await admin.storage.deleteBucket(TEST_BUCKET);
     if (delBucketErr) console.error(`Cleanup warning: failed to delete bucket: ${delBucketErr.message}`);
-    else console.log(`Deleted bucket ${TEST_BUCKET}. Zero residue left in production.`);
+    else console.log(`Deleted bucket ${TEST_BUCKET}. Zero residue left in the restore-test project. Production Storage was never touched by this run.`);
   }
 }
 
