@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 
 import PageContainer from "@/components/ui/PageContainer";
 import Card from "@/components/ui/Card";
@@ -43,8 +43,16 @@ type BillingSummaryState = ReturnType<
 
 function PatientProfilePageContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
 
   const id = params.id as string;
+
+  // Phase I: lets Billing's "View Treatment"/"View Plan" links deep-link
+  // straight into a patient's Treatment Plans tab (and a specific plan)
+  // instead of always landing on Overview - read once on mount, not
+  // re-synced afterward, so switching tabs in-page doesn't fight the URL.
+  const initialTab = searchParams.get("tab");
+  const initialPlanId = searchParams.get("plan");
 
   const { hasPermission } = usePermissions();
   const canViewBilling = hasPermission("billing");
@@ -69,10 +77,10 @@ function PatientProfilePageContent() {
     useState("KES");
 
   const [activeTab, setActiveTab] =
-    useState("Overview");
+    useState(initialTab || "Overview");
 
-  const [focusTooth, setFocusTooth] = useState<
-    number | null
+  const [focusTeeth, setFocusTeeth] = useState<
+    number[] | null
   >(null);
 
   const [pendingTooth, setPendingTooth] = useState<
@@ -177,7 +185,8 @@ function PatientProfilePageContent() {
       {activeTab === "Dental Chart" && (
         <DentalChart
           patientId={patient.id}
-          focusTooth={focusTooth}
+          currency={currency}
+          focusTeeth={focusTeeth}
           onAddToTreatmentPlan={(tooth) => {
             setPendingTooth(tooth);
             setActiveTab("Treatment Plans");
@@ -195,8 +204,9 @@ function PatientProfilePageContent() {
           onPendingToothConsumed={() =>
             setPendingTooth(null)
           }
-          onViewOnChart={(tooth) => {
-            setFocusTooth(tooth);
+          initialPlanId={initialPlanId}
+          onViewOnChart={(teeth) => {
+            setFocusTeeth(teeth);
             setActiveTab("Dental Chart");
           }}
         />
@@ -288,7 +298,9 @@ function PatientProfilePageContent() {
 export default function PatientProfilePage() {
   return (
     <PermissionGuard permission="patients">
-      <PatientProfilePageContent />
+      <Suspense fallback={null}>
+        <PatientProfilePageContent />
+      </Suspense>
     </PermissionGuard>
   );
 }

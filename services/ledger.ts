@@ -4,7 +4,6 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { assertPermission } from "./authorization";
-import { getPeriodFinancials } from "./reports/shared";
 
 import {
   AccountLedger,
@@ -666,11 +665,19 @@ export async function getReconciliationIssues(
 /**
  * Cash & Bank / Accounts Receivable / Accounts Payable / Inventory are
  * genuinely ledger-only figures - computed here from the trial balance.
- * Revenue / Expenses / Net Profit deliberately reuse
- * services/reports/shared.ts#getPeriodFinancials (the exact same
- * calculation the Reports Center's P&L and Monthly Comparison already
- * use) rather than a second computation, per the spec's explicit
- * "do not duplicate calculations unnecessarily" (section 27).
+ *
+ * FIN-1: Revenue / Expenses / Net Profit now come directly from
+ * getProfitAndLoss() (this same file) - the identical figures the
+ * dedicated Ledger P&L page shows for the same period. Before FIN-1 these
+ * three fields reused services/reports/shared.ts#getPeriodFinancials,
+ * which computed them independently from clinic_invoices/clinic_expenses/
+ * clinic_treatments on a "Paid invoices" basis rather than the ledger's
+ * accrual one - so the Ledger Dashboard's own Revenue/Expenses/Net Profit
+ * tiles could silently disagree with the Ledger's own P&L page one click
+ * away. See the FIN-0 audit, finding P1-1. There is still exactly one
+ * accounting calculation, not two - it's just getProfitAndLoss() itself
+ * now, rather than a second function that happened to reuse the same
+ * numbers as this one.
  */
 export async function getLedgerDashboardTotals(
   start: Date | null,
@@ -678,10 +685,13 @@ export async function getLedgerDashboardTotals(
 ): Promise<LedgerDashboardTotals> {
   await assertPermission("ledger");
 
-  const [settings, trialBalance, financials, issues] = await Promise.all([
+  const periodStart = start ?? new Date(0);
+  const periodEnd = end ?? new Date();
+
+  const [settings, trialBalance, profitAndLoss, issues] = await Promise.all([
     getLedgerSettings(),
     getTrialBalance(),
-    getPeriodFinancials(start, end),
+    getProfitAndLoss(periodStart, periodEnd),
     getReconciliationIssues(),
   ]);
 
@@ -711,9 +721,9 @@ export async function getLedgerDashboardTotals(
     accountsReceivable: balanceFor(settings.accounts_receivable_account_id, "debit"),
     accountsPayable: balanceFor(settings.accounts_payable_account_id, "credit"),
     inventory: balanceFor(settings.inventory_account_id, "debit"),
-    revenue: financials.revenue,
-    expenses: financials.expenses,
-    netProfit: financials.netProfit,
+    revenue: profitAndLoss.revenue.total,
+    expenses: profitAndLoss.totalOperatingExpenses,
+    netProfit: profitAndLoss.netProfit,
     openReconciliationIssues: issues.length,
   };
 }

@@ -10,6 +10,7 @@ import PaymentMethodField from "@/components/billing/PaymentMethodField";
 
 import {
   billTreatmentPlanItems,
+  getItemTeeth,
   InvoiceScope,
 } from "@/services/treatmentPlans";
 import { calculateInvoiceTotals } from "@/services/billing";
@@ -152,7 +153,7 @@ export default function CreateInvoiceFromPlanModal({
     if (!plan) return;
 
     if (scope === "selected" && selectedIds.length === 0) {
-      toast.error("Select at least one procedure.");
+      toast.error("Select at least one treatment.");
       return;
     }
 
@@ -219,7 +220,7 @@ export default function CreateInvoiceFromPlanModal({
     >
       {billableItems.length === 0 ? (
         <p className="text-slate-500">
-          Every procedure in this plan has already been
+          Every treatment in this plan has already been
           invoiced.
         </p>
       ) : (
@@ -235,7 +236,7 @@ export default function CreateInvoiceFromPlanModal({
               <span>
                 Entire plan
                 <span className="ml-2 text-sm text-slate-500">
-                  ({billableItems.length} procedure
+                  ({billableItems.length} treatment
                   {billableItems.length === 1 ? "" : "s"})
                 </span>
               </span>
@@ -252,7 +253,7 @@ export default function CreateInvoiceFromPlanModal({
               <span>
                 Only completed items
                 <span className="ml-2 text-sm text-slate-500">
-                  ({completedItems.length} procedure
+                  ({completedItems.length} treatment
                   {completedItems.length === 1 ? "" : "s"})
                 </span>
               </span>
@@ -265,7 +266,7 @@ export default function CreateInvoiceFromPlanModal({
                 checked={scope === "selected"}
                 onChange={() => setScope("selected")}
               />
-              <span>Selected procedures</span>
+              <span>Selected treatments</span>
             </label>
           </div>
 
@@ -287,11 +288,18 @@ export default function CreateInvoiceFromPlanModal({
                       }
                     />
                     {item.procedure}
-                    {item.tooth_number != null && (
-                      <span className="text-xs text-slate-400">
-                        (Tooth {item.tooth_number})
-                      </span>
-                    )}
+                    {(() => {
+                      const teeth = getItemTeeth(item);
+
+                      if (teeth.length === 0) return null;
+
+                      return (
+                        <span className="text-xs text-slate-400">
+                          ({teeth.length === 1 ? "Tooth" : "Teeth"}{" "}
+                          {teeth.join(", ")})
+                        </span>
+                      );
+                    })()}
                   </span>
 
                   <span className="text-sm font-medium text-slate-600">

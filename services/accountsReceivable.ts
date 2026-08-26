@@ -4,6 +4,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCashFlowStatement, getLedgerSettings, getProfitAndLoss, getTrialBalance } from "./ledger";
+import { getOutstandingInvoiceBalance } from "./billing";
 import { assertPermission } from "./authorization";
 
 import { ArAging, ArAgingBucket, ArInvoiceRow, ArReconciliation, ArReport } from "@/types/accountsReceivable";
@@ -189,5 +190,65 @@ export async function getAccountsReceivableReport(
     totalCollected,
     invoices,
     reconciliation,
+  };
+}
+
+/**
+ * Standalone AR reconciliation check - detect only, never corrects.
+ *
+ * Deliberately NOT a byproduct of getAccountsReceivableReport(): that
+ * report fetches every individual outstanding invoice row (needed for
+ * aging/detail), which is unnecessary work for a simple "are the two
+ * AR figures still equal" check. This calls only the two existing,
+ * already-aggregated primitives every part of this app already relies
+ * on for these numbers - getTrialBalance()'s per-account balance (the
+ * ledger side, backed by RPC get_trial_balance) and
+ * getOutstandingInvoiceBalance() (the invoice side, backed by RPC
+ * get_outstanding_invoice_balance, migration 0082) - so it stays cheap
+ * enough to call on-demand from a dashboard or a periodic check without
+ * adding any per-invoice query, and never touches invoice/payment/ledger
+ * write paths. It intentionally reuses the same ArReconciliation shape
+ * getAccountsReceivableReport() already returns, so both are
+ * interchangeable to any caller.
+ *
+ * Phase O correction: this originally called getInvoiceBalanceTotals()
+ * for the invoice side, which nets every invoice's balance together
+ * clinic-wide - an overpaid (negative-balance) invoice would silently
+ * reduce the reported invoice-side total without any matching change on
+ * the ledger side, producing a false "matches: false" reconciliation
+ * failure even when the ledger and the real Outstanding AR agree. Now
+ * uses getOutstandingInvoiceBalance() (floors each invoice's
+ * contribution at zero), the same canonical definition every other AR
+ * surface uses.
+ *
+ * This exists so a gap like the one Phase M found and Phase N's
+ * backfill closed (supabase/migrations/0081_backfill_historical_ar_ledger_postings.sql)
+ * can be noticed going forward instead of silently reaccumulating. On
+ * a future mismatch this returns matches: false with the exact
+ * ledger/invoice figures and their difference - callers surface that
+ * for someone to investigate. It never writes a correction, a journal
+ * entry, or a reconciliation-issue row itself.
+ */
+export async function getArReconciliationStatus(): Promise<ArReconciliation> {
+  await assertPermission("ledger");
+
+  const [settings, trialBalance, invoiceOutstandingBalance] = await Promise.all([
+    getLedgerSettings(),
+    getTrialBalance(),
+    getOutstandingInvoiceBalance(),
+  ]);
+
+  const receivableId = settings.accounts_receivable_account_id;
+  const ledgerBalance = receivableId
+    ? (trialBalance.rows.find((row) => row.accountId === receivableId)?.debitBalance ?? 0)
+    : 0;
+
+  const difference = ledgerBalance - invoiceOutstandingBalance;
+
+  return {
+    ledgerBalance,
+    invoiceOutstandingBalance,
+    difference,
+    matches: Math.abs(difference) < 0.01,
   };
 }

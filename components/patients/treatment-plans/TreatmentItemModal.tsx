@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { X } from "lucide-react";
 
 import FormModal from "@/components/ui/FormModal";
 import FormInput from "@/components/ui/FormInput";
@@ -11,17 +12,28 @@ import TreatmentSelect from "@/components/treatments/TreatmentSelect";
 
 import ClinicalCodePicker from "@/components/clinical/ClinicalCodePicker";
 import CodedProcedureList from "@/components/clinical/CodedProcedureList";
+import CodedDiagnosisList from "@/components/clinical/CodedDiagnosisList";
+
+import TreatmentMaterialsUsed from "./TreatmentMaterialsUsed";
 
 import {
   ClinicalCodingUnavailableError,
   addPatientProcedureCode,
   addProcedureCodeModifier,
+  getDiagnosisCodesForTooth,
   getProcedureCodesForTreatmentPlanItem,
   removePatientProcedureCode,
   removeProcedureCodeModifier,
 } from "@/services/clinicalCodes";
 
-import { AttachedProcedureCode, ClinicalCode } from "@/types/clinicalCodes";
+import {
+  AttachedDiagnosisCode,
+  AttachedProcedureCode,
+  ClinicalCode,
+} from "@/types/clinicalCodes";
+
+import { isValidTooth } from "@/components/patients/dental/toothSelection";
+import { getItemTeeth, isItemInvoiced } from "@/services/treatmentPlans";
 
 import {
   TreatmentItemPriority,
@@ -35,11 +47,17 @@ interface Props {
 
   item?: TreatmentPlanItem | null;
 
-  /** Needed to attach CDT/CPT procedure codes to the correct patient - see TreatmentItemCoding. */
+  /** Needed to attach CDT/CPT procedure codes and to read tooth-level
+   * diagnosis context - see TreatmentItemCoding / TreatmentDiagnosisContext. */
   patientId: string;
 
   /** Prefilled when opened from a selected tooth on the odontogram. */
   defaultToothNumber?: number | null;
+
+  /** For formatting Materials Used costs - see TreatmentMaterialsUsed.
+   * Optional (defaults to "KES") so existing callers/tests that predate
+   * FIN-2 don't need to pass it just to render the modal. */
+  currency?: string;
 
   saving?: boolean;
 
@@ -52,7 +70,7 @@ interface Props {
 
 const EMPTY_FORM: SaveTreatmentItemInput = {
   procedure: "",
-  tooth_number: null,
+  tooth_numbers: [],
   estimated_price: 0,
   quantity: 1,
   notes: null,
@@ -67,15 +85,196 @@ function newTempKey(): string {
 }
 
 /**
- * CDT/CPT procedure coding for an existing treatment plan item -
- * clinical metadata only, completely independent of the item's
- * procedure/tooth/price fields and of the surrounding modal's own
- * Save/Add submit flow. Only shown once the item itself has a real id
- * (i.e. when editing, never while creating) since
- * patient_procedure_codes.treatment_plan_item_id needs a real row to
- * point at. Each add/remove here writes immediately - there's no
- * separate "save" step for coding, since there's no natural moment to
- * defer it to that doesn't involve changing how the item itself saves.
+ * Phase D: a Treatment's teeth, editable here as chips - the Treatment
+ * Plan tab's counterpart to the odontogram's own tooth selection
+ * (BulkTreatmentModal), for a dentist who starts from "+ Add Treatment"
+ * instead of the chart. Supports zero teeth (a treatment that genuinely
+ * isn't tooth-specific - a consultation, a general exam), one, or many,
+ * all through the same editor - see toothSelection.ts#isValidTooth for
+ * what "valid" means here (real FDI codes, not a 1-32 range).
+ *
+ * Locked read-only once the Treatment has been invoiced (charge_id set) -
+ * changing which teeth an invoiced line covers would silently change the
+ * financial meaning of a charge that already exists (Phase D section 12);
+ * the update_treatment_teeth RPC enforces this too, but disabling the
+ * control here gives a clear reason instead of a failed save.
+ */
+function ToothNumbersEditor({
+  toothNumbers,
+  onChange,
+  disabled,
+}: {
+  toothNumbers: number[];
+  onChange: (teeth: number[]) => void;
+  disabled: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function addTooth() {
+    if (draft.trim() === "") return;
+
+    const value = Number(draft);
+
+    if (!Number.isInteger(value) || !isValidTooth(value)) {
+      toast.error(
+        "Tooth number must be a real FDI tooth number (11-18, 21-28, 31-38, or 41-48)."
+      );
+      return;
+    }
+
+    if (!toothNumbers.includes(value)) {
+      onChange([...toothNumbers, value].sort((a, b) => a - b));
+    }
+
+    setDraft("");
+  }
+
+  function removeTooth(tooth: number) {
+    onChange(toothNumbers.filter((existing) => existing !== tooth));
+  }
+
+  return (
+    <div>
+      <label className="mb-2 block font-medium">Teeth (optional)</label>
+
+      {toothNumbers.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {toothNumbers.map((tooth) => (
+            <span
+              key={tooth}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
+            >
+              🦷 {tooth}
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => removeTooth(tooth)}
+                  aria-label={`Remove tooth ${tooth}`}
+                  className="text-slate-400 transition hover:text-red-600"
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {disabled ? (
+        <p className="text-xs text-slate-400">
+          This treatment has already been invoiced, so its teeth can no
+          longer be changed.
+        </p>
+      ) : (
+        <>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTooth();
+                }
+              }}
+              placeholder="e.g. 16"
+              className="w-full rounded-xl border border-slate-300 p-3 transition focus:border-blue-500 focus:outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={addTooth}
+              aria-label="Add tooth"
+              className="shrink-0 rounded-xl border border-slate-300 px-4 text-sm font-medium text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
+            >
+              Add
+            </button>
+          </div>
+
+          {toothNumbers.length === 0 && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              Leave empty for a treatment that isn&apos;t tooth-specific
+              (e.g. a consultation).
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Phase E (section 2/21): read-only context, not an editable field - what
+ * is wrong with this tooth (diagnosis, recorded via ICD-10-CM on
+ * patient_diagnosis_codes) stays visually near what is being done about it
+ * (this Treatment) without merging the two concepts into one record.
+ * Diagnosis remains keyed to a tooth, not to a treatment_plan_item (see
+ * migration 0054) - editing it still only happens in Tooth Details /
+ * TreatmentForm. Only shown for a single-tooth Treatment, since a grouped
+ * or tooth-less Treatment has no one tooth's diagnosis to show.
+ */
+function TreatmentDiagnosisContext({
+  patientId,
+  toothNumber,
+}: {
+  patientId: string;
+  toothNumber: number;
+}) {
+  const [codes, setCodes] = useState<AttachedDiagnosisCode[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const rows = await getDiagnosisCodesForTooth(patientId, toothNumber);
+
+      if (cancelled) return;
+
+      setCodes(
+        rows.map((row) => ({
+          key: row.id,
+          existingId: row.id,
+          code: row.clinical_codes,
+        }))
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, toothNumber]);
+
+  if (codes === null) return null;
+
+  return (
+    <div>
+      <label className="mb-2 block font-medium">
+        Diagnosis (Tooth {toothNumber})
+      </label>
+
+      {codes.length === 0 ? (
+        <p className="text-xs text-slate-400">
+          No diagnosis recorded for this tooth yet - add one from Tooth
+          Details on the Dental Chart.
+        </p>
+      ) : (
+        <CodedDiagnosisList codes={codes} readOnly />
+      )}
+    </div>
+  );
+}
+
+/**
+ * CDT/CPT procedure coding for an existing treatment - clinical metadata
+ * only (a real, distinct clinical-coding concept - see ClinicalCodePicker),
+ * completely independent of the treatment's name/tooth/price fields and of
+ * the surrounding modal's own Save/Add submit flow. Only shown once the
+ * item itself has a real id (i.e. when editing, never while creating)
+ * since patient_procedure_codes.treatment_plan_item_id needs a real row to
+ * point at. Each add/remove here writes immediately - there's no separate
+ * "save" step for coding, since there's no natural moment to defer it to
+ * that doesn't involve changing how the treatment itself saves.
  */
 function TreatmentItemCoding({
   patientId,
@@ -228,22 +427,41 @@ export default function TreatmentItemModal({
   item,
   patientId,
   defaultToothNumber,
+  currency = "KES",
   saving = false,
   onClose,
   onSave,
 }: Props) {
   const editing = item != null;
 
+  // Phase D section 12: teeth are frozen once a Treatment has been
+  // invoiced - see ToothNumbersEditor and update_treatment_teeth (0077).
+  // Phase H: uses isItemInvoiced(), not raw charge_id - every billable
+  // Treatment now gets a charge immediately on creation, while still
+  // Pending, and update_treatment_teeth (migration 0080) correctly
+  // allows editing a Pending item's teeth; this client-side check must
+  // match that exactly, or the UI locks itself out of an edit the server
+  // would actually allow.
+  const teethLocked = editing && item != null && isItemInvoiced(item);
+
   const [form, setForm] =
     useState<SaveTreatmentItemInput>(EMPTY_FORM);
+
+  // Phase E section 1/D: explicit catalogue-vs-custom toggle, matching
+  // the pattern already proven in BulkTreatmentModal/TreatmentForm -
+  // fixes the Phase D gap where typing a name that didn't match a
+  // catalogue suggestion never actually committed to form.procedure.
+  const [customTreatment, setCustomTreatment] = useState(false);
 
   useEffect(() => {
     if (!open) return;
 
+    setCustomTreatment(false);
+
     if (item) {
       setForm({
         procedure: item.procedure,
-        tooth_number: item.tooth_number,
+        tooth_numbers: getItemTeeth(item),
         estimated_price: item.estimated_price,
         quantity: item.quantity,
         notes: item.notes,
@@ -253,7 +471,7 @@ export default function TreatmentItemModal({
     } else {
       setForm({
         ...EMPTY_FORM,
-        tooth_number: defaultToothNumber ?? null,
+        tooth_numbers: defaultToothNumber != null ? [defaultToothNumber] : [],
       });
     }
   }, [open, item, defaultToothNumber]);
@@ -267,16 +485,17 @@ export default function TreatmentItemModal({
 
   async function handleSubmit() {
     if (!form.procedure.trim()) {
-      toast.error("Please choose a procedure.");
+      toast.error("Please choose a treatment.");
       return;
     }
 
-    if (
-      form.tooth_number != null &&
-      (form.tooth_number < 1 || form.tooth_number > 32)
-    ) {
-      toast.error("Tooth number must be between 1 and 32.");
-      return;
+    for (const tooth of form.tooth_numbers) {
+      if (!isValidTooth(tooth)) {
+        toast.error(
+          "Tooth number must be a real FDI tooth number (11-18, 21-28, 31-38, or 41-48)."
+        );
+        return;
+      }
     }
 
     await onSave(form);
@@ -286,59 +505,94 @@ export default function TreatmentItemModal({
     <FormModal
       open={open}
       title={
-        editing ? "Edit Procedure" : "Add Procedure"
+        editing ? "Edit Treatment" : "Add Treatment"
       }
       loading={saving}
       onClose={onClose}
       onSubmit={handleSubmit}
       submitText={editing ? "Save Changes" : "Add"}
     >
-      <TreatmentSelect
-        value={form.procedure}
-        onChange={(name, price) => {
-          update("procedure", name);
-          update("estimated_price", price);
-        }}
-      />
+      {!customTreatment && (
+        <TreatmentSelect
+          value={form.procedure}
+          onChange={(name, price) => {
+            update("procedure", name);
+            update("estimated_price", price);
+          }}
+        />
+      )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <FormInput
-          label="Tooth Number (optional)"
-          type="number"
-          value={form.tooth_number ?? ""}
-          placeholder="1-32"
-          onChange={(value) =>
-            update(
-              "tooth_number",
-              value === "" ? null : Number(value)
-            )
-          }
+      <div className="flex items-center gap-3">
+        <input
+          id="item-custom-treatment"
+          type="checkbox"
+          checked={customTreatment}
+          onChange={(e) => setCustomTreatment(e.target.checked)}
         />
 
+        <label htmlFor="item-custom-treatment" className="text-sm">
+          Custom Treatment
+        </label>
+      </div>
+
+      <FormInput
+        label="Treatment"
+        value={form.procedure}
+        placeholder="e.g. Composite Restoration"
+        onChange={(value) => update("procedure", value)}
+      />
+
+      <ToothNumbersEditor
+        toothNumbers={form.tooth_numbers}
+        onChange={(teeth) => update("tooth_numbers", teeth)}
+        disabled={teethLocked}
+      />
+
+      {form.tooth_numbers.length === 1 && (
+        <TreatmentDiagnosisContext
+          patientId={patientId}
+          toothNumber={form.tooth_numbers[0]}
+        />
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        {form.tooth_numbers.length > 0 ? (
+          <div>
+            <label className="mb-2 block font-medium">
+              Quantity
+            </label>
+
+            <div className="flex h-11.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+              {form.tooth_numbers.length}{" "}
+              {form.tooth_numbers.length === 1 ? "tooth" : "teeth"}
+            </div>
+          </div>
+        ) : (
+          <FormInput
+            label="Quantity"
+            type="number"
+            value={form.quantity}
+            onChange={(value) =>
+              update(
+                "quantity",
+                Math.max(1, Number(value) || 1)
+              )
+            }
+          />
+        )}
+
         <FormInput
-          label="Quantity"
+          label="Estimated Price"
           type="number"
-          value={form.quantity}
+          value={form.estimated_price}
           onChange={(value) =>
             update(
-              "quantity",
-              Math.max(1, Number(value) || 1)
+              "estimated_price",
+              Math.max(0, Number(value) || 0)
             )
           }
         />
       </div>
-
-      <FormInput
-        label="Estimated Price"
-        type="number"
-        value={form.estimated_price}
-        onChange={(value) =>
-          update(
-            "estimated_price",
-            Math.max(0, Number(value) || 0)
-          )
-        }
-      />
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -396,10 +650,26 @@ export default function TreatmentItemModal({
       />
 
       {editing && item ? (
-        <TreatmentItemCoding patientId={patientId} itemId={item.id} toothNumber={form.tooth_number} />
+        <>
+          <TreatmentMaterialsUsed
+            treatmentPlanItemId={item.id}
+            currency={currency}
+          />
+
+          <TreatmentItemCoding
+            patientId={patientId}
+            itemId={item.id}
+            // CDT/CPT codes tag a single tooth (see clinicalCodes.ts) - only
+            // offered when this Treatment has exactly one, never guessed
+            // from a multi-tooth or tooth-less Treatment's set.
+            toothNumber={
+              form.tooth_numbers.length === 1 ? form.tooth_numbers[0] : null
+            }
+          />
+        </>
       ) : (
         <p className="border-t pt-4 text-xs text-slate-400">
-          Save this procedure first, then reopen it here to add a CDT/CPT procedure code.
+          Save this treatment first, then reopen it here to record materials used or add a CDT/CPT procedure code.
         </p>
       )}
     </FormModal>

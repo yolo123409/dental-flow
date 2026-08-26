@@ -158,6 +158,19 @@ function TreatmentProfitabilityPageContent() {
           the direct costs you configure. This is gross profit per
           treatment, not the clinic&apos;s overall net profit.
         </p>
+        <p className="mt-2 text-xs text-slate-400">
+          &ldquo;Direct Cost&rdquo; below is a manually configured estimate per
+          treatment, not actual cost. &ldquo;Actual Material Cost&rdquo; and
+          &ldquo;Actual Gross Profit&rdquo; come from materials actually
+          recorded against performed treatments (see Materials Used on each
+          Treatment) - 0 when no materials were recorded, never the
+          estimate. For the clinic&apos;s overall ledger-based Direct Costs
+          and Net Profit, see the{" "}
+          <Link href="/admin/ledger/profit-loss" className="text-eucalyptus hover:underline">
+            Profit &amp; Loss
+          </Link>{" "}
+          report.
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -201,18 +214,18 @@ function TreatmentProfitabilityPageContent() {
             />
 
             <StatCard
-              title="Total Direct Costs"
+              title="Estimated Direct Costs"
               value={formatMoney(report.summary.totalDirectCosts)}
               subtitle={`From ${report.summary.treatmentsWithCostConfigured} treatment(s) with cost configured`}
             />
 
             <StatCard
-              title="Total Gross Profit"
+              title="Estimated Gross Profit"
               value={formatMoney(report.summary.totalGrossProfit)}
             />
 
             <StatCard
-              title="Average Gross Margin"
+              title="Estimated Gross Margin"
               value={
                 report.summary.averageGrossMargin == null
                   ? "—"
@@ -222,6 +235,28 @@ function TreatmentProfitabilityPageContent() {
                 report.summary.averageGrossMargin == null
                   ? "No cost data configured yet"
                   : undefined
+              }
+            />
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Actual Material Cost"
+              value={formatMoney(report.summary.totalActualMaterialCost)}
+              subtitle="From materials actually recorded, not the estimate"
+            />
+
+            <StatCard
+              title="Actual Gross Profit"
+              value={formatMoney(report.summary.totalActualGrossProfit)}
+            />
+
+            <StatCard
+              title="Actual Gross Margin"
+              value={
+                report.summary.averageActualGrossMargin == null
+                  ? "—"
+                  : `${report.summary.averageActualGrossMargin.toFixed(1)}%`
               }
             />
           </div>
@@ -341,6 +376,9 @@ function TreatmentProfitabilityPageContent() {
                       <th className="px-6 py-4 text-right text-sm font-semibold">
                         Revenue
                       </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold">
+                        Actual Material Cost
+                      </th>
                       {canManage && <th className="w-32"></th>}
                     </tr>
                   </thead>
@@ -382,6 +420,9 @@ function TreatmentProfitabilityPageContent() {
                         </td>
                         <td className="px-6 py-5 text-right font-semibold">
                           {formatMoney(row.revenue)}
+                        </td>
+                        <td className="px-6 py-5 text-right text-slate-600">
+                          {formatMoney(row.actualMaterialCost)}
                         </td>
                         {canManage && (
                           <td className="px-6 py-5 text-right">

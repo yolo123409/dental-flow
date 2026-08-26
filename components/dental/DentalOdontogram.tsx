@@ -2,59 +2,131 @@
 
 import Odontogram from "@/vendor/react-odontogram";
 import "@/vendor/react-odontogram/styles.css";
+import "./odontogram-selection.css";
 
 import { PatientTooth } from "@/types";
+import type { ToothDetail } from "@/vendor/react-odontogram";
+import { Dentition } from "@/components/patients/dental/toothSelection";
+import {
+  PRIMARY_ODONTOGRAM_MAX_TEETH,
+  primaryToothToVendorId,
+  vendorFdiToPrimaryTooth,
+} from "./vendorPrimaryTeeth";
 
 interface Props {
   teeth: PatientTooth[];
-  selectedTooth: number | null;
-  onToothClick: (tooth: number) => void;
+  selectedTeeth: number[];
+
+  /** Permanent renders the vendor's full 8-teeth-per-quadrant chart with
+   * its own native FDI ids. Primary renders the same tooth shapes capped
+   * to the first 5 per quadrant (central incisor .. second molar - a
+   * primary quadrant has no premolars or third molar), with every id
+   * translated to/from the real primary FDI numbers (51-85) via
+   * vendorPrimaryTeeth.ts - see that file for why. */
+  dentition: Dentition;
+
+  /** Bumped by the parent whenever the selection changed from *outside*
+   * the chart (a toolbar button, a chip removal) rather than from a
+   * direct tooth click - see useToothSelection.ts for why the
+   * uncontrolled vendor component needs this to stay in sync. */
+  remountKey: number;
+
+  /** Fires with the full current selection after every click. This is
+   * the ONLY thing that should drive selection state from a click -
+   * the vendor's own onToothClick fires with just the single tooth
+   * that was last toggled (add *or* remove), not the resulting
+   * selection, so wiring it into selection state would clobber
+   * multi-select down to one tooth on every click. */
+  onSelectionChange: (teeth: number[]) => void;
+}
+
+/* -------------------------------------- */
+/* Condition legend (colors are canonical  */
+/* across the app - do not change without  */
+/* also updating the dead reference        */
+/* implementation's palette).              */
+/* -------------------------------------- */
+
+const CONDITION_LEGEND: {
+  key: keyof ConditionSummary;
+  label: string;
+  swatchClass: string;
+}[] = [
+  { key: "healthy", label: "Healthy", swatchClass: "border border-mineral/40 bg-white" },
+  { key: "caries", label: "Caries", swatchClass: "bg-[#ef4444]" },
+  { key: "filling", label: "Filling", swatchClass: "bg-[#3b82f6]" },
+  { key: "crown", label: "Crown", swatchClass: "bg-[#facc15]" },
+  { key: "implant", label: "Implant", swatchClass: "bg-[#8b5cf6]" },
+  { key: "missing", label: "Missing", swatchClass: "bg-[#64748b]" },
+];
+
+interface ConditionSummary {
+  healthy: number;
+  caries: number;
+  filling: number;
+  crown: number;
+  implant: number;
+  missing: number;
+}
+
+function conditionFill(condition: PatientTooth["condition"]): {
+  fillColor: string;
+  outlineColor: string;
+} {
+  switch (condition) {
+    case "Caries":
+      return { fillColor: "#ef4444", outlineColor: "#b91c1c" };
+
+    case "Filling":
+      return { fillColor: "#3b82f6", outlineColor: "#1d4ed8" };
+
+    case "Crown":
+      return { fillColor: "#facc15", outlineColor: "#ca8a04" };
+
+    case "Implant":
+      return { fillColor: "#8b5cf6", outlineColor: "#6d28d9" };
+
+    case "Missing":
+      return { fillColor: "#64748b", outlineColor: "#334155" };
+
+    default:
+      return { fillColor: "#ffffff", outlineColor: "#64748b" };
+  }
 }
 
 export default function DentalOdontogram({
   teeth,
-  selectedTooth,
-  onToothClick,
+  selectedTeeth,
+  dentition,
+  remountKey,
+  onSelectionChange,
 }: Props) {
+  const isPrimary = dentition === "Primary";
+
+  /** Every id the vendor renders/reports, translated to/from our logical
+   * tooth number - "teeth-{number}" directly for Permanent (the vendor's
+   * own scheme already matches real permanent FDI numbers), or through
+   * the primary adapter for Primary. */
+  const toVendorId = (toothNumber: number) =>
+    isPrimary ? primaryToothToVendorId(toothNumber) : `teeth-${toothNumber}`;
+
+  const fromVendorFdi = (vendorFdi: number) =>
+    isPrimary ? vendorFdiToPrimaryTooth(vendorFdi) : vendorFdi;
 
   /* ------------------------------------------ */
   /* Tooth Colours                              */
   /* ------------------------------------------ */
 
+  const toothByNumber = new Map(
+    teeth.map((tooth) => [tooth.tooth_number, tooth])
+  );
+
   const conditions = teeth.map((tooth) => {
-    let fillColor = "#ffffff";
-    let outlineColor = "#64748b";
-
-    switch (tooth.condition) {
-      case "Caries":
-        fillColor = "#ef4444";
-        outlineColor = "#b91c1c";
-        break;
-
-      case "Filling":
-        fillColor = "#3b82f6";
-        outlineColor = "#1d4ed8";
-        break;
-
-      case "Crown":
-        fillColor = "#facc15";
-        outlineColor = "#ca8a04";
-        break;
-
-      case "Implant":
-        fillColor = "#8b5cf6";
-        outlineColor = "#6d28d9";
-        break;
-
-      case "Missing":
-        fillColor = "#64748b";
-        outlineColor = "#334155";
-        break;
-    }
+    const { fillColor, outlineColor } = conditionFill(tooth.condition);
 
     return {
       label: tooth.condition,
-      teeth: [`teeth-${tooth.tooth_number}`],
+      teeth: [toVendorId(tooth.tooth_number)],
       fillColor,
       outlineColor,
     };
@@ -64,7 +136,7 @@ export default function DentalOdontogram({
   /* Patient Summary                            */
   /* ------------------------------------------ */
 
-  const summary = {
+  const summary: ConditionSummary = {
     healthy: 0,
     caries: 0,
     filling: 0,
@@ -75,10 +147,6 @@ export default function DentalOdontogram({
 
   teeth.forEach((tooth) => {
     switch (tooth.condition) {
-      case "Healthy":
-        summary.healthy++;
-        break;
-
       case "Caries":
         summary.caries++;
         break;
@@ -105,110 +173,76 @@ export default function DentalOdontogram({
     }
   });
 
+  function renderTooltip(payload?: ToothDetail) {
+    if (!payload) return null;
+
+    const toothNumber = fromVendorFdi(Number(payload.notations.fdi));
+    const data = toothByNumber.get(toothNumber);
+    const isSelected = selectedTeeth.includes(toothNumber);
+
+    return (
+      <div>
+        <div style={{ fontWeight: 600 }}>Tooth {toothNumber}</div>
+        <div>{data?.condition ?? "Healthy"}</div>
+        {isSelected && <div>Selected</div>}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
       {/* -------------------------------------- */}
-      {/* Patient Oral Health */}
+      {/* Condition legend                       */}
       {/* -------------------------------------- */}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-        <h3 className="mb-5 text-lg font-semibold text-slate-800">
-          Patient Oral Health
-        </h3>
-
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-
-          <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded border border-slate-400 bg-white" />
-              <span>Healthy</span>
-            </div>
-
-            <span className="font-bold">
-              {summary.healthy}
-            </span>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-sea-glass bg-porcelain px-5 py-3">
+        {CONDITION_LEGEND.map((item) => (
+          <div key={item.key} className="flex items-center gap-2 text-sm">
+            <span className={`h-3 w-3 shrink-0 rounded-full ${item.swatchClass}`} aria-hidden="true" />
+            <span className="text-graphite">{item.label}</span>
+            <span className="data-metric font-semibold text-mineral">{summary[item.key]}</span>
           </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-red-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded bg-red-500" />
-              <span>Caries</span>
-            </div>
-
-            <span className="font-bold text-red-600">
-              {summary.caries}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-blue-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded bg-blue-500" />
-              <span>Filling</span>
-            </div>
-
-            <span className="font-bold text-blue-600">
-              {summary.filling}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-yellow-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded bg-yellow-400" />
-              <span>Crown</span>
-            </div>
-
-            <span className="font-bold text-yellow-700">
-              {summary.crown}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-purple-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded bg-purple-500" />
-              <span>Implant</span>
-            </div>
-
-            <span className="font-bold text-purple-600">
-              {summary.implant}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-slate-100 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded bg-slate-500" />
-              <span>Missing</span>
-            </div>
-
-            <span className="font-bold text-slate-700">
-              {summary.missing}
-            </span>
-          </div>
-
-        </div>
-
+        ))}
       </div>
 
       {/* -------------------------------------- */}
-      {/* Odontogram */}
+      {/* Odontogram                             */}
       {/* -------------------------------------- */}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-sea-glass bg-enamel px-6 py-8">
+
+        <p className="mb-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-mineral">
+          Upper Arch
+        </p>
 
         <Odontogram
-          key={selectedTooth ?? "none"}
+          key={`${dentition}-${remountKey}`}
           theme="light"
           showLabels={false}
-          singleSelect
-          defaultSelected={
-            selectedTooth != null
-              ? [`teeth-${selectedTooth}`]
-              : []
-          }
+          maxTeeth={isPrimary ? PRIMARY_ODONTOGRAM_MAX_TEETH : 8}
+          defaultSelected={selectedTeeth.map(toVendorId)}
           teethConditions={conditions}
-          onToothClick={onToothClick}
+          onChange={(details) => {
+            // The vendor library calls onChange from inside its own
+            // setState updater, which React treats as render-phase
+            // execution - updating this component's parent
+            // synchronously from there trips React's "cannot update a
+            // component while rendering a different component"
+            // safeguard. Deferring to a microtask moves the parent
+            // update to right after the vendor's own commit finishes,
+            // with no visible delay.
+            const toothNumbers = details.map((detail) =>
+              fromVendorFdi(Number(detail.notations.fdi))
+            );
+            queueMicrotask(() => onSelectionChange(toothNumbers));
+          }}
+          tooltip={{ content: renderTooltip }}
         />
+
+        <p className="mt-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-mineral">
+          Lower Arch
+        </p>
 
       </div>
 

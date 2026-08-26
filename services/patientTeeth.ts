@@ -55,8 +55,26 @@ export async function getTooth(
   return data as PatientTooth | null;
 }
 
+/**
+ * Phase H: `skipLegacyCharge` lets a caller save patient_teeth's
+ * clinical fields (condition/diagnosis/treatment_status/materials/notes)
+ * - and, unchanged, whatever historical treatment/estimated_cost value
+ * this tooth already has - WITHOUT re-running the legacy Pending-charge
+ * side effect below. Defaults to false, so every existing/other caller
+ * keeps today's exact behavior unchanged. ToothDetails/TreatmentForm
+ * (Phase H) always passes true: NEW billable Treatments are now created
+ * exclusively through the canonical createTreatment() path (see "+ Add
+ * Treatment"), so a clinical-only save here must never independently
+ * stage a second, legacy charge for a tooth that already has one from
+ * before this phase, and must never start a brand new legacy charge
+ * going forward. This does NOT delete or alter tooth.treatment/
+ * estimated_cost themselves - the historical text/number is preserved as
+ * clinical history exactly as it always was; only the billing side
+ * effect is skipped.
+ */
 export async function saveTooth(
-  tooth: SavePatientTooth
+  tooth: SavePatientTooth,
+  options: { skipLegacyCharge?: boolean } = {}
 ): Promise<void> {
   const clinicId =
     await getCurrentClinicId();
@@ -159,6 +177,7 @@ export async function saveTooth(
     tooth.treatment?.trim() ?? "";
 
   if (
+    !options.skipLegacyCharge &&
     treatment !== "" &&
     tooth.estimated_cost != null &&
     tooth.estimated_cost > 0

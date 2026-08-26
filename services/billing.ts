@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 import { roundMoney } from "@/lib/currency";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getClinicSettings } from "./settings";
@@ -121,6 +122,14 @@ export interface ClinicCharge {
 
   invoice_id: string | null;
 
+  /** Phase G (migration 0079): the treatment_plan_items row this charge
+   * was created for, or null for a legacy Tooth Details charge
+   * (services/patientTeeth.ts#saveTooth()) - the explicit, exact
+   * discriminator Phase F found missing. Never inferred from
+   * patient/tooth/name/amount - only ever set by
+   * billTreatmentPlanItems() at charge-creation time. */
+  treatment_plan_item_id: string | null;
+
   created_at: string;
 }
 
@@ -220,6 +229,49 @@ export async function getInvoiceBalanceTotals(): Promise<
   return { total, paid, outstanding: total - paid };
 }
 
+/**
+ * Phase O: the single authoritative "Outstanding AR" figure -
+ * SUM(balance) WHERE balance > 0, computed server-side (RPC, migration
+ * 0082). Deliberately NOT getInvoiceBalanceTotals().outstanding, which
+ * nets every invoice's balance together clinic-wide - an overpaid
+ * (negative-balance) invoice would silently reduce the reported total
+ * owed on every OTHER invoice, which is never correct: this app has no
+ * credit-balance/refund concept (migration 0043's own comment: "No
+ * refund concept exists anywhere"), so an overpayment on one invoice is
+ * not money available to apply against another. This function floors
+ * each invoice's contribution at zero instead.
+ *
+ * getInvoiceBalanceTotals() itself is unchanged and still correct for
+ * its OWN purpose (Total Invoiced / Total Paid) - only its `.outstanding`
+ * field is being replaced at its call sites, not this function.
+ *
+ * Mathematically identical to getArSummary().totalOutstanding and to
+ * getAccountsReceivableReport()'s reconciliation.invoiceOutstandingBalance
+ * - both already fetch every outstanding invoice row for other reasons
+ * (aging buckets, per-invoice detail) and keep summing their own
+ * already-fetched rows rather than making an extra round trip here. This
+ * function is for callers that only need the single total: the Billing
+ * header, Patient Stats, and the AR reconciliation guard
+ * (getArReconciliationStatus in services/accountsReceivable.ts).
+ */
+export async function getOutstandingInvoiceBalance(): Promise<number> {
+  const clinicId = await getCurrentClinicId();
+
+  const { data, error } = await supabase.rpc("get_outstanding_invoice_balance", {
+    p_clinic_id: clinicId,
+  });
+
+  if (error) {
+    logError("[billing] getOutstandingInvoiceBalance failed:", error);
+
+    throw toError(error);
+  }
+
+  const row = (data?.[0] ?? { outstanding: 0 }) as { outstanding: number };
+
+  return Number(row.outstanding ?? 0);
+}
+
 /* -------------------------------------- */
 /* Get Charges                            */
 /* -------------------------------------- */
@@ -249,6 +301,329 @@ export async function getPendingCharges() {
   return (
     data ?? []
   ) as ClinicCharge[];
+}
+
+/* -------------------------------------- */
+/* Get Charges (Billing Control Center)   */
+/* -------------------------------------- */
+
+export interface ChargeListResult {
+  rows: ClinicChargeWithDetails[];
+  count: number;
+}
+
+export interface ChargeFilters {
+  /** Omit for every status. */
+  status?: "Pending" | "Invoiced";
+  /** Omit for both. "canonical" = treatment_plan_item_id set (Phase G/H).
+   * "legacy" = treatment_plan_item_id null (services/patientTeeth.ts). */
+  source?: "canonical" | "legacy";
+  /** Phase J section 14/15/16/17: filters on the LINKED INVOICE's own
+   * state, never a property of the charge itself - "Outstanding"/"Paid"
+   * describe an invoice's balance/status, not a clinic_charges row. Forces
+   * an inner join on clinic_invoices (a charge with no invoice can never
+   * match either value), so this is mutually exclusive in practice with
+   * status: "Pending" (a Pending charge has no invoice yet). */
+  invoiceStatus?: "Outstanding" | "Paid";
+  /** Matches treatment name, patient name, or invoice number. */
+  search?: string;
+  /** Inclusive, ISO date/datetime bounds on created_at. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** A charge joined with everything the Billing Control Center's table and
+ * detail panel need to render without an N+1 query per row: who it's for,
+ * which invoice (if any) it's on, and - for a canonical charge only - the
+ * Treatment/Treatment Plan that generated it. treatment_plan_items is null
+ * for a legacy charge (Phase G/H's exact discriminator), never a guess. */
+export interface ClinicChargeWithDetails extends ClinicCharge {
+  patients: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+
+  clinic_invoices: {
+    id: string;
+    invoice_number: string;
+    status: string;
+    total: number;
+    amount_paid: number;
+    balance: number;
+    payment_method: string | null;
+    insurance_provider_id: string | null;
+    insurance_provider: { name: string } | null;
+  } | null;
+
+  treatment_plan_items: {
+    id: string;
+    treatment_plan_id: string;
+    procedure: string;
+    quantity: number;
+    tooth_number: number | null;
+    treatment_teeth?: { tooth_number: number }[];
+    treatment_plans: { id: string; title: string } | null;
+  } | null;
+}
+
+// clinic_charges.treatment_plan_item_id -> treatment_plan_items.id
+// (migration 0079) is a SECOND foreign key between these two tables, so
+// the embed needs the same explicit constraint-name hint as the reverse
+// direction in services/treatmentPlans.ts, or PostgREST can't infer which
+// relationship "treatment_plan_items(...)" means (PGRST201).
+//
+// Phase J: the clinic_invoices embed is built with or without "!inner"
+// depending on whether a filter needs to be applied to it. A charge with
+// no invoice (invoice_id null, i.e. still Pending) must keep showing
+// clinic_invoices as null in the normal (left-join) case - forcing an
+// inner join unconditionally would silently drop every Pending charge
+// from "All". Only getCharges()'s invoiceStatus filter (Outstanding/Paid,
+// which are properties of the INVOICE, not the charge) needs the inner
+// join, since PostgREST can only filter an embedded resource's own
+// columns when it's joined that way.
+function buildChargeDetailSelect(innerJoinInvoice: boolean): string {
+  const invoiceEmbed = innerJoinInvoice
+    ? "clinic_invoices!inner"
+    : "clinic_invoices";
+
+  return `
+    *,
+    patients (
+      id, first_name, last_name
+    ),
+    ${invoiceEmbed} (
+      id, invoice_number, status, total, amount_paid, balance,
+      payment_method, insurance_provider_id,
+      insurance_provider:insurance_providers ( name )
+    ),
+    treatment_plan_items!clinic_charges_treatment_plan_item_id_fkey (
+      id, treatment_plan_id, procedure, quantity, tooth_number,
+      treatment_teeth ( tooth_number ),
+      treatment_plans ( id, title )
+    )
+  `;
+}
+
+// Small, capped lookups (not full-table scans) so a Billing search can
+// match a patient name or invoice number without an expensive query -
+// mirrors services/patients.ts#getPatients()'s own escaped-ilike pattern.
+const SEARCH_ID_LOOKUP_LIMIT = 50;
+
+async function lookupMatchingPatientIds(
+  clinicId: string,
+  term: string
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("patients")
+    .select("id")
+    .eq("clinic_id", clinicId)
+    .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`)
+    .limit(SEARCH_ID_LOOKUP_LIMIT);
+
+  return (data ?? []).map((row) => row.id as string);
+}
+
+async function lookupMatchingInvoiceIds(
+  clinicId: string,
+  term: string
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("clinic_invoices")
+    .select("id")
+    .eq("clinic_id", clinicId)
+    .ilike("invoice_number", `%${term}%`)
+    .limit(SEARCH_ID_LOOKUP_LIMIT);
+
+  return (data ?? []).map((row) => row.id as string);
+}
+
+/**
+ * Real server-side pagination + filtering over EVERY charge (Pending and
+ * Invoiced, canonical and legacy) - the Billing Control Center's "browse
+ * everything" table (Phase I). Distinct from getPendingCharges() below,
+ * which stays a deliberately unbounded fetch: Pending charges are a
+ * self-clearing work queue (they leave it the moment they're invoiced),
+ * not an ever-growing history, so the existing bulk-invoicing selection
+ * flow still needs every Pending charge in one fetch, not one page of it.
+ */
+export async function getCharges(
+  page = 1,
+  pageSize = 50,
+  filters: ChargeFilters = {}
+): Promise<ChargeListResult> {
+  await assertPermission("billing");
+
+  const clinicId = await getCurrentClinicId();
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("clinic_charges")
+    .select(buildChargeDetailSelect(filters.invoiceStatus != null), {
+      count: "exact",
+    })
+    .eq("clinic_id", clinicId)
+    .order("created_at", { ascending: false });
+
+  if (filters.status) {
+    query = query.eq("status", filters.status);
+  }
+
+  if (filters.source === "canonical") {
+    query = query.not("treatment_plan_item_id", "is", null);
+  } else if (filters.source === "legacy") {
+    query = query.is("treatment_plan_item_id", null);
+  }
+
+  if (filters.invoiceStatus === "Paid") {
+    query = query.eq("clinic_invoices.status", "Paid");
+  } else if (filters.invoiceStatus === "Outstanding") {
+    query = query.gt("clinic_invoices.balance", 0);
+  }
+
+  if (filters.dateFrom) {
+    query = query.gte("created_at", filters.dateFrom);
+  }
+
+  if (filters.dateTo) {
+    query = query.lte("created_at", filters.dateTo);
+  }
+
+  const term = filters.search?.trim();
+
+  if (term) {
+    const escaped = term.replace(/[%,]/g, "");
+
+    const [patientIds, invoiceIds] = await Promise.all([
+      lookupMatchingPatientIds(clinicId, escaped),
+      lookupMatchingInvoiceIds(clinicId, escaped),
+    ]);
+
+    const orClauses = [`treatment_name.ilike.%${escaped}%`];
+
+    if (patientIds.length > 0) {
+      orClauses.push(`patient_id.in.(${patientIds.join(",")})`);
+    }
+
+    if (invoiceIds.length > 0) {
+      orClauses.push(`invoice_id.in.(${invoiceIds.join(",")})`);
+    }
+
+    query = query.or(orClauses.join(","));
+  }
+
+  const { data, error, count } = await query.range(from, to);
+
+  if (error) {
+    logError("[billing] getCharges failed:", error);
+
+    throw toError(error);
+  }
+
+  return {
+    rows: (data ?? []) as unknown as ClinicChargeWithDetails[],
+    count: count ?? 0,
+  };
+}
+
+/**
+ * Phase J section 18/21/22: a targeted single-charge refetch, used to
+ * update a charge's payment/invoice figures in place after
+ * recordPayment() succeeds - without either closing the detail view or
+ * re-deriving fresh numbers client-side (which recordPayment()'s own
+ * authoritative amount_paid/balance/status calculation must remain the
+ * only source of). Reuses the exact same select shape as getCharges().
+ */
+export async function getChargeById(
+  chargeId: string
+): Promise<ClinicChargeWithDetails | null> {
+  await assertPermission("billing");
+
+  const clinicId = await getCurrentClinicId();
+
+  const { data, error } = await supabase
+    .from("clinic_charges")
+    .select(buildChargeDetailSelect(false))
+    .eq("clinic_id", clinicId)
+    .eq("id", chargeId)
+    .maybeSingle();
+
+  if (error) {
+    logError("[billing] getChargeById failed:", error);
+
+    throw toError(error);
+  }
+
+  return data as unknown as ClinicChargeWithDetails | null;
+}
+
+/* -------------------------------------- */
+/* Charge <-> Treatment link diagnostic   */
+/* -------------------------------------- */
+
+export interface BrokenChargeLink {
+  chargeId: string;
+  treatmentPlanItemId: string;
+  reason: string;
+}
+
+/**
+ * Phase I section 27: a read-only integrity check on the bidirectional
+ * relationship Phase G/H established -
+ * clinic_charges.treatment_plan_item_id and treatment_plan_items.charge_id
+ * should always point back at each other for a canonical charge. Reports
+ * mismatches; never repairs them - a broken link is a bug to investigate,
+ * not production financial data to silently rewrite.
+ */
+export async function findBrokenCanonicalChargeLinks(): Promise<
+  BrokenChargeLink[]
+> {
+  await assertPermission("billing");
+
+  const clinicId = await getCurrentClinicId();
+
+  const { data, error } = await supabase
+    .from("clinic_charges")
+    .select(
+      `id, treatment_plan_item_id,
+       treatment_plan_items!clinic_charges_treatment_plan_item_id_fkey ( id, charge_id )`
+    )
+    .eq("clinic_id", clinicId)
+    .not("treatment_plan_item_id", "is", null);
+
+  if (error) {
+    logError("[billing] findBrokenCanonicalChargeLinks failed:", error);
+
+    throw toError(error);
+  }
+
+  const broken: BrokenChargeLink[] = [];
+
+  for (const row of (data ?? []) as unknown as {
+    id: string;
+    treatment_plan_item_id: string;
+    treatment_plan_items: { id: string; charge_id: string | null } | null;
+  }[]) {
+    const item = row.treatment_plan_items;
+
+    if (!item) {
+      broken.push({
+        chargeId: row.id,
+        treatmentPlanItemId: row.treatment_plan_item_id,
+        reason: "Linked treatment_plan_item was not found.",
+      });
+    } else if (item.charge_id !== row.id) {
+      broken.push({
+        chargeId: row.id,
+        treatmentPlanItemId: row.treatment_plan_item_id,
+        reason: `treatment_plan_item.charge_id (${item.charge_id ?? "null"}) does not point back to this charge.`,
+      });
+    }
+  }
+
+  return broken;
 }
 
 /* -------------------------------------- */
@@ -631,6 +1006,15 @@ export async function recordPayment(
 ) {
   await assertPermission("billing");
 
+  // Phase J section 5/23/34: recordPayment() is the ONE authoritative
+  // place a clinic_payments row is ever created (no second insertion
+  // function, no client-side substitute) - so this is also the one place
+  // that must reject a nonsensical amount, regardless of which UI called
+  // it or what a possibly-stale screen displayed.
+  if (!(amount > 0)) {
+    throw new Error("Enter a payment amount greater than zero.");
+  }
+
   // Mirrors clinic_payments_insurance_provider_requires_method - checked
   // here too so a missing provider produces a clear toast instead of a
   // raw constraint-violation message.
@@ -661,6 +1045,23 @@ export async function recordPayment(
     logError("[billing] recordPayment (load invoice) failed:", invoiceError);
 
     throw toError(invoiceError);
+  }
+
+  // Phase J section 5/24/34/37: the existing implementation had no
+  // overpayment guard at all - found during this phase's audit (J1/J37),
+  // not a deliberately-supported behavior, so it's closed here rather
+  // than silently left open. Read against the balance JUST fetched above
+  // (not whatever the calling UI had displayed), which narrows the
+  // concurrent-double-payment window (J24) to this function's own
+  // load-then-write round trip instead of however long a screen had been
+  // sitting open - a real improvement without the new RPC/migration this
+  // phase's own instructions say to avoid unless absolutely required.
+  const outstandingBalance = roundMoney(Number(invoice.balance));
+
+  if (amount > outstandingBalance) {
+    throw new Error(
+      `Payment amount exceeds the outstanding balance of ${outstandingBalance}.`
+    );
   }
 
   /* ----------------------------- */
@@ -753,4 +1154,293 @@ export async function recordPayment(
     invoice_number: invoice.invoice_number,
     amount,
   });
+}
+
+/* -------------------------------------- */
+/* Accounts Receivable / Collections      */
+/* (Phase K)                              */
+/* -------------------------------------- */
+
+// Phase K section 1/2: clinic_invoices has no due_date column and there is
+// no payment-terms concept anywhere in this schema (confirmed against the
+// same finding types/accountsReceivable.ts already documents for the
+// Ledger's AR report) - so "age" is measured from the invoice's own
+// created_at, never a fabricated due date. Buckets mirror that report's
+// day boundaries exactly (0/30/60/90) so the two AR surfaces never
+// disagree about what "60 days" means, even though this one is scoped to
+// "billing" (not "ledger") permission and computed straight from
+// clinic_invoices rather than the ledger account balance.
+export type ArAgingBucketKey = "0-30" | "31-60" | "61-90" | "90+";
+
+export interface ArAgingBucket {
+  key: ArAgingBucketKey;
+  label: string;
+  amount: number;
+  count: number;
+}
+
+export interface ArOutstandingInvoice {
+  invoiceId: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  patientId: string;
+  patientName: string;
+  /** From clinic_invoice_items - the existing invoice line-item
+   * architecture (Phase K section 21), never re-derived from charges. */
+  treatmentSummary: string;
+  total: number;
+  amountPaid: number;
+  balance: number;
+  /** Always "Unpaid" or "Partially Paid" - a balance > 0 invoice can never
+   * carry the "Paid" status (recordPayment() ties balance <= 0 to Paid). */
+  status: string;
+  ageDays: number;
+  bucket: ArAgingBucketKey;
+  paymentMethod: string | null;
+  insuranceProviderId: string | null;
+  insuranceProviderName: string | null;
+}
+
+export interface ArPatientSummary {
+  patientId: string;
+  patientName: string;
+  outstanding: number;
+  invoiceCount: number;
+  oldestAgeDays: number;
+}
+
+export interface ArSummary {
+  totalOutstanding: number;
+  invoiceCount: number;
+  patientCount: number;
+  buckets: ArAgingBucket[];
+  oldestInvoice: ArOutstandingInvoice | null;
+  largestInvoice: ArOutstandingInvoice | null;
+  /** Oldest-first (Phase K section 9's default collections ordering). */
+  invoices: ArOutstandingInvoice[];
+  /** Highest-outstanding-first. */
+  patients: ArPatientSummary[];
+}
+
+interface RawArInvoiceRow {
+  id: string;
+  invoice_number: string;
+  created_at: string;
+  total: number;
+  amount_paid: number;
+  balance: number;
+  status: string;
+  patient_id: string;
+  payment_method: string | null;
+  insurance_provider_id: string | null;
+  patients: { id: string; first_name: string; last_name: string } | null;
+  insurance_provider: { name: string } | null;
+  clinic_invoice_items: { treatment_name: string }[] | null;
+}
+
+function summarizeInvoiceTreatments(
+  items: { treatment_name: string }[] | null
+): string {
+  if (!items || items.length === 0) return "—";
+
+  if (items.length === 1) return items[0].treatment_name;
+
+  return `${items[0].treatment_name} (+${items.length - 1} more)`;
+}
+
+function agingBucketFor(ageDays: number): ArAgingBucketKey {
+  if (ageDays <= 30) return "0-30";
+  if (ageDays <= 60) return "31-60";
+  if (ageDays <= 90) return "61-90";
+  return "90+";
+}
+
+/**
+ * Phase K: the Accounts Receivable / Collections summary that powers the
+ * Billing Control Center's Outstanding view - total, aging buckets,
+ * per-patient aggregation, and the oldest/largest spotlight invoices.
+ *
+ * Every figure is derived from ONE fetched set of currently-outstanding
+ * invoices (balance > 0), so the reconciliation invariant (total outstanding
+ * = sum of bucket amounts = sum of patient totals) holds by construction,
+ * never by cross-checking two different data sources.
+ *
+ * Phase O correction: this total is NOT the same as
+ * getInvoiceBalanceTotals().outstanding whenever an overpaid (negative-
+ * balance) invoice exists - that one nets every invoice's balance
+ * together across the WHOLE clinic, so an overpayment on one already-
+ * settled invoice silently reduces the reported total owed on every
+ * OTHER invoice, which is never correct (this app has no credit-balance/
+ * refund concept - see migration 0043's own comment - so an overpayment
+ * is not money available to apply elsewhere). This function's balance>0
+ * filter already floors each invoice's contribution at zero and is the
+ * canonical definition; see getOutstandingInvoiceBalance() below for the
+ * single-total (no per-invoice detail needed) equivalent of this same
+ * filter, used by callers that don't need the full row set.
+ *
+ * Outstanding invoices are a bounded, self-clearing set (an invoice leaves
+ * it the moment it's paid off), not an ever-growing history - so, like the
+ * existing Ledger AR report (services/accountsReceivable.ts), this fetches
+ * every one of them (via fetchAllRows, safe against PostgREST's default
+ * row cap) rather than paginating, since aging-bucket and patient-level
+ * aggregation both genuinely need the full set in memory.
+ */
+export async function getArSummary(): Promise<ArSummary> {
+  await assertPermission("billing");
+
+  const clinicId = await getCurrentClinicId();
+  const now = Date.now();
+
+  const rows = await fetchAllRows<RawArInvoiceRow>(
+    (from, to) =>
+      supabase
+        .from("clinic_invoices")
+        .select(
+          `
+          id, invoice_number, created_at, total, amount_paid, balance, status,
+          patient_id, payment_method, insurance_provider_id,
+          patients ( id, first_name, last_name ),
+          insurance_provider:insurance_providers ( name ),
+          clinic_invoice_items ( treatment_name )
+        `
+        )
+        .eq("clinic_id", clinicId)
+        .gt("balance", 0)
+        .order("created_at", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{
+        data: RawArInvoiceRow[] | null;
+        error: unknown;
+      }>
+  );
+
+  const invoices: ArOutstandingInvoice[] = rows.map((row) => {
+    const ageDays = Math.max(
+      0,
+      Math.floor((now - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    );
+
+    return {
+      invoiceId: row.id,
+      invoiceNumber: row.invoice_number,
+      invoiceDate: row.created_at,
+      patientId: row.patient_id,
+      patientName: row.patients
+        ? `${row.patients.first_name} ${row.patients.last_name}`
+        : "—",
+      treatmentSummary: summarizeInvoiceTreatments(row.clinic_invoice_items),
+      total: Number(row.total),
+      amountPaid: Number(row.amount_paid),
+      balance: Number(row.balance),
+      status: row.status,
+      ageDays,
+      bucket: agingBucketFor(ageDays),
+      paymentMethod: row.payment_method,
+      insuranceProviderId: row.insurance_provider_id,
+      insuranceProviderName: row.insurance_provider?.name ?? null,
+    };
+  });
+
+  const bucketDefs: { key: ArAgingBucketKey; label: string }[] = [
+    { key: "0-30", label: "0–30 Days" },
+    { key: "31-60", label: "31–60 Days" },
+    { key: "61-90", label: "61–90 Days" },
+    { key: "90+", label: "90+ Days" },
+  ];
+
+  const buckets: ArAgingBucket[] = bucketDefs.map((def) => {
+    const matching = invoices.filter((invoice) => invoice.bucket === def.key);
+
+    return {
+      key: def.key,
+      label: def.label,
+      amount: roundMoney(
+        matching.reduce((sum, invoice) => sum + invoice.balance, 0)
+      ),
+      count: matching.length,
+    };
+  });
+
+  const totalOutstanding = roundMoney(
+    invoices.reduce((sum, invoice) => sum + invoice.balance, 0)
+  );
+
+  const patientMap = new Map<string, ArPatientSummary>();
+
+  for (const invoice of invoices) {
+    const existing = patientMap.get(invoice.patientId);
+
+    if (existing) {
+      existing.outstanding = roundMoney(existing.outstanding + invoice.balance);
+      existing.invoiceCount += 1;
+      existing.oldestAgeDays = Math.max(existing.oldestAgeDays, invoice.ageDays);
+    } else {
+      patientMap.set(invoice.patientId, {
+        patientId: invoice.patientId,
+        patientName: invoice.patientName,
+        outstanding: invoice.balance,
+        invoiceCount: 1,
+        oldestAgeDays: invoice.ageDays,
+      });
+    }
+  }
+
+  const patients = [...patientMap.values()].sort(
+    (a, b) => b.outstanding - a.outstanding
+  );
+
+  const oldestInvoice =
+    invoices.length > 0
+      ? invoices.reduce((oldest, invoice) =>
+          invoice.ageDays > oldest.ageDays ? invoice : oldest
+        )
+      : null;
+
+  const largestInvoice =
+    invoices.length > 0
+      ? invoices.reduce((largest, invoice) =>
+          invoice.balance > largest.balance ? invoice : largest
+        )
+      : null;
+
+  return {
+    totalOutstanding,
+    invoiceCount: invoices.length,
+    patientCount: patientMap.size,
+    buckets,
+    oldestInvoice,
+    largestInvoice,
+    invoices,
+    patients,
+  };
+}
+
+/**
+ * Phase L section 14: sum of clinic_invoices.discount for invoices
+ * created within [start, end] - no existing report aggregates this
+ * column, but it's a plain already-stored figure (set once at
+ * createInvoice() time, never recomputed), not a new calculation engine.
+ * Paged the same safe way as getRevenueChartData() rather than a single
+ * unbounded fetch.
+ */
+export async function getDiscountTotal(
+  start: Date | null,
+  end: Date | null
+): Promise<number> {
+  await assertPermission("billing");
+
+  const clinicId = await getCurrentClinicId();
+
+  const rows = await fetchAllRows<{ discount: number }>((from, to) => {
+    let query = supabase
+      .from("clinic_invoices")
+      .select("discount")
+      .eq("clinic_id", clinicId);
+
+    if (start) query = query.gte("created_at", start.toISOString());
+    if (end) query = query.lte("created_at", end.toISOString());
+
+    return query.range(from, to);
+  });
+
+  return roundMoney(rows.reduce((sum, row) => sum + Number(row.discount ?? 0), 0));
 }

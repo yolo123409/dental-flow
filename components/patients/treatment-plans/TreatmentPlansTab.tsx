@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -33,7 +33,13 @@ interface Props {
   pendingTooth?: number | null;
   onPendingToothConsumed?: () => void;
 
-  onViewOnChart: (tooth: number) => void;
+  /** Phase I: a plan to jump straight into, e.g. from Billing's "View
+   * Treatment"/"View Plan" links (?plan=<id> on the patient page URL).
+   * Only consulted once, the first time `plans` loads - selecting a plan
+   * inside this tab afterward must never fight back with a stale param. */
+  initialPlanId?: string | null;
+
+  onViewOnChart: (teeth: number[]) => void;
 }
 
 export default function TreatmentPlansTab({
@@ -41,6 +47,7 @@ export default function TreatmentPlansTab({
   currency,
   pendingTooth,
   onPendingToothConsumed,
+  initialPlanId,
   onViewOnChart,
 }: Props) {
   const [plans, setPlans] = useState<
@@ -107,7 +114,28 @@ export default function TreatmentPlansTab({
     [plans, selectedPlanId]
   );
 
-  // If the user arrived here wanting to add a procedure for a specific
+  // Phase I: consume ?plan=<id> exactly once, the first time plans finish
+  // loading - a ref (not state) so this never re-fires just because
+  // `plans` reloads later (e.g. after editing a treatment).
+  const consumedInitialPlanId = useRef(false);
+
+  useEffect(() => {
+    if (
+      consumedInitialPlanId.current ||
+      loading ||
+      !initialPlanId
+    ) {
+      return;
+    }
+
+    consumedInitialPlanId.current = true;
+
+    if (plans.some((plan) => plan.id === initialPlanId)) {
+      setSelectedPlanId(initialPlanId);
+    }
+  }, [initialPlanId, plans, loading]);
+
+  // If the user arrived here wanting to add a treatment for a specific
   // tooth and exactly one open plan exists, jump straight into it.
   useEffect(() => {
     if (pendingTooth == null || loading) return;
@@ -124,11 +152,11 @@ export default function TreatmentPlansTab({
       setSelectedPlanId(openPlans[0].id);
     } else if (openPlans.length === 0) {
       toast(
-        `Create a treatment plan, then add Tooth ${pendingTooth} as a procedure.`
+        `Create a treatment plan, then add Tooth ${pendingTooth} as a treatment.`
       );
     } else {
       toast(
-        `Open a plan and add Tooth ${pendingTooth} as a procedure.`
+        `Open a plan and add Tooth ${pendingTooth} as a treatment.`
       );
     }
   }, [pendingTooth, plans, loading, selectedPlanId]);
@@ -269,7 +297,7 @@ export default function TreatmentPlansTab({
           title="Delete treatment plan"
           description={
             deleteTarget
-              ? `Delete "${deleteTarget.title}"? This removes all of its procedures too.`
+              ? `Delete "${deleteTarget.title}"? This removes all of its treatments too.`
               : undefined
           }
           confirmText="Delete"
@@ -300,7 +328,7 @@ export default function TreatmentPlansTab({
 
       {plans.length === 0 ? (
         <EmptyState
-          title="No treatment plans yet"
+          title="No treatment plan yet."
           description="Create a plan to recommend and track a patient's upcoming work."
         />
       ) : (

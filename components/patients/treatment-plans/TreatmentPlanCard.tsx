@@ -47,7 +47,7 @@ export default function TreatmentPlanCard({
           </div>
 
           <p className="mt-1 text-sm text-slate-500">
-            {totals.procedureCount} procedure
+            {totals.procedureCount} treatment
             {totals.procedureCount === 1 ? "" : "s"} ·{" "}
             {new Date(
               plan.created_at

@@ -49,6 +49,15 @@ async function paymentsCount(
   return count ?? 0;
 }
 
+/**
+ * FIN-1: getPeriodFinancials() is now a ledger-derived figure
+ * (services/ledger.ts#getProfitAndLoss), so calling it identically for
+ * the current, previous, and same-month-last-year periods below compares
+ * three periods on the exact same accounting basis - never accrual ledger
+ * revenue for one period against a "Paid invoices" figure for another.
+ * This function needed no other change for FIN-1; only getPeriodFinancials
+ * itself changed.
+ */
 async function metricsForPeriod(clinicId: string, bounds: PeriodBounds) {
   const [financials, patients, appointments, invoices, payments] = await Promise.all([
     getPeriodFinancials(bounds.start, bounds.end),

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getInvoiceBalanceTotals } from "@/services/billing";
+import { getOutstandingInvoiceBalance } from "@/services/billing";
 import { getClinicSettings } from "@/services/settings";
 import { getNewPatientsThisMonthCount } from "@/services/patients";
 import { getTodaysAppointmentCount } from "@/services/appointments";
@@ -36,18 +36,18 @@ export default function PatientStats() {
       const [
         newPatientCount,
         appointmentCount,
-        balanceTotals,
+        outstandingBalance,
         clinicSettings,
       ] = await Promise.all([
         getNewPatientsThisMonthCount(),
         getTodaysAppointmentCount(),
-        getInvoiceBalanceTotals(),
+        getOutstandingInvoiceBalance(),
         getClinicSettings(),
       ]);
 
       setNewThisMonth(newPatientCount);
       setTodaysVisits(appointmentCount);
-      setOutstanding(balanceTotals.outstanding);
+      setOutstanding(outstandingBalance);
       setCurrency(clinicSettings.currency || "KES");
     } catch (err) {
       setError(

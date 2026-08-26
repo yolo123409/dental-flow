@@ -1,0 +1,22 @@
+/*
+ * Application-owned styling layered on top of the vendored odontogram
+ * (vendor/react-odontogram) - never edit the vendor's own styles.css.
+ *
+ * The vendor's `.selected` class already re-tints the tooth's condition
+ * fill on click; that's left alone (removing it would fight the
+ * library's own state management). This file adds a persistent
+ * outline glow so a multi-tooth selection reads clearly at a glance
+ * without depending on that fill re-tint alone, and keeps clinical
+ * condition color as the dominant signal once you look past the glow.
+ */
+
+.Odontogram g.selected {
+  filter: drop-shadow(0 0 1.5px var(--eucalyptus))
+    drop-shadow(0 0 3px var(--eucalyptus));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .Odontogram g.selected:hover path:first-of-type {
+    animation: none !important;
+  }
+}

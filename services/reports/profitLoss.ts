@@ -2,16 +2,32 @@ import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, getPeriodFinancials, periodLabel } from "./shared";
 
 /**
- * IMPORTANT ACCOUNTING DISTINCTION (per spec): this is a different, less
- * conservative "Gross Profit" than Treatment Profitability's own summary
- * card. Treatment Profitability's Gross Profit only counts revenue from
- * treatments that HAVE a configured direct cost (excluding the rest of
- * revenue entirely, so it never overstates profit). A clinic P&L instead
- * follows the standard accounting shape - full revenue minus whatever
- * direct costs are actually known - and discloses incomplete cost
- * coverage explicitly rather than shrinking the revenue line to match.
- * Both figures are correct for what they each measure; they are
- * deliberately not required to match, and the notice below says so.
+ * IMPORTANT ACCOUNTING DISTINCTION (FIN-1): "Direct Treatment Costs" below
+ * is the general ledger's own Supplies Used account - the real cost of
+ * inventory actually recorded as consumed (getPeriodFinancials(), backed
+ * by services/ledger.ts#getProfitAndLoss) - not Treatment Profitability's
+ * own clinic_treatments.direct_cost estimate. The two pages are expected
+ * to disagree: Treatment Profitability's Gross Profit only counts revenue
+ * from treatments with a manually-configured cost estimate (a rough,
+ * catalog-level figure); this P&L instead reports the clinic's actual,
+ * ledger-recorded direct costs against full revenue. Neither is "wrong" -
+ * they measure different things.
+ *
+ * Before FIN-1 this report used the SAME direct_cost estimate Treatment
+ * Profitability uses, which meant this "Profit & Loss" and the Ledger's
+ * own Profit & Loss page could report different Net Profit for the same
+ * period (see the FIN-0 audit, finding P1-1). This report now shares
+ * getProfitAndLoss() with the Ledger P&L page instead, so the two can
+ * never disagree.
+ *
+ * Recording inventory as consumed (rather than just purchased) during a
+ * treatment is currently a manual, optional step elsewhere in the app
+ * (see the FIN-0 audit, finding P1-2) - if a clinic isn't recording
+ * consumption, Direct Treatment Costs below will legitimately read low or
+ * zero, exactly as the Ledger P&L would for the same period. That is a
+ * real operational gap, not a bug in this report, and building the
+ * treatment-to-inventory link is out of scope for FIN-1 (planned for
+ * FIN-2).
  */
 export async function generateProfitLossReport(
   period: ReportPeriod,
@@ -40,25 +56,15 @@ export async function generateProfitLossReport(
     {
       tone: "info",
       message:
-        "Gross Profit here is Revenue minus known Direct Treatment Costs, minus Operating Expenses gives Net Profit - this is a different, standard-accounting figure from Treatment Profitability's own Gross Profit card, which counts only revenue from treatments with a configured cost. Both are intentional and correct for their own purpose.",
+        "Revenue, Direct Treatment Costs, and Operating Expenses here come from the general ledger - the same accounting source as the Ledger's own Profit & Loss report, so this figure always agrees with it for the same period. This is a different figure from Treatment Profitability's own Gross Profit card, which only counts revenue from treatments with a manually configured cost estimate; both are intentional and measure different things.",
     },
   ];
 
-  if (
-    financials.costCoveragePercent != null &&
-    financials.costCoveragePercent < 100
-  ) {
-    notices.push({
-      tone: "warning",
-      message: `Direct treatment costs are configured for only ${Math.round(
-        financials.costCoveragePercent
-      )}% of treatment revenue in this period. Gross Profit and Net Profit understate true direct costs for the uncosted portion - configure more treatment costs on the Treatment Profitability page for a fuller picture.`,
-    });
-  } else if (financials.costCoveragePercent == null) {
+  if (financials.directCosts === 0) {
     notices.push({
       tone: "warning",
       message:
-        "No treatment direct costs are configured yet. Direct Treatment Costs is shown as 0, so Gross Profit and Net Profit here are not yet a complete picture.",
+        "No inventory consumption has been recorded against the ledger's Supplies Used account for this period, so Direct Treatment Costs shows as 0. Gross Profit and Net Profit above do not yet reflect real material costs.",
     });
   }
 

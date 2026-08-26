@@ -40,6 +40,12 @@ interface RawTreatmentActualRow {
   revenue: number;
 }
 
+interface RawActualMaterialCostRow {
+  clinic_id: string;
+  treatment_name_normalized: string;
+  actual_material_cost: number;
+}
+
 /**
  * Pure: given one clinic's treatment catalog and its already-aggregated
  * actuals (performed count / revenue per normalized treatment name),
@@ -54,10 +60,13 @@ interface RawTreatmentActualRow {
 function buildTreatmentProfitabilityReport(
   treatments: TreatmentCatalogRow[],
   actuals: Map<string, TreatmentActual>,
+  actualMaterialCosts: Map<string, number>,
   rangeLabel: string
 ): TreatmentProfitabilityReport {
   const rows: TreatmentProfitabilityRow[] = treatments.map((treatment) => {
-    const actual = actuals.get(normalizeTreatmentName(treatment.name)) ?? {
+    const normalizedName = normalizeTreatmentName(treatment.name);
+
+    const actual = actuals.get(normalizedName) ?? {
       performedCount: 0,
       revenue: 0,
     };
@@ -75,11 +84,24 @@ function buildTreatmentProfitabilityReport(
         ? null
         : (grossProfitPerUnit / sellingPrice) * 100;
 
-    const actualDirectCosts =
+    const estimatedDirectCosts =
       directCost == null ? null : actual.performedCount * directCost;
 
+    const estimatedGrossProfit =
+      estimatedDirectCosts == null ? null : actual.revenue - estimatedDirectCosts;
+
+    const estimatedGrossMargin =
+      estimatedGrossProfit == null || actual.revenue <= 0
+        ? null
+        : (estimatedGrossProfit / actual.revenue) * 100;
+
+    // ACTUAL (FIN-2): real recorded consumption, never null - a treatment
+    // performed with no materials logged genuinely cost 0 in materials,
+    // it is not "unknown" the way an unconfigured directCost is.
+    const actualMaterialCost = actualMaterialCosts.get(normalizedName) ?? 0;
+
     const actualGrossProfit =
-      actualDirectCosts == null ? null : actual.revenue - actualDirectCosts;
+      actual.performedCount > 0 ? actual.revenue - actualMaterialCost : null;
 
     const actualGrossMargin =
       actualGrossProfit == null || actual.revenue <= 0
@@ -102,7 +124,12 @@ function buildTreatmentProfitabilityReport(
         actual.performedCount > 0
           ? actual.revenue / actual.performedCount
           : null,
-      actualDirectCosts,
+
+      estimatedDirectCosts,
+      estimatedGrossProfit,
+      estimatedGrossMargin,
+
+      actualMaterialCost,
       actualGrossProfit,
       actualGrossMargin,
     };
@@ -168,19 +195,30 @@ export async function getTreatmentProfitabilityReportForPeriod(
   // returns at most one row per distinct treatment name actually billed,
   // bounded by catalog size rather than invoice volume - see its own
   // migration comment for the full reasoning.
-  const [treatmentsResult, actualsResult] = await Promise.all([
-    supabase
-      .from("clinic_treatments")
-      .select("id, name, category, default_price, direct_cost")
-      .eq("clinic_id", clinicId)
-      .order("category")
-      .order("name"),
-    supabase.rpc("get_treatment_actuals_multi", {
-      p_clinic_ids: [clinicId],
-      p_start: start ? start.toISOString() : null,
-      p_end: end ? end.toISOString() : null,
-    }),
-  ]);
+  // Actual material cost (FIN-2) comes from the same normalized-name,
+  // same-shape aggregate RPC pattern (migration 0088), joined against
+  // treatment_material_usage - real recorded inventory consumption, never
+  // clinic_treatments.direct_cost (which stays a separate, unmodified
+  // estimate - see types/treatmentProfitability.ts).
+  const [treatmentsResult, actualsResult, actualMaterialCostsResult] =
+    await Promise.all([
+      supabase
+        .from("clinic_treatments")
+        .select("id, name, category, default_price, direct_cost")
+        .eq("clinic_id", clinicId)
+        .order("category")
+        .order("name"),
+      supabase.rpc("get_treatment_actuals_multi", {
+        p_clinic_ids: [clinicId],
+        p_start: start ? start.toISOString() : null,
+        p_end: end ? end.toISOString() : null,
+      }),
+      supabase.rpc("get_treatment_actual_material_costs_multi", {
+        p_clinic_ids: [clinicId],
+        p_start: start ? start.toISOString() : null,
+        p_end: end ? end.toISOString() : null,
+      }),
+    ]);
 
   if (treatmentsResult.error) {
     logError(
@@ -200,6 +238,15 @@ export async function getTreatmentProfitabilityReportForPeriod(
     throw toError(actualsResult.error);
   }
 
+  if (actualMaterialCostsResult.error) {
+    logError(
+      "[treatmentProfitability] load actual material costs failed:",
+      actualMaterialCostsResult.error
+    );
+
+    throw toError(actualMaterialCostsResult.error);
+  }
+
   const actuals = new Map<string, TreatmentActual>(
     ((actualsResult.data ?? []) as RawTreatmentActualRow[]).map((row) => [
       row.treatment_name_normalized,
@@ -210,9 +257,20 @@ export async function getTreatmentProfitabilityReportForPeriod(
     ])
   );
 
+  const actualMaterialCosts = new Map<string, number>(
+    ((actualMaterialCostsResult.data ?? []) as RawActualMaterialCostRow[]).map(
+      (row) => [row.treatment_name_normalized, Number(row.actual_material_cost)]
+    )
+  );
+
   const treatments = (treatmentsResult.data ?? []) as TreatmentCatalogRow[];
 
-  return buildTreatmentProfitabilityReport(treatments, actuals, rangeLabel);
+  return buildTreatmentProfitabilityReport(
+    treatments,
+    actuals,
+    actualMaterialCosts,
+    rangeLabel
+  );
 }
 
 /**
@@ -237,23 +295,29 @@ export async function getTreatmentProfitabilityForClinics(
     return results;
   }
 
-  const [treatments, actualsResult] = await Promise.all([
-    fetchAllRows<TreatmentCatalogRowMulti>((from, to) =>
-      supabase
-        .from("clinic_treatments")
-        .select("id, name, category, default_price, direct_cost, clinic_id")
-        .in("clinic_id", clinicIds)
-        .order("clinic_id")
-        .order("category")
-        .order("name")
-        .range(from, to)
-    ),
-    supabase.rpc("get_treatment_actuals_multi", {
-      p_clinic_ids: clinicIds,
-      p_start: start ? start.toISOString() : null,
-      p_end: end ? end.toISOString() : null,
-    }),
-  ]);
+  const [treatments, actualsResult, actualMaterialCostsResult] =
+    await Promise.all([
+      fetchAllRows<TreatmentCatalogRowMulti>((from, to) =>
+        supabase
+          .from("clinic_treatments")
+          .select("id, name, category, default_price, direct_cost, clinic_id")
+          .in("clinic_id", clinicIds)
+          .order("clinic_id")
+          .order("category")
+          .order("name")
+          .range(from, to)
+      ),
+      supabase.rpc("get_treatment_actuals_multi", {
+        p_clinic_ids: clinicIds,
+        p_start: start ? start.toISOString() : null,
+        p_end: end ? end.toISOString() : null,
+      }),
+      supabase.rpc("get_treatment_actual_material_costs_multi", {
+        p_clinic_ids: clinicIds,
+        p_start: start ? start.toISOString() : null,
+        p_end: end ? end.toISOString() : null,
+      }),
+    ]);
 
   if (actualsResult.error) {
     logError(
@@ -262,6 +326,15 @@ export async function getTreatmentProfitabilityForClinics(
     );
 
     throw toError(actualsResult.error);
+  }
+
+  if (actualMaterialCostsResult.error) {
+    logError(
+      "[treatmentProfitability] getTreatmentProfitabilityForClinics failed to load actual material costs:",
+      actualMaterialCostsResult.error
+    );
+
+    throw toError(actualMaterialCostsResult.error);
   }
 
   const treatmentsByClinicId = new Map<string, TreatmentCatalogRow[]>();
@@ -286,12 +359,26 @@ export async function getTreatmentProfitabilityForClinics(
     actualsByClinicId.set(clinicId, existing);
   }
 
+  const actualMaterialCostsByClinicId = new Map<string, Map<string, number>>();
+
+  for (const row of (actualMaterialCostsResult.data ??
+    []) as RawActualMaterialCostRow[]) {
+    const clinicId = row.clinic_id;
+    const existing =
+      actualMaterialCostsByClinicId.get(clinicId) ?? new Map<string, number>();
+
+    existing.set(row.treatment_name_normalized, Number(row.actual_material_cost));
+
+    actualMaterialCostsByClinicId.set(clinicId, existing);
+  }
+
   for (const clinicId of clinicIds) {
     results.set(
       clinicId,
       buildTreatmentProfitabilityReport(
         treatmentsByClinicId.get(clinicId) ?? [],
         actualsByClinicId.get(clinicId) ?? new Map(),
+        actualMaterialCostsByClinicId.get(clinicId) ?? new Map(),
         rangeLabel
       )
     );
@@ -320,11 +407,21 @@ function buildSummary(
   );
 
   const totalDirectCosts = costKnownRows.reduce(
-    (sum, row) => sum + (row.actualDirectCosts ?? 0),
+    (sum, row) => sum + (row.estimatedDirectCosts ?? 0),
     0
   );
 
   const totalGrossProfit = costConfiguredRevenue - totalDirectCosts;
+
+  // ACTUAL (FIN-2): real recorded material consumption, summed across
+  // EVERY performed row - never restricted to costKnownRows, since
+  // actualMaterialCost is never null (0 is a real answer, not "unknown").
+  const totalActualMaterialCost = performedRows.reduce(
+    (sum, row) => sum + row.actualMaterialCost,
+    0
+  );
+
+  const totalActualGrossProfit = totalRevenue - totalActualMaterialCost;
 
   return {
     totalRevenue,
@@ -340,6 +437,10 @@ function buildSummary(
     treatmentsMissingCost: performedRows.length - costKnownRows.length,
     costCoveragePercent:
       totalRevenue > 0 ? (costConfiguredRevenue / totalRevenue) * 100 : null,
+    totalActualMaterialCost,
+    totalActualGrossProfit,
+    averageActualGrossMargin:
+      totalRevenue > 0 ? (totalActualGrossProfit / totalRevenue) * 100 : null,
   };
 }
 

@@ -16,6 +16,7 @@ import ToothHistoryTab, {
   HistoryItem,
 } from "@/components/patients/dental/ToothHistoryTab";
 import ToothAttachments from "@/components/dental/attachments/ToothAttachments";
+import ActiveTreatmentsForTooth from "@/components/patients/dental/ActiveTreatmentsForTooth";
 
 import {
   getToothHistory,
@@ -35,9 +36,13 @@ interface Props {
 
   data: PatientTooth | null;
 
+  /** Used to format the price on any active canonical Treatment shown for
+   * this tooth - see ActiveTreatmentsForTooth. */
+  currency: string;
+
   onSaved: () => Promise<void>;
 
-  /** Omit to hide the "Add to Treatment Plan" entry point. */
+  /** Omit to hide the "+ Add Treatment" entry point. */
   onAddToTreatmentPlan?: () => void;
 }
 
@@ -45,6 +50,7 @@ export default function ToothDetails({
   patientId,
   tooth,
   data,
+  currency,
   onSaved,
   onAddToTreatmentPlan,
 }: Props) {
@@ -81,7 +87,11 @@ export default function ToothDetails({
     try {
       setSaving(true);
 
-      await saveTooth(values);
+      // Phase H: this form only ever submits clinical fields now (see
+      // TreatmentForm) - the legacy Pending-charge side effect must
+      // never fire from here. NEW billable Treatments come exclusively
+      // from "+ Add Treatment" (canonical createTreatment()) below.
+      await saveTooth(values, { skipLegacyCharge: true });
 
       await onSaved();
 
@@ -105,9 +115,15 @@ export default function ToothDetails({
             className="w-full"
             onClick={onAddToTreatmentPlan}
           >
-            + Add to Treatment Plan
+            + Add Treatment
           </Button>
         )}
+
+        <ActiveTreatmentsForTooth
+          patientId={patientId}
+          tooth={tooth}
+          currency={currency}
+        />
 
         <div className="border-b border-slate-200">
 
@@ -126,7 +142,7 @@ export default function ToothDetails({
                   : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              Treatment
+              Clinical
             </button>
 
             <button

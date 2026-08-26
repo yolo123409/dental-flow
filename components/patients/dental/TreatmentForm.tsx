@@ -12,10 +12,8 @@ import {
 import { AttachedDiagnosisCode, AttachedProcedureCode, ClinicalCode } from "@/types/clinicalCodes";
 
 import Button from "@/components/ui/Button";
-import FormInput from "@/components/ui/FormInput";
 import FormTextarea from "@/components/ui/FormTextarea";
 
-import TreatmentPicker from "@/components/treatments/TreatmentPicker";
 import ClinicalCodePicker from "@/components/clinical/ClinicalCodePicker";
 import CodedDiagnosisList from "@/components/clinical/CodedDiagnosisList";
 import CodedProcedureList from "@/components/clinical/CodedProcedureList";
@@ -51,6 +49,22 @@ const statuses: TreatmentStatus[] = [
   "Cancelled",
 ];
 
+/**
+ * Phase H: this form no longer edits `treatment` (name) or
+ * `estimated_cost` - those are what created the double-entry-point
+ * problem (a legacy patient_teeth "Treatment" competing with the
+ * canonical Treatment Plan for the same tooth). NEW billable Treatments
+ * are created exclusively via the canonical "+ Add Treatment" action
+ * (see ToothDetails - ActiveTreatmentsForTooth shows what already
+ * exists, the button opens the canonical TreatmentItemModal). This form
+ * still owns genuinely clinical, non-billing tooth state: condition,
+ * diagnosis (+ ICD-10-CM codes), a general treatment_status, materials,
+ * and clinical notes (+ CDT/CPT procedure codes) - see types below.
+ * `initialValues.treatment`/`estimated_cost` are still accepted here
+ * (read from `patient_teeth`, unchanged) purely so a save of these
+ * clinical fields never silently erases a tooth's pre-Phase-H historical
+ * treatment/cost text - see handleSubmit.
+ */
 interface Props {
   patientId: string;
 
@@ -98,21 +112,10 @@ export default function TreatmentForm({
   const [diagnosis, setDiagnosis] =
     useState("");
 
-  const [treatment, setTreatment] =
-    useState("");
-
-    const [
-  customTreatment,
-  setCustomTreatment,
-] = useState(false);
-
   const [status, setStatus] =
     useState<TreatmentStatus>("Planned");
 
   const [materials, setMaterials] =
-    useState("");
-
-  const [cost, setCost] =
     useState("");
 
   const [notes, setNotes] =
@@ -136,10 +139,6 @@ export default function TreatmentForm({
       initialValues.diagnosis
     );
 
-    setTreatment(
-      initialValues.treatment
-    );
-
     setStatus(
       initialValues.treatment_status ??
         "Planned"
@@ -147,14 +146,6 @@ export default function TreatmentForm({
 
     setMaterials(
       initialValues.materials ?? ""
-    );
-
-    setCost(
-      initialValues.estimated_cost != null
-        ? String(
-            initialValues.estimated_cost
-          )
-        : ""
     );
 
     setNotes(initialValues.notes);
@@ -318,16 +309,19 @@ export default function TreatmentForm({
 
       diagnosis,
 
-      treatment,
+      // Phase H: treatment/estimated_cost are no longer editable here -
+      // NEW billable Treatments are created exclusively via the
+      // canonical "+ Add Treatment" flow (createTreatment()). Passed
+      // through unchanged so a clinical-only save (condition/diagnosis/
+      // notes) never erases a tooth's pre-Phase-H historical
+      // treatment/cost text.
+      treatment: initialValues.treatment,
 
       treatment_status: status,
 
       materials,
 
-      estimated_cost:
-        cost === ""
-          ? null
-          : Number(cost),
+      estimated_cost: initialValues.estimated_cost,
 
       notes,
     });
@@ -385,58 +379,6 @@ export default function TreatmentForm({
           />
         </div>
       </div>
-
-      {!customTreatment && (
-
-  <TreatmentPicker
-    onSelect={(
-      selectedTreatment,
-      price
-    ) => {
-
-      setTreatment(
-        selectedTreatment
-      );
-
-      setCost(
-        String(price)
-      );
-
-    }}
-  />
-
-)}
-
-<div className="flex items-center gap-3">
-
-  <input
-    id="custom-treatment"
-    type="checkbox"
-    checked={
-      customTreatment
-    }
-    onChange={(e) =>
-      setCustomTreatment(
-        e.target.checked
-      )
-    }
-  />
-
-  <label
-    htmlFor="custom-treatment"
-    className="text-sm"
-  >
-    Custom Treatment
-  </label>
-
-</div>
-
-<FormTextarea
-  label="Treatment Performed"
-  value={treatment}
-  rows={3}
-  onChange={setTreatment}
-/>
 
       <div>
         <label className="mb-2 block text-sm font-medium">
@@ -521,14 +463,6 @@ export default function TreatmentForm({
         value={materials}
         rows={3}
         onChange={setMaterials}
-      />
-
-      <FormInput
-        label="Estimated Cost"
-        type="number"
-        value={cost}
-        placeholder="0.00"
-        onChange={setCost}
       />
 
       <FormTextarea

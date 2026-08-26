@@ -694,6 +694,14 @@ async function downloadPDF() {
 
       <RecordPaymentModal
         invoiceId={invoice.id}
+        invoiceNumber={invoice.invoice_number}
+        patientName={
+          patient ? `${patient.first_name} ${patient.last_name}` : "-"
+        }
+        currency={clinic?.currency ?? "KES"}
+        total={Number(invoice.total)}
+        amountPaid={Number(invoice.amount_paid)}
+        balance={Number(invoice.balance)}
         invoicePaymentMethod={invoice.payment_method}
         invoiceInsuranceProviderId={invoice.insurance_provider_id}
         invoiceInsuranceProviderName={

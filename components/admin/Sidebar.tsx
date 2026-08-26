@@ -32,6 +32,8 @@ import {
   Percent,
   Gauge,
   Timer,
+  PieChart,
+  ShieldCheck,
   UserPlus,
   Building2,
   LayoutGrid,
@@ -179,9 +181,21 @@ const sections: SidebarSection[] = [
     title: "ACCOUNTING",
     links: [
       {
+        name: "Financial Overview",
+        href: "/admin/ledger/overview",
+        icon: PieChart,
+        permission: "ledger",
+      },
+      {
         name: "Ledger",
         href: "/admin/ledger",
         icon: BookOpen,
+        permission: "ledger",
+      },
+      {
+        name: "Accounting Health",
+        href: "/admin/ledger/accounting-health",
+        icon: ShieldCheck,
         permission: "ledger",
       },
       {

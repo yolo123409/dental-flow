@@ -16,9 +16,12 @@ import usePermissions from "@/hooks/usePermissions";
 import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 import { getTreatmentProfitabilityReport } from "@/services/treatmentProfitability";
+import { getTreatmentInstanceProfitabilityForCatalogTreatment } from "@/services/treatmentInstanceProfitability";
 import { getClinicSettings } from "@/services/settings";
+import { getDateRange } from "@/services/analytics/dateRange";
 
 import { TreatmentProfitabilityRow } from "@/types/treatmentProfitability";
+import { TreatmentInstanceProfitability } from "@/types/treatmentInstanceProfitability";
 
 const DATE_RANGES = [
   "Today",
@@ -45,6 +48,9 @@ function TreatmentProfitabilityDetailPage() {
   const [dateRange, setDateRange] = useState("All Time");
   const [configuring, setConfiguring] = useState(false);
 
+  const [instances, setInstances] = useState<TreatmentInstanceProfitability[]>([]);
+  const [instancesLoading, setInstancesLoading] = useState(true);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -59,6 +65,21 @@ function TreatmentProfitabilityDetailPage() {
       setRow(found);
       setNotFound(!found);
       setCurrency(clinicSettings.currency || "KES");
+
+      if (found) {
+        setInstancesLoading(true);
+
+        const { start, end } = getDateRange(dateRange);
+
+        const instanceRows = await getTreatmentInstanceProfitabilityForCatalogTreatment(
+          found.name,
+          start,
+          end
+        );
+
+        setInstances(instanceRows);
+        setInstancesLoading(false);
+      }
     } catch (error) {
       toast.error(
         getSafeErrorMessage(
@@ -144,18 +165,22 @@ function TreatmentProfitabilityDetailPage() {
 
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
-              Configured Direct Cost
+              Estimated Catalog Cost
             </p>
             <p className="data-metric mt-2 text-2xl font-bold text-graphite">
               {row.directCost == null
                 ? "Not configured"
                 : formatMoney(row.directCost)}
             </p>
+            <p className="mt-1 text-xs text-mineral">
+              A manually configured estimate, not actual material cost - see
+              Individual Treatments below for real figures.
+            </p>
           </div>
 
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
-              Gross Profit (per treatment)
+              Estimated Gross Profit (per unit)
             </p>
             <p className="data-metric mt-2 text-2xl font-bold text-graphite">
               {row.grossProfitPerUnit == null
@@ -166,7 +191,7 @@ function TreatmentProfitabilityDetailPage() {
 
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
-              Gross Margin
+              Estimated Gross Margin
             </p>
             <p className="data-metric mt-2 text-2xl font-bold text-graphite">
               {row.grossMarginPerUnit == null
@@ -238,29 +263,41 @@ function TreatmentProfitabilityDetailPage() {
 
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
-                Direct Costs
+                Estimated Direct Costs
               </p>
               <p className="data-metric mt-2 text-2xl font-bold text-graphite">
-                {row.actualDirectCosts == null
+                {row.estimatedDirectCosts == null
                   ? "Cost not configured"
-                  : formatMoney(row.actualDirectCosts)}
+                  : formatMoney(row.estimatedDirectCosts)}
               </p>
             </div>
 
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
-                Gross Profit
+                Actual Material Cost
+              </p>
+              <p className="data-metric mt-2 text-2xl font-bold text-graphite">
+                {formatMoney(row.actualMaterialCost)}
+              </p>
+              <p className="mt-1 text-xs text-mineral">
+                From materials actually recorded on this treatment
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
+                Actual Gross Profit
               </p>
               <p className="data-metric mt-2 text-2xl font-bold text-graphite">
                 {row.actualGrossProfit == null
-                  ? "Cost not configured"
+                  ? "—"
                   : formatMoney(row.actualGrossProfit)}
               </p>
             </div>
 
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-mineral">
-                Gross Margin
+                Actual Gross Margin
               </p>
               <p className="data-metric mt-2 text-2xl font-bold text-graphite">
                 {row.actualGrossMargin == null
@@ -268,6 +305,88 @@ function TreatmentProfitabilityDetailPage() {
                   : `${row.actualGrossMargin.toFixed(1)}%`}
               </p>
             </div>
+          </div>
+        )}
+      </Card>
+
+      <Card title={`Individual Treatments — ${dateRange}`}>
+        <p className="mb-4 text-xs text-mineral">
+          Every specific time this treatment was actually performed in this
+          period, with its own revenue (recognized once invoiced - never
+          fabricated for a treatment that hasn&apos;t been billed yet) and
+          actual material cost (from materials recorded on that exact
+          treatment, at the cost they were consumed at - never today&apos;s
+          live inventory cost, never the estimate above).
+        </p>
+
+        {instancesLoading ? (
+          <LoadingSpinner text="Loading individual treatments..." />
+        ) : instances.length === 0 ? (
+          <p className="text-sm text-mineral">
+            No individual treatments recorded in this period.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="min-w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold">Date</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold">Patient</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold">Billing</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold">Revenue</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold">Actual Material Cost</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold">Gross Profit</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold">Gross Margin</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {instances.map((instance) => (
+                  <tr key={instance.treatmentPlanItemId} className="border-t border-slate-200 align-top">
+                    <td className="px-6 py-5 text-slate-600">
+                      {new Date(instance.performedAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-5 font-medium">{instance.patientName}</td>
+                    <td className="px-6 py-5">
+                      {instance.billingStatus === "Invoiced" ? (
+                        <span className="text-xs font-medium text-green-600">
+                          Invoiced{instance.invoiceNumber ? ` #${instance.invoiceNumber}` : ""}
+                          {instance.invoiceStatus ? ` · ${instance.invoiceStatus}` : ""}
+                        </span>
+                      ) : instance.billingStatus === "Pending" ? (
+                        <span className="text-xs font-medium text-amber-600">
+                          Not yet invoiced
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-slate-400">
+                          Not billable
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-5 text-right font-semibold">
+                      {formatMoney(instance.revenue)}
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      {instance.materials.length === 0 ? (
+                        <span className="text-slate-400">{formatMoney(0)}</span>
+                      ) : (
+                        <span title={instance.materials.map((m) => `${m.name}: ${m.quantity} ${m.unit} × ${formatMoney(m.unitCost)}`).join("\n")}>
+                          {formatMoney(instance.actualMaterialCost)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-5 text-right font-semibold">
+                      {formatMoney(instance.grossProfit)}
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      {instance.grossMarginPercent == null
+                        ? "—"
+                        : `${instance.grossMarginPercent.toFixed(2)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>

@@ -117,15 +117,17 @@ export interface OrganizationOverview {
 
 /**
  * services/organizations.ts#getOrganizationFinancials - the CEO
- * Consolidated Financials view. Revenue/Direct Costs/Gross Profit/
- * Expenses/Net Profit come from the invoice/expense-table-based
- * calculation (services/reports/shared.ts#getPeriodFinancials, the same
- * one each branch's own Reports Center uses); EBIT/EBITDA come from the
- * SEPARATE, already-existing ledger-based calculation
- * (services/ledger.ts#getEbitEbitda) - these are two independently
- * correct, intentionally non-reconciled definitions (the same dual P&L
- * pattern this codebase already has for single-clinic pages), never
- * blended with each other.
+ * Consolidated Financials view. FIN-1.5: Revenue/Direct Costs/Gross
+ * Profit/Expenses/Net Profit come verbatim, per branch, from the general
+ * ledger (services/ledger.ts#getProfitAndLossForClinics) - the same
+ * canonical figures each branch's own Ledger P&L page shows for the same
+ * period, summed across branches. EBIT/EBITDA come from the related but
+ * genuinely distinct getEbitEbitdaForClinics() (EBIT excludes Interest/
+ * Tax; EBITDA adds back Depreciation/Amortization) - not a second,
+ * competing definition of Revenue/Gross Profit, since getEbitEbitda's own
+ * Revenue/Direct Costs/Gross Profit are themselves read from the same
+ * getProfitAndLoss() - just a further refinement kept as its own metric,
+ * the same as on each branch's own Ledger pages.
  */
 export interface OrganizationBranchFinancials {
   clinic_id: string;

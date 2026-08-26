@@ -20,10 +20,13 @@ import TreatmentItemModal from "./TreatmentItemModal";
 
 import {
   calculatePlanTotals,
-  createTreatmentItem,
+  createTreatment,
   updateTreatmentItem,
+  updateTreatmentTeeth,
   deleteTreatmentItem,
   reorderTreatmentItems,
+  getItemTeeth,
+  isItemInvoiced,
 } from "@/services/treatmentPlans";
 
 import {
@@ -42,7 +45,7 @@ interface Props {
   onEditPlan: () => void;
   onDeletePlan: () => void;
   onCreateInvoice: () => void;
-  onViewOnChart?: (tooth: number) => void;
+  onViewOnChart?: (teeth: number[]) => void;
 }
 
 export default function TreatmentPlanDetail({
@@ -75,6 +78,37 @@ export default function TreatmentPlanDetail({
     [items]
   );
 
+  // Phase E section 9: a compact summary drawn only from data already on
+  // these items - teeth involved (via the same getItemTeeth() every other
+  // display uses, so it's never out of sync with what the rows show) and
+  // invoiced value. Deliberately no "outstanding"/"paid" figure here -
+  // that depends on the linked invoice's own payment state, which this
+  // plan's items don't carry, and inventing one would be exactly the
+  // kind of accounting this phase was told not to invent.
+  //
+  // Phase H: invoicedValue uses isItemInvoiced() (the charge's actual
+  // status), not merely "has a charge_id" - every billable Treatment now
+  // gets a charge immediately on creation, while still Pending, so
+  // charge_id alone no longer means invoiced.
+  const teethAndBilling = useMemo(() => {
+    const active = items.filter((item) => item.status !== "Cancelled");
+
+    const teeth = new Set<number>();
+    let invoicedValue = 0;
+
+    for (const item of active) {
+      for (const tooth of getItemTeeth(item)) {
+        teeth.add(tooth);
+      }
+
+      if (isItemInvoiced(item)) {
+        invoicedValue += Number(item.estimated_price) * item.quantity;
+      }
+    }
+
+    return { teethCount: teeth.size, invoicedValue };
+  }, [items]);
+
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat(undefined, {
       style: "currency",
@@ -88,14 +122,21 @@ export default function TreatmentPlanDetail({
         date: plan.created_at,
         label: `Plan "${plan.title}" created`,
       },
-      ...items.map((item) => ({
-        date: item.created_at,
-        label: `Added ${item.procedure}${
-          item.tooth_number != null
-            ? ` (Tooth ${item.tooth_number})`
-            : ""
-        }`,
-      })),
+      ...items.map((item) => {
+        const teeth = getItemTeeth(item);
+
+        const teethLabel =
+          teeth.length === 0
+            ? ""
+            : teeth.length === 1
+              ? ` (Tooth ${teeth[0]})`
+              : ` (Teeth ${teeth.join(", ")})`;
+
+        return {
+          date: item.created_at,
+          label: `Added ${item.procedure}${teethLabel}`,
+        };
+      }),
     ];
 
     return events.sort(
@@ -112,16 +153,49 @@ export default function TreatmentPlanDetail({
       setSavingItem(true);
 
       if (editingItem) {
-        await updateTreatmentItem(
-          editingItem.id,
-          values
-        );
+        // Scalar fields and teeth are two separate, independently atomic
+        // writes (services/treatmentPlans.ts#updateTreatmentTeeth) - teeth
+        // are only touched at all when they actually changed, so editing
+        // an invoiced item's price/notes/status never risks hitting the
+        // "teeth are frozen once invoiced" guard for a field it didn't
+        // even ask to change.
+        await updateTreatmentItem(editingItem.id, {
+          procedure: values.procedure,
+          estimated_price: values.estimated_price,
+          quantity: values.quantity,
+          notes: values.notes,
+          priority: values.priority,
+          status: values.status,
+        });
 
-        toast.success("Procedure updated.");
+        const currentTeeth = getItemTeeth(editingItem);
+        const teethChanged =
+          currentTeeth.length !== values.tooth_numbers.length ||
+          currentTeeth.some(
+            (tooth, index) => tooth !== values.tooth_numbers[index]
+          );
+
+        if (teethChanged) {
+          await updateTreatmentTeeth(
+            editingItem.id,
+            values.tooth_numbers
+          );
+        }
+
+        toast.success("Treatment updated.");
       } else {
-        await createTreatmentItem(plan.id, values);
+        await createTreatment({
+          treatment_plan_id: plan.id,
+          procedure: values.procedure,
+          tooth_numbers: values.tooth_numbers,
+          estimated_price: values.estimated_price,
+          quantity: values.quantity,
+          notes: values.notes,
+          priority: values.priority,
+          status: values.status,
+        });
 
-        toast.success("Procedure added.");
+        toast.success("Treatment added.");
       }
 
       setItemModalOpen(false);
@@ -130,7 +204,7 @@ export default function TreatmentPlanDetail({
       await onReload();
     } catch (error) {
       toast.error(
-        getSafeErrorMessage(error, "Failed to save procedure.")
+        getSafeErrorMessage(error, "Failed to save treatment.")
       );
     } finally {
       setSavingItem(false);
@@ -148,7 +222,7 @@ export default function TreatmentPlanDetail({
         plan.id
       );
 
-      toast.success("Procedure removed.");
+      toast.success("Treatment removed.");
 
       setDeleteTarget(null);
 
@@ -156,7 +230,7 @@ export default function TreatmentPlanDetail({
     } catch (error) {
       console.error(error);
 
-      toast.error("Failed to remove procedure.");
+      toast.error("Failed to remove treatment.");
     } finally {
       setDeletingItem(false);
     }
@@ -189,7 +263,7 @@ export default function TreatmentPlanDetail({
     } catch (error) {
       console.error(error);
 
-      toast.error("Failed to reorder procedures.");
+      toast.error("Failed to reorder treatments.");
     }
   }
 
@@ -252,13 +326,22 @@ export default function TreatmentPlanDetail({
           </Button>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Procedures
+              Treatments
             </p>
             <p className="mt-1 text-2xl font-bold">
               {totals.procedureCount}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Teeth Involved
+            </p>
+            <p className="mt-1 text-2xl font-bold">
+              {teethAndBilling.teethCount}
             </p>
           </div>
 
@@ -288,6 +371,15 @@ export default function TreatmentPlanDetail({
               {formatCurrency(totals.remaining)}
             </p>
           </div>
+
+          <div className="rounded-xl bg-blue-50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Invoiced
+            </p>
+            <p className="mt-1 text-2xl font-bold text-blue-600">
+              {formatCurrency(teethAndBilling.invoicedValue)}
+            </p>
+          </div>
         </div>
 
         <div className="mt-6">
@@ -310,7 +402,7 @@ export default function TreatmentPlanDetail({
         </div>
       </Card>
 
-      <Card title="Procedures">
+      <Card title="Treatments">
         <div className="space-y-4">
           <div className="flex justify-end">
             <Button
@@ -319,14 +411,14 @@ export default function TreatmentPlanDetail({
                 setItemModalOpen(true);
               }}
             >
-              + Add Procedure
+              + Add Treatment
             </Button>
           </div>
 
           {items.length === 0 ? (
             <EmptyState
-              title="No procedures yet"
-              description="Add the procedures recommended for this patient."
+              title="No treatments added yet."
+              description="Add the treatments recommended for this patient."
             />
           ) : (
             <div className="space-y-3">
@@ -381,6 +473,7 @@ export default function TreatmentPlanDetail({
         item={editingItem}
         patientId={plan.patient_id}
         defaultToothNumber={defaultToothNumber}
+        currency={currency}
         saving={savingItem}
         onClose={() => {
           setItemModalOpen(false);
@@ -391,7 +484,7 @@ export default function TreatmentPlanDetail({
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="Remove procedure"
+        title="Remove treatment"
         description={
           deleteTarget
             ? `Remove "${deleteTarget.procedure}" from this plan?`

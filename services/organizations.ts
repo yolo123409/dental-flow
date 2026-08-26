@@ -4,12 +4,9 @@ import { runExclusive } from "@/lib/inFlightGuard";
 import { generateToken } from "@/lib/generateToken";
 import { fetchAllRows } from "@/lib/fetchAllRows";
 import { InvitableRole } from "@/lib/permissions";
-import { getEbitEbitdaForClinics } from "./ledger";
+import { getEbitEbitdaForClinics, getProfitAndLossForClinics } from "./ledger";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { sendInvitationEmail } from "./invitationEmail";
-import { getRevenueTotalsByClinic } from "./analytics/revenue";
-import { getPaidExpenseTotalsByClinic } from "./expenses";
-import { getTreatmentProfitabilityForClinics } from "./treatmentProfitability";
 
 import {
   OrganizationUser,
@@ -404,33 +401,45 @@ export async function getOrganizationOverview(
 /* -------------------------------------- */
 
 /**
- * Consolidated Revenue/Expenses/Profit + EBIT/EBITDA across every branch
- * of the organization, for the CEO Consolidated Financials view.
- * Deliberately excludes Balance Sheet, Cash Flow, AR/AP, financial
- * ratios, stock days, and break-even - none of those are safe to
- * naively sum or average across branches, and are left for a dedicated,
- * separately-reviewed pass rather than being rushed here.
+ * Consolidated Revenue/Direct Costs/Gross Profit/Expenses/Net Profit +
+ * EBIT/EBITDA across every branch of the organization, for the CEO
+ * Consolidated Financials view. Deliberately excludes Balance Sheet, Cash
+ * Flow, AR/AP, financial ratios, stock days, and break-even - none of
+ * those are safe to naively sum or average across branches, and are left
+ * for a dedicated, separately-reviewed pass rather than being rushed
+ * here.
  *
- * Revenue and Expenses are fetched via getRevenueTotalsByClinic /
- * getPaidExpenseTotalsByClinic (services/analytics/revenue.ts,
- * services/expenses.ts) - ONE batched `.in('clinic_id', ...)` query each
- * for every branch, rather than the original per-branch
- * getPeriodFinancials call (found during a production-hardening audit to
- * cost ~14 requests x N branches - ~700 requests at 50 branches, enough
- * to stall the page). Direct Costs (from treatment profitability) and
- * EBIT/EBITDA (services/ledger.ts, ledger-based - a SEPARATE,
- * already-existing, intentionally non-reconciled calculation, the same
- * dual P&L definition this codebase already documents for single-clinic
- * pages) are fetched via getTreatmentProfitabilityForClinics /
- * getEbitEbitdaForClinics (migration 0066) - also one query/RPC round
- * trip each for every branch, previously the dominant remaining cost on
- * this page (~5.4s of a ~10.6s total load at 50 branches, live-measured
- * before that fix). Gross Profit/Net Profit are recomputed from
- * the batched revenue/expenses + the per-branch direct costs, using the
- * exact same formula getPeriodFinancials used (grossProfit = revenue -
- * directCosts, netProfit = grossProfit - expenses), so the blended total
- * is still provably the sum of the exact figures a CEO would see by
- * visiting each branch individually.
+ * FIN-1.5: every P&L figure (Revenue, Direct Costs, Gross Profit,
+ * Operating Expenses, Net Profit) is now read verbatim, per branch, from
+ * getProfitAndLossForClinics() (services/ledger.ts) - the same batched
+ * multi-clinic ledger primitive already used for EBIT/EBITDA below - and
+ * summed across branches. Nothing here recomputes revenue, cost, or
+ * profit; this function only fetches the canonical per-clinic ledger
+ * results and adds them up.
+ *
+ * Before FIN-1.5, Revenue/Expenses came from getRevenueTotalsByClinic /
+ * getPaidExpenseTotalsByClinic (a "Paid invoices" / "Paid clinic_expenses"
+ * basis) and Direct Costs came from getTreatmentProfitabilityForClinics's
+ * manually-configured clinic_treatments.direct_cost estimate, with Gross
+ * Profit/Net Profit recomputed from those - the same non-ledger formula
+ * services/reports/shared.ts#getPeriodFinancials used before FIN-1, batched
+ * for multi-branch performance. That meant this page could disagree with
+ * the now-canonical per-branch ledger P&L a CEO would see by visiting each
+ * branch's own Ledger page (see the FIN-1 audit's "remaining known
+ * inconsistency"). getProfitAndLossForClinics() is already a single
+ * batched RPC round trip regardless of branch count (migration 0066), so
+ * this fix does not reintroduce the original per-branch N+1 query problem
+ * that motivated the batched functions in the first place - it simply
+ * points at the correct canonical primitive instead of an independent one.
+ *
+ * EBIT/EBITDA remain a deliberately separate calculation from
+ * getEbitEbitdaForClinics() - not a second, competing definition of
+ * Revenue/Gross Profit (getEbitEbitda's own Revenue/Direct Costs/Gross
+ * Profit are themselves read verbatim from the same getProfitAndLoss(),
+ * per its own doc comment), but a genuinely distinct metric (EBIT excludes
+ * Interest/Tax; EBITDA adds back Depreciation/Amortization) that this page
+ * has always correctly kept separate from Net Profit, exactly as each
+ * branch's own Ledger pages do.
  *
  * Currency safety: every branch's clinic_settings.currency is checked
  * before any blended total is computed. If branches don't all share one
@@ -509,46 +518,32 @@ export async function getOrganizationFinancials(
   const currencyConsistent =
     new Set(branchCurrencies.map((branch) => branch.currency)).size <= 1;
 
-  const [revenueByClinic, expensesByClinic] = await Promise.all([
-    getRevenueTotalsByClinic(start, end, branchIds),
-    getPaidExpenseTotalsByClinic(start, end, branchIds),
-  ]);
-
-  // Treatment Profitability and EBIT/EBITDA batched to one query/RPC
-  // round-trip each across every branch (migration 0066), same as
-  // Revenue/Expenses above - previously the dominant remaining cost on
-  // this page (~5.4s of a ~10.6s total load at 50 branches, live-measured
-  // before this fix), since each ran once per branch even with the
-  // mapWithConcurrency(8) cap that used to be here. Both batched
-  // functions reuse the exact same per-clinic computation the single-
-  // clinic versions use (see their own doc comments in ledger.ts /
-  // treatmentProfitability.ts) - only how the underlying rows are
-  // fetched changed, never the arithmetic.
-  const [profitabilityByClinic, ebitEbitdaByClinic] = await Promise.all([
-    getTreatmentProfitabilityForClinics(branchIds, start, end, "period"),
+  // Both batched to one query/RPC round trip each across every branch
+  // (migration 0066), regardless of branch count - the same batching
+  // principle the pre-FIN-1.5 implementation already established for
+  // this page, just pointed at the canonical primitives. Each reuses the
+  // exact same per-clinic computation the single-clinic versions use (see
+  // their own doc comments in ledger.ts) - only how the underlying rows
+  // are fetched changed, never the arithmetic.
+  const [profitAndLossByClinic, ebitEbitdaByClinic] = await Promise.all([
+    getProfitAndLossForClinics(branchIds, start, end),
     getEbitEbitdaForClinics(branchIds, start, end),
   ]);
 
   const branchFinancials: OrganizationBranchFinancials[] = branches.map(
     (branch) => {
-      const profitabilityReport = profitabilityByClinic.get(branch.id);
+      const pl = profitAndLossByClinic.get(branch.id);
       const ebitEbitda = ebitEbitdaByClinic.get(branch.id);
-
-      const revenue = revenueByClinic.get(branch.id) ?? 0;
-      const expenses = expensesByClinic.get(branch.id) ?? 0;
-      const directCosts = profitabilityReport?.summary.totalDirectCosts ?? 0;
-      const grossProfit = revenue - directCosts;
-      const netProfit = grossProfit - expenses;
 
       return {
         clinic_id: branch.id,
         clinic_name: branch.name,
         currency: currencyByClinicId.get(branch.id) ?? "KES",
-        revenue,
-        directCosts,
-        grossProfit,
-        expenses,
-        netProfit,
+        revenue: pl?.revenue.total ?? 0,
+        directCosts: pl?.directCosts.total ?? 0,
+        grossProfit: pl?.grossProfit ?? 0,
+        expenses: pl?.totalOperatingExpenses ?? 0,
+        netProfit: pl?.netProfit ?? 0,
         ebit: ebitEbitda?.ebit ?? 0,
         ebitdaAvailable: ebitEbitda?.ebitdaAvailable ?? false,
         ebitda: ebitEbitda?.ebitda ?? null,

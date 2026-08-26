@@ -178,7 +178,9 @@ function OrganizationFinancialsContent() {
             </h2>
 
             <p className="mt-1 text-sm text-mineral">
-              Based on paid invoices and paid expenses across every branch.
+              Based on each branch&apos;s own accounting ledger - the same
+              figures its Ledger P&amp;L page would show, summed across
+              every branch.
             </p>
 
             <div className="mt-4 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">

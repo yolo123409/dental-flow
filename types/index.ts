@@ -7,3 +7,4 @@ export * from "./patient";
 export * from "./patientTooth";
 export * from "./timeline";
 export * from "./treatmentPlan";
+export * from "./treatmentTeeth";

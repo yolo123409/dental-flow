@@ -37,7 +37,12 @@ function toMarkupRow(row: TreatmentProfitabilityRow): TreatmentMarkupRow {
     markupPercent,
     performedCount: row.performedCount,
     revenueGenerated: row.revenue,
-    periodGrossProfit: row.actualGrossProfit,
+    // FIN-2: row.actualGrossProfit now means genuinely actual (real
+    // inventory-consumption-based) gross profit, not this estimate-scaled
+    // projection - Margins & Markup's own behavior/semantics are
+    // deliberately unchanged here, so this keeps reading the renamed
+    // estimate field (services/treatmentProfitability.ts) instead.
+    periodGrossProfit: row.estimatedGrossProfit,
   };
 }
 
