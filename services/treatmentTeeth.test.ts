@@ -6,6 +6,14 @@ vi.mock("./clinic", () => ({
   getCurrentClinicId: () => getCurrentClinicId(),
 }));
 
+// FIN-3.8: every mutation in this file now asserts the "treatments"
+// permission - mocked as a no-op here so these tests exercise the tooth-
+// number/persistence logic they're actually about, matching the same
+// pattern services/treatmentPlans.test.ts already uses.
+vi.mock("./authorization", () => ({
+  assertPermission: vi.fn(),
+}));
+
 /**
  * Minimal stand-in for supabase-js's chainable, thenable query builder.
  * Every filter/modifier method (select/insert/upsert/delete/eq/in/order)
@@ -151,6 +159,32 @@ describe("addTreatmentTeeth validation", () => {
     await expect(
       addTreatmentTeeth("item-1", [11, 18, 21, 28, 31, 38, 41, 48])
     ).resolves.toBeUndefined();
+  });
+
+  // FIN-3.8: assertValidToothNumbers() was still permanent-only after
+  // FIN-3.7 widened treatment_teeth's own database CHECK constraint to
+  // accept primary teeth - a primary-tooth Treatment would have been
+  // rejected here, in the application layer, before ever reaching the
+  // database. Regression coverage for that fix.
+  it("accepts every primary (deciduous) FDI tooth - 51-55, 61-65, 71-75, 81-85", async () => {
+    mockClient = createSupabaseMock({
+      treatment_teeth: () => ({ data: null, error: null }),
+    });
+
+    await expect(
+      addTreatmentTeeth("item-1", [
+        51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82,
+        83, 84, 85,
+      ])
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects gap values between the permanent and primary ranges, and between primary quadrants", async () => {
+    for (const gap of [49, 50, 56, 60, 66, 70, 76, 80, 86]) {
+      await expect(addTreatmentTeeth("item-1", [gap])).rejects.toThrow(
+        /invalid/i
+      );
+    }
   });
 });
 

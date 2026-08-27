@@ -97,8 +97,8 @@ function AccountingHealthPageContent() {
           <h1 className="text-3xl font-bold">Accounting Health</h1>
           <p className="mt-2 text-mineral">
             A single detection-only view over every reconciliation check DentalFlow runs - Accounts
-            Receivable, payment ledger postings, invoice consistency, and the ledger itself. This page
-            never corrects anything automatically; it only reports what it finds.
+            Receivable, payment and expense ledger postings, invoice consistency, and the ledger
+            itself. This page never corrects anything automatically; it only reports what it finds.
           </p>
         </div>
         <Button variant="secondary" onClick={load} disabled={loading}>
@@ -121,7 +121,7 @@ function AccountingHealthPageContent() {
             {OVERALL_MESSAGE[report.overallStatus]}
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             <CheckSummaryCard
               title="AR"
               status={report.checks.arReconciliation.status}
@@ -131,6 +131,11 @@ function AccountingHealthPageContent() {
               title="Payments"
               status={report.checks.paymentReconciliation.status}
               summary={report.checks.paymentReconciliation.summary}
+            />
+            <CheckSummaryCard
+              title="Expenses"
+              status={report.checks.expenseReconciliation.status}
+              summary={report.checks.expenseReconciliation.summary}
             />
             <CheckSummaryCard
               title="Invoices"
@@ -249,6 +254,33 @@ function AccountingHealthPageContent() {
               </div>
             )}
             <p className="mt-4 text-xs text-mineral">{report.checks.historicalExceptions.explanation}</p>
+          </Card>
+
+          <Card title="Expense Ledger">
+            {report.checks.expenseReconciliation.exceptions.length === 0 ? (
+              <EmptyState
+                title="Nothing to report"
+                description="Every paid expense has exactly one correctly-amounted ledger posting."
+              />
+            ) : (
+              <div className="space-y-3">
+                {report.checks.expenseReconciliation.exceptions.map((exception) => (
+                  <div
+                    key={exception.expenseId}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-sea-glass p-3"
+                  >
+                    <div>
+                      <p className="font-medium text-graphite">{exception.description}</p>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-mineral">
+                        {exception.exceptionType}
+                      </p>
+                    </div>
+                    <span className="font-semibold text-graphite">{formatMoney(exception.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="mt-4 text-xs text-mineral">{report.checks.expenseReconciliation.explanation}</p>
           </Card>
 
           <Card title="Data Quality">

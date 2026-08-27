@@ -70,6 +70,7 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     default_expense_account_id: null,
     default_cash_account_id: "cash-1",
     opening_balance_equity_account_id: null,
+    vat_payable_account_id: null,
     payment_method_accounts: { Cash: "cash-1" },
     updated_at: "2026-01-01",
     ...overrides,
@@ -102,8 +103,12 @@ const ZERO_INTEGRITY_ROW = [
 ];
 
 function mockRpc(handlers: Record<string, unknown>) {
+  // get_expense_ledger_exceptions defaults to empty for every test that
+  // doesn't care about expense reconciliation - only the dedicated tests
+  // below override it.
+  const withDefaults: Record<string, unknown> = { get_expense_ledger_exceptions: [], ...handlers };
   rpc.mockImplementation((fn: string) => {
-    if (fn in handlers) return Promise.resolve({ data: handlers[fn], error: null });
+    if (fn in withDefaults) return Promise.resolve({ data: withDefaults[fn], error: null });
     return Promise.reject(new Error(`Unexpected rpc call in test: ${fn}`));
   });
 }
@@ -133,7 +138,7 @@ describe("getAccountingHealthReport", () => {
     for (const check of Object.values(report.checks)) {
       expect(check.status).toBe("healthy");
     }
-    expect(report.summary).toEqual({ healthyChecks: 7, warningChecks: 0, criticalChecks: 0 });
+    expect(report.summary).toEqual({ healthyChecks: 8, warningChecks: 0, criticalChecks: 0 });
   });
 
   it("2. classifies exactly-known historical payment exceptions as warning, never critical", async () => {
@@ -423,12 +428,14 @@ describe("getAccountingHealthReport", () => {
     expect(rpc).toHaveBeenCalledWith("get_invoice_consistency_exceptions", { p_clinic_id: "clinic-a" });
     expect(rpc).toHaveBeenCalledWith("get_payment_ledger_exceptions", { p_clinic_id: "clinic-a" });
     expect(rpc).toHaveBeenCalledWith("get_ledger_integrity_summary", { p_clinic_id: "clinic-a" });
+    expect(rpc).toHaveBeenCalledWith("get_expense_ledger_exceptions", { p_clinic_id: "clinic-a" });
 
     getCurrentClinicId.mockResolvedValueOnce("clinic-b");
     await getAccountingHealthReport();
     expect(rpc).toHaveBeenCalledWith("get_invoice_consistency_exceptions", { p_clinic_id: "clinic-b" });
     expect(rpc).toHaveBeenCalledWith("get_payment_ledger_exceptions", { p_clinic_id: "clinic-b" });
     expect(rpc).toHaveBeenCalledWith("get_ledger_integrity_summary", { p_clinic_id: "clinic-b" });
+    expect(rpc).toHaveBeenCalledWith("get_expense_ledger_exceptions", { p_clinic_id: "clinic-b" });
   });
 
   it("13. reports healthy invoice checks for a clinic with no invoices at all", async () => {
@@ -527,6 +534,50 @@ describe("getAccountingHealthReport", () => {
     const inv12Entry = report.checks.historicalExceptions.entries.find((e) => e.invoiceNumber === "INV-00012");
     expect(inv12Entry?.currentlyPresent).toBe(false);
     expect(inv12Entry?.currentAmount).toBe(999);
+  });
+
+  it("17. reports healthy expense reconciliation when every paid expense has exactly one correctly-amounted posting", async () => {
+    getArReconciliationStatus.mockResolvedValue(makeArStatus());
+    getPaymentLedgerReconciliation.mockResolvedValue(makePaymentReconciliation({ missingPayments: 0, missingPaymentAmount: 0, matches: true }));
+    mockRpc({
+      get_invoice_consistency_exceptions: [],
+      get_payment_ledger_exceptions: [],
+      get_ledger_integrity_summary: ZERO_INTEGRITY_ROW,
+      get_expense_ledger_exceptions: [],
+    });
+
+    const report = await getAccountingHealthReport();
+
+    expect(report.checks.expenseReconciliation.status).toBe("healthy");
+    expect(report.checks.expenseReconciliation.exceptions).toEqual([]);
+  });
+
+  it("18. classifies any expense ledger exception as critical - there is no known historical bucket for expenses", async () => {
+    getArReconciliationStatus.mockResolvedValue(makeArStatus());
+    getPaymentLedgerReconciliation.mockResolvedValue(makePaymentReconciliation({ missingPayments: 0, missingPaymentAmount: 0, matches: true }));
+    mockRpc({
+      get_invoice_consistency_exceptions: [],
+      get_payment_ledger_exceptions: [],
+      get_ledger_integrity_summary: ZERO_INTEGRITY_ROW,
+      get_expense_ledger_exceptions: [
+        {
+          expense_id: "e1",
+          description: "Dental supplies restock",
+          expense_amount: 15000,
+          status: "Paid",
+          posting_count: 0,
+          posted_debit: 0,
+          exception_type: "missing",
+        },
+      ],
+    });
+
+    const report = await getAccountingHealthReport();
+
+    expect(report.checks.expenseReconciliation.status).toBe("critical");
+    expect(report.checks.expenseReconciliation.exceptions).toHaveLength(1);
+    expect(report.checks.expenseReconciliation.totalExceptionAmount).toBe(15000);
+    expect(report.overallStatus).toBe("critical");
   });
 
   it("requires ledger permission before returning any figures", async () => {

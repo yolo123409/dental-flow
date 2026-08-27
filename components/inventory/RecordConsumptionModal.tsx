@@ -211,6 +211,12 @@ export default function RecordConsumptionModal({
           </div>
         </div>
 
+        <p className="text-xs text-mineral">
+          This is for general stock use (waste, damage, corrections). For material used on a
+          specific patient's treatment plan, add it from that treatment plan instead - only that
+          records a cost against the treatment itself for Treatment Profitability.
+        </p>
+
         <FormTextarea label="Notes (optional)" value={notes} onChange={setNotes} />
 
         <div className="rounded-lg border border-sea-glass bg-porcelain px-4 py-3 text-sm text-graphite">

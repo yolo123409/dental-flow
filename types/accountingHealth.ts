@@ -137,6 +137,23 @@ export interface LedgerIntegrityCheck extends HealthCheckBase {
   duplicateReferenceGroups: number;
 }
 
+export interface ExpenseExceptionRow {
+  expenseId: string;
+  description: string;
+  amount: number;
+  exceptionType: "missing" | "mismatched" | "duplicate";
+}
+
+/** FIN-3.9: the expense-side sibling of PaymentReconciliationCheck, backed
+ * by get_expense_ledger_exceptions() (migration 0095). Unlike payments,
+ * there is no known/accepted historical exception category here - FIN-3.3's
+ * backfill (migrations 0091/0092) posted every expense that predated the
+ * ledger posting triggers, so any exception found now is new. */
+export interface ExpenseReconciliationCheck extends HealthCheckBase {
+  exceptions: ExpenseExceptionRow[];
+  totalExceptionAmount: number;
+}
+
 export interface AccountingHealthChecks {
   arReconciliation: ArReconciliationCheck;
   paymentReconciliation: PaymentReconciliationCheck;
@@ -145,6 +162,7 @@ export interface AccountingHealthChecks {
   overpayments: OverpaymentsCheck;
   cashFlowReconciliation: CashFlowReconciliationCheck;
   ledgerIntegrity: LedgerIntegrityCheck;
+  expenseReconciliation: ExpenseReconciliationCheck;
 }
 
 export interface AccountingHealthSummary {

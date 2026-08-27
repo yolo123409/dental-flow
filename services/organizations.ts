@@ -4,7 +4,7 @@ import { runExclusive } from "@/lib/inFlightGuard";
 import { generateToken } from "@/lib/generateToken";
 import { fetchAllRows } from "@/lib/fetchAllRows";
 import { InvitableRole } from "@/lib/permissions";
-import { getEbitEbitdaForClinics, getProfitAndLossForClinics } from "./ledger";
+import { computeEbitEbitdaFromPL, getProfitAndLossForClinics } from "./ledger";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { sendInvitationEmail } from "./invitationEmail";
 
@@ -518,17 +518,25 @@ export async function getOrganizationFinancials(
   const currencyConsistent =
     new Set(branchCurrencies.map((branch) => branch.currency)).size <= 1;
 
-  // Both batched to one query/RPC round trip each across every branch
-  // (migration 0066), regardless of branch count - the same batching
-  // principle the pre-FIN-1.5 implementation already established for
-  // this page, just pointed at the canonical primitives. Each reuses the
-  // exact same per-clinic computation the single-clinic versions use (see
-  // their own doc comments in ledger.ts) - only how the underlying rows
-  // are fetched changed, never the arithmetic.
-  const [profitAndLossByClinic, ebitEbitdaByClinic] = await Promise.all([
-    getProfitAndLossForClinics(branchIds, start, end),
-    getEbitEbitdaForClinics(branchIds, start, end),
-  ]);
+  // Batched to one query/RPC round trip across every branch (migration
+  // 0066), regardless of branch count - the same batching principle the
+  // pre-FIN-1.5 implementation already established for this page, just
+  // pointed at the canonical primitive. EBIT/EBITDA is derived from this
+  // same P&L map via computeEbitEbitdaFromPL() rather than calling
+  // getEbitEbitdaForClinics() (which would redundantly re-fetch the exact
+  // same P&L data a second time) - found while auditing this page's query
+  // count for FIN-3.10 at 47-branch scale. Reuses the exact same
+  // per-clinic computation the single-clinic getEbitEbitda uses (see its
+  // own doc comment in ledger.ts) - only how the underlying rows are
+  // fetched changed, never the arithmetic.
+  const profitAndLossByClinic = await getProfitAndLossForClinics(branchIds, start, end);
+
+  const ebitEbitdaByClinic = new Map(
+    Array.from(profitAndLossByClinic.entries()).map(([clinicId, pl]) => [
+      clinicId,
+      computeEbitEbitdaFromPL(pl),
+    ])
+  );
 
   const branchFinancials: OrganizationBranchFinancials[] = branches.map(
     (branch) => {

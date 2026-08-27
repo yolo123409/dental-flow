@@ -24,10 +24,10 @@ import { OrganizationFinancials } from "@/types/organization";
 
 export interface FinancialOverviewFigures {
   /** Accrual revenue for the period - Treatment Revenue account net
-   * credit movement, from getProfitAndLoss(). Deliberately NOT
-   * getLedgerDashboardTotals().revenue, which (despite living in
-   * ledger.ts) is actually the Paid-invoices-only Analytics figure - see
-   * the "revenueBasisNote" on FinancialOverview below. */
+   * credit movement, from getProfitAndLoss() directly (getLedgerDashboardTotals()
+   * also exposes the identical figure post-FIN-1, but this file calls
+   * getProfitAndLoss() itself since it separately needs grossProfit/netProfit
+   * from the same result). */
   revenue: number;
   grossProfit: number;
   netProfit: number;

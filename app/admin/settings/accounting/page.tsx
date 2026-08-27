@@ -35,6 +35,7 @@ const MAPPING_FIELDS: { key: keyof LedgerSettings; label: string }[] = [
   { key: "accounts_receivable_account_id", label: "Accounts Receivable" },
   { key: "inventory_account_id", label: "Inventory" },
   { key: "accounts_payable_account_id", label: "Accounts Payable" },
+  { key: "vat_payable_account_id", label: "VAT Payable (tax collected on invoices)" },
   { key: "supplies_used_account_id", label: "Supplies Used (Inventory Consumption)" },
   { key: "default_expense_account_id", label: "Default Expense Account (unmapped categories)" },
   { key: "default_cash_account_id", label: "Default Cash Account (unmapped payment methods)" },

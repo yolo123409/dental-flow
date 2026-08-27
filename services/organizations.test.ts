@@ -3,21 +3,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * FIN-1.5: exercises the REAL getOrganizationFinancials() implementation
  * (services/organizations.ts) against a mocked Supabase boundary, mocking
- * only the two multi-clinic ledger primitives it calls
- * (getProfitAndLossForClinics/getEbitEbitdaForClinics) - the same
+ * only the multi-clinic ledger primitives it calls
+ * (getProfitAndLossForClinics/computeEbitEbitdaFromPL) - the same
  * "mock one layer down, run the real code above it" style used for
  * services/financialOverview.test.ts. This proves the consolidation
  * itself (summing per-branch canonical ledger results) is correct,
  * without re-testing getProfitAndLoss()'s own internals (already covered
  * by services/ledger.test.ts).
+ *
+ * FIN-3.10: getOrganizationFinancials fetches P&L once and derives
+ * EBIT/EBITDA from it via the pure computeEbitEbitdaFromPL() (rather than
+ * calling getEbitEbitdaForClinics(), which would redundantly re-fetch the
+ * same P&L a second time) - so that's the function mocked here now.
  */
 
 const getProfitAndLossForClinics = vi.fn();
-const getEbitEbitdaForClinics = vi.fn();
+const computeEbitEbitdaFromPL = vi.fn();
 
 vi.mock("./ledger", () => ({
   getProfitAndLossForClinics: (...args: unknown[]) => getProfitAndLossForClinics(...args),
-  getEbitEbitdaForClinics: (...args: unknown[]) => getEbitEbitdaForClinics(...args),
+  computeEbitEbitdaFromPL: (...args: unknown[]) => computeEbitEbitdaFromPL(...args),
 }));
 
 const CEO_AUTH_ID = "auth-ceo-1";
@@ -137,7 +142,7 @@ beforeEach(() => {
     { clinic_id: CLINIC_B, currency: "KES" },
   ];
 
-  getEbitEbitdaForClinics.mockResolvedValue(new Map());
+  computeEbitEbitdaFromPL.mockReturnValue({ ebit: 0, ebitdaAvailable: false, ebitda: null });
 });
 
 describe("getOrganizationFinancials (FIN-1.5 - sums each branch's canonical ledger P&L, not an independent formula)", () => {
@@ -244,19 +249,16 @@ describe("getOrganizationFinancials (FIN-1.5 - sums each branch's canonical ledg
     expect(result.branches.find((b) => b.clinic_id === CLINIC_A)).toMatchObject({ revenue: 100000 });
   });
 
-  it("keeps EBIT/EBITDA as their own genuinely distinct figures from getEbitEbitdaForClinics, never derived from Net Profit here", async () => {
+  it("keeps EBIT/EBITDA as their own genuinely distinct figures derived from each branch's own P&L, never derived from Net Profit here", async () => {
     getProfitAndLossForClinics.mockResolvedValue(
       new Map([
         [CLINIC_A, pl(100000, 0, 20000)],
         [CLINIC_B, pl(50000, 0, 10000)],
       ])
     );
-    getEbitEbitdaForClinics.mockResolvedValue(
-      new Map([
-        [CLINIC_A, { ebit: 79000, ebitdaAvailable: true, ebitda: 85000 }],
-        [CLINIC_B, { ebit: 39000, ebitdaAvailable: false, ebitda: null }],
-      ])
-    );
+    computeEbitEbitdaFromPL
+      .mockImplementationOnce(() => ({ ebit: 79000, ebitdaAvailable: true, ebitda: 85000 }))
+      .mockImplementationOnce(() => ({ ebit: 39000, ebitdaAvailable: false, ebitda: null }));
 
     const result = await getOrganizationFinancials(ORG_ID, START, END);
 
@@ -266,5 +268,23 @@ describe("getOrganizationFinancials (FIN-1.5 - sums each branch's canonical ledg
     expect(result.ebitda).toBe(85000);
     // Net Profit (from the ledger P&L) is untouched by EBIT being different.
     expect(result.netProfit).toBe(120000);
+  });
+
+  it("derives EBIT/EBITDA from the SAME P&L fetch rather than re-fetching it - computeEbitEbitdaFromPL is called with each branch's own P&L object, never a second getProfitAndLossForClinics call", async () => {
+    const plA = pl(100000, 0, 20000);
+    const plB = pl(50000, 0, 10000);
+
+    getProfitAndLossForClinics.mockResolvedValue(
+      new Map([
+        [CLINIC_A, plA],
+        [CLINIC_B, plB],
+      ])
+    );
+
+    await getOrganizationFinancials(ORG_ID, START, END);
+
+    expect(getProfitAndLossForClinics).toHaveBeenCalledTimes(1);
+    expect(computeEbitEbitdaFromPL).toHaveBeenCalledWith(plA);
+    expect(computeEbitEbitdaFromPL).toHaveBeenCalledWith(plB);
   });
 });

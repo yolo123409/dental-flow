@@ -12,6 +12,8 @@ import {
   AccountingHealthReport,
   ArReconciliationCheck,
   CashFlowReconciliationCheck,
+  ExpenseExceptionRow,
+  ExpenseReconciliationCheck,
   HealthStatus,
   HistoricalExceptionEntry,
   HistoricalExceptionsCheck,
@@ -105,12 +107,31 @@ interface RawLedgerIntegrityRow {
   duplicate_reference_transactions: number;
 }
 
+interface RawExpenseExceptionRow {
+  expense_id: string;
+  description: string;
+  expense_amount: number;
+  status: string;
+  posting_count: number;
+  posted_debit: number;
+  exception_type: "missing" | "mismatched" | "duplicate";
+}
+
 function toPaymentExceptionRow(row: RawPaymentExceptionRow): PaymentExceptionRow {
   return {
     paymentId: row.payment_id,
     invoiceId: row.invoice_id,
     invoiceNumber: row.invoice_number,
     amount: Number(row.payment_amount),
+    exceptionType: row.exception_type,
+  };
+}
+
+function toExpenseExceptionRow(row: RawExpenseExceptionRow): ExpenseExceptionRow {
+  return {
+    expenseId: row.expense_id,
+    description: row.description,
+    amount: Number(row.expense_amount),
     exceptionType: row.exception_type,
   };
 }
@@ -481,6 +502,39 @@ function buildLedgerIntegrityCheck(row: RawLedgerIntegrityRow): LedgerIntegrityC
 }
 
 /* -------------------------------------- */
+/* Expense reconciliation (FIN-3.9)       */
+/* -------------------------------------- */
+
+/**
+ * The expense-side sibling of buildPaymentReconciliationCheck(), backed by
+ * get_expense_ledger_exceptions() (migration 0095 - built explicitly for
+ * this reuse). Unlike payments, there is no known/accepted historical
+ * exception bucket here: FIN-3.3's backfill (migrations 0091/0092) posted
+ * every expense that predated the ledger posting triggers unconditionally
+ * (no structural blocker like the payment side's reference-uniqueness
+ * constraint, and no deliberately-skipped row), so any exception this RPC
+ * finds today is new and unexpected - the same "must never happen"
+ * treatment buildArCheck() gives an unexplained AR divergence.
+ */
+function buildExpenseReconciliationCheck(rows: ExpenseExceptionRow[]): ExpenseReconciliationCheck {
+  const totalExceptionAmount = rows.reduce((sum, r) => sum + r.amount, 0);
+
+  return {
+    status: rows.length === 0 ? "healthy" : "critical",
+    summary:
+      rows.length === 0
+        ? "Every paid expense has exactly one correctly-amounted ledger posting."
+        : `${rows.length} expense ledger exception${rows.length === 1 ? "" : "s"} detected (KES ${totalExceptionAmount.toFixed(2)}).`,
+    explanation:
+      rows.length === 0
+        ? "No missing, mismatched, or duplicate Expense-type ledger postings were found."
+        : "FIN-3.3's historical backfill posted every expense that predated the ledger posting triggers, so there is no known/accepted exception category here - this is new and needs investigation. Do not backfill it automatically.",
+    exceptions: rows,
+    totalExceptionAmount,
+  };
+}
+
+/* -------------------------------------- */
 /* Composition                            */
 /* -------------------------------------- */
 
@@ -489,11 +543,12 @@ function buildLedgerIntegrityCheck(row: RawLedgerIntegrityRow): LedgerIntegrityC
  * detect-only reconciliation check DentalFlow has (Phase Q1). Reuses the
  * existing getArReconciliationStatus()/getPaymentLedgerReconciliation()
  * primitives rather than re-deriving AR/payment totals, and adds three
- * new bounded, read-only RPCs (0085-0087) only for the detail no
- * existing aggregate exposes (which specific invoices/payments are
- * exceptions, and per-transaction ledger balance integrity).
+ * new bounded, read-only RPCs (0085-0087, plus 0095's
+ * get_expense_ledger_exceptions wired in by FIN-3.9) only for the detail
+ * no existing aggregate exposes (which specific invoices/payments/expenses
+ * are exceptions, and per-transaction ledger balance integrity).
  *
- * Exactly 6 network round trips regardless of clinic size - no
+ * Exactly 7 network round trips regardless of clinic size - no
  * per-invoice or per-payment fetch, so this stays fast even for a clinic
  * with thousands of invoices (Q14). Never writes anything.
  */
@@ -502,15 +557,23 @@ export async function getAccountingHealthReport(): Promise<AccountingHealthRepor
 
   const clinicId = await getCurrentClinicId();
 
-  const [arStatus, paymentReconciliation, settings, invoiceRowsResult, paymentRowsResult, integrityResult] =
-    await Promise.all([
-      getArReconciliationStatus(),
-      getPaymentLedgerReconciliation(),
-      getLedgerSettings(),
-      supabase.rpc("get_invoice_consistency_exceptions", { p_clinic_id: clinicId }),
-      supabase.rpc("get_payment_ledger_exceptions", { p_clinic_id: clinicId }),
-      supabase.rpc("get_ledger_integrity_summary", { p_clinic_id: clinicId }),
-    ]);
+  const [
+    arStatus,
+    paymentReconciliation,
+    settings,
+    invoiceRowsResult,
+    paymentRowsResult,
+    integrityResult,
+    expenseRowsResult,
+  ] = await Promise.all([
+    getArReconciliationStatus(),
+    getPaymentLedgerReconciliation(),
+    getLedgerSettings(),
+    supabase.rpc("get_invoice_consistency_exceptions", { p_clinic_id: clinicId }),
+    supabase.rpc("get_payment_ledger_exceptions", { p_clinic_id: clinicId }),
+    supabase.rpc("get_ledger_integrity_summary", { p_clinic_id: clinicId }),
+    supabase.rpc("get_expense_ledger_exceptions", { p_clinic_id: clinicId }),
+  ]);
 
   if (invoiceRowsResult.error) {
     logError("[accountingHealth] get_invoice_consistency_exceptions failed:", invoiceRowsResult.error);
@@ -527,9 +590,17 @@ export async function getAccountingHealthReport(): Promise<AccountingHealthRepor
     throw toError(integrityResult.error);
   }
 
+  if (expenseRowsResult.error) {
+    logError("[accountingHealth] get_expense_ledger_exceptions failed:", expenseRowsResult.error);
+    throw toError(expenseRowsResult.error);
+  }
+
   const invoiceRows = (invoiceRowsResult.data ?? []) as RawInvoiceConsistencyRow[];
   const paymentExceptionRows = ((paymentRowsResult.data ?? []) as RawPaymentExceptionRow[]).map(
     toPaymentExceptionRow
+  );
+  const expenseExceptionRows = ((expenseRowsResult.data ?? []) as RawExpenseExceptionRow[]).map(
+    toExpenseExceptionRow
   );
   const integrityRow = (integrityResult.data?.[0] ?? {
     total_transactions: 0,
@@ -556,6 +627,7 @@ export async function getAccountingHealthReport(): Promise<AccountingHealthRepor
       paymentCheck.newExceptions
     ),
     ledgerIntegrity: buildLedgerIntegrityCheck(integrityRow),
+    expenseReconciliation: buildExpenseReconciliationCheck(expenseExceptionRows),
   };
 
   const statuses = Object.values(checks).map((c) => c.status);

@@ -21,6 +21,11 @@ export interface LedgerSettings {
   default_expense_account_id: string | null;
   default_cash_account_id: string | null;
   opening_balance_equity_account_id: string | null;
+  /** FIN-3.1: where an invoice's already-computed `tax` amount posts,
+   * instead of being folded into treatment_revenue_account_id. Null means
+   * "not configured" - the invoice trigger falls back to posting tax into
+   * Revenue (previous behavior) and raises a reconciliation issue. */
+  vat_payable_account_id: string | null;
   payment_method_accounts: Record<string, string>;
   updated_at: string;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, ChevronDown } from "lucide-react";
 
@@ -27,8 +26,6 @@ import { getSafeErrorMessage, logError } from "@/lib/logError";
  * client to "trick" into an unauthorized branch.
  */
 export default function BranchSwitcher() {
-  const router = useRouter();
-
   const { organizationUser, myBranches, activeBranch, reload } =
     useOrganization();
 
@@ -75,12 +72,24 @@ export default function BranchSwitcher() {
 
       setOpen(false);
 
-      // A page the user was on (e.g. a specific patient record) may
-      // belong to the branch they're leaving and would 404/error under
-      // the new branch's RLS scope - land on the dashboard, exactly like
-      // the Branches page's own "Access Branch" button already does.
-      router.push("/admin");
-      router.refresh();
+      // A hard navigation, not router.push()/router.refresh(): every
+      // clinic-scoped page (Dashboard, Patients, Ledger, ...) resolves
+      // its clinic_id once in a mount-time useEffect and never re-reads
+      // it - and AuthContext's own `profile` (role, used for permission
+      // gating) is only reloaded on a real auth event, never on a branch
+      // switch. A client-side push to "/admin" while the dropdown is
+      // used FROM "/admin" itself is a no-op navigation (same pathname),
+      // so nothing remounts and every widget silently keeps showing the
+      // old branch's data - router.refresh() only re-runs server-side
+      // data fetching, not these client-side effects. A full reload
+      // remounts everything (including AuthProvider/OrganizationProvider
+      // themselves), which is the only way to guarantee every already-
+      // mounted piece of UI picks up the new branch. Same fix applied to
+      // the Branches page's own "Access Branch" button, which had this
+      // identical latent bug - it just never surfaced there because
+      // that button is always clicked from a different route than
+      // "/admin", which happened to force a real remount anyway.
+      window.location.href = "/admin";
     } catch (error) {
       toast.error(
         getSafeErrorMessage(
@@ -118,7 +127,11 @@ export default function BranchSwitcher() {
       </p>
 
       <button
+        type="button"
         onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Active branch"
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-sea-glass bg-white px-3 py-2 text-left transition hover:bg-porcelain"
       >
         <span className="truncate font-semibold text-graphite">
@@ -140,13 +153,20 @@ export default function BranchSwitcher() {
             : "pointer-events-none scale-95 opacity-0"
         }`}
       >
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-sea-glass bg-white py-1 shadow-lg">
+        <div
+          role="listbox"
+          aria-label="Branches"
+          className="max-h-64 overflow-y-auto rounded-lg border border-sea-glass bg-white py-1 shadow-lg"
+        >
           {myBranches.map((branch) => {
             const isActive = branch.id === activeBranch?.id;
 
             return (
               <button
                 key={branch.id}
+                type="button"
+                role="option"
+                aria-selected={isActive}
                 onClick={() => handleSwitch(branch.id)}
                 disabled={switchingId !== null}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-graphite transition hover:bg-porcelain disabled:opacity-60"

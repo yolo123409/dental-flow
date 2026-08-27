@@ -43,6 +43,7 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     default_cash_account_id: null,
     treatment_revenue_account_id: null,
     inventory_account_id: null,
+    vat_payable_account_id: null,
     payment_method_accounts: {},
     ...overrides,
   };

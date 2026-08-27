@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Building2, Plus, ArrowRight } from "lucide-react";
 
@@ -25,8 +24,6 @@ import { getSafeErrorMessage, logError } from "@/lib/logError";
 import { OrganizationBranch } from "@/types/organization";
 
 function BranchesPageContent() {
-  const router = useRouter();
-
   const {
     organizationUser,
     reload: reloadOrganization,
@@ -69,8 +66,12 @@ function BranchesPageContent() {
       await switchActiveBranch(branch.id);
       await reloadOrganization();
 
-      router.push("/admin");
-      router.refresh();
+      // Hard reload, not router.push()/router.refresh() - see the
+      // identical comment in components/organization/BranchSwitcher.tsx
+      // for why a client-side transition can leave already-mounted
+      // clinic-scoped pages (and AuthContext's own cached profile/role)
+      // silently showing the branch you just left.
+      window.location.href = "/admin";
     } catch (error) {
       logError("[Branches page] Failed to switch branch:", error);
 

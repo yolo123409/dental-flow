@@ -115,6 +115,8 @@ export async function getTreatmentPlan(
 export async function createTreatmentPlan(
   input: SaveTreatmentPlanInput
 ): Promise<TreatmentPlan> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   const clinicUser = await getCurrentClinicUser();
@@ -151,6 +153,8 @@ export async function updateTreatmentPlan(
   planId: string,
   input: Partial<SaveTreatmentPlanInput>
 ): Promise<TreatmentPlan> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   const { data, error } = await supabase
@@ -186,6 +190,8 @@ export async function updateTreatmentPlan(
 export async function deleteTreatmentPlan(
   planId: string
 ): Promise<void> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -227,6 +233,8 @@ export async function deleteTreatmentPlan(
 export async function createTreatment(
   input: CreateTreatmentInput
 ): Promise<TreatmentPlanItem> {
+  await assertPermission("treatments");
+
   const procedure = input.procedure.trim();
 
   if (!procedure) {
@@ -282,6 +290,8 @@ export async function updateTreatmentItem(
   itemId: string,
   input: Partial<Omit<SaveTreatmentItemInput, "tooth_numbers">>
 ): Promise<TreatmentPlanItem> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   const { data: existing } = await supabase
@@ -409,6 +419,8 @@ export async function updateTreatmentTeeth(
   itemId: string,
   toothNumbers: number[]
 ): Promise<TreatmentPlanItem> {
+  await assertPermission("treatments");
+
   if (toothNumbers.length > 0) {
     assertValidToothNumbers(toothNumbers);
   }
@@ -437,6 +449,8 @@ export async function deleteTreatmentItem(
   itemId: string,
   planId: string
 ): Promise<void> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   // treatment_teeth rows for this item are removed automatically by the

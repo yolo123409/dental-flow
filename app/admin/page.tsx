@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getDashboardStats } from "@/services/dashboard";
 import { getRevenueAnalytics } from "@/services/analytics/revenue";
+import { getDateRange } from "@/services/analytics/dateRange";
 import {
   getRevenueChartData,
   RevenueChartPoint,
 } from "@/services/analytics/charts";
 import { getClinicSettings } from "@/services/settings";
-import { getExpenseSummary } from "@/services/expenses";
+import { getProfitAndLoss } from "@/services/ledger";
 import useRealtimeDashboard from "@/hooks/useRealtimeDashboard";
 import usePermissions from "@/hooks/usePermissions";
 import { getSafeErrorMessage, logError } from "@/lib/logError";
@@ -49,11 +50,11 @@ export default function AdminDashboard() {
   const [currency, setCurrency] = useState("KES");
 
   // Break-even revenue for the period = Total Costs Incurred for that same
-  // period (services/expenses.ts#getExpenseSummary, the same figure the
-  // Money Out widget shows) - the revenue level at which Total Revenue -
-  // Total Costs Incurred = 0. Set alongside `moneyOut` below, never from a
-  // manually entered setting. NULL = Total Costs Incurred could not be
-  // determined for this period.
+  // period (services/ledger.ts#getProfitAndLoss's totalOperatingExpenses,
+  // the same figure the Money Out widget shows) - the revenue level at
+  // which Total Revenue - Total Costs Incurred = 0. Set alongside
+  // `moneyOut` below, never from a manually entered setting. NULL = Total
+  // Costs Incurred could not be determined for this period.
   const [breakEven, setBreakEven] = useState<number | null>(null);
 
   const [moneyOut, setMoneyOut] = useState(0);
@@ -116,20 +117,42 @@ export default function AdminDashboard() {
       return;
     }
 
-    // Same shared revenue source the Analytics page uses
-    // (services/analytics/revenue.ts + services/analytics/charts.ts) -
-    // isolated in its own try/catch so a revenue-source failure doesn't
-    // take down the rest of the dashboard.
+    // FIN-3.2: "This Month" bounds for the canonical ledger P&L
+    // (services/ledger.ts#getProfitAndLoss) - the same accrual figures the
+    // Ledger Dashboard, Financial Overview, Reports Center P&L, Monthly
+    // Comparison, Financial Ratios, and CEO Consolidated Financials all
+    // already read (see those files' own FIN-1/FIN-1.5 comments). The
+    // Dashboard was the one remaining page still computing its own
+    // Paid-invoices/clinic_expenses total instead of reading the ledger -
+    // fixed here so "Revenue" and "Money Out" can never disagree with what
+    // the Ledger P&L page reports for the same period.
+    const { start: rangeStart, end: rangeEnd } = getDateRange("This Month");
+
+    // getDateRange("This Month") always returns concrete Dates (only an
+    // unrecognized range string falls through to null/null) - these
+    // fallbacks exist only to satisfy getProfitAndLoss's non-nullable
+    // signature, matching the same defensive pattern
+    // services/reports/shared.ts#getPeriodFinancials already uses.
+    const monthStart = rangeStart ?? new Date(0);
+    const monthEnd = rangeEnd ?? new Date();
+
+    // Isolated in its own try/catch so a revenue-source failure doesn't
+    // take down the rest of the dashboard. Tax Collected intentionally
+    // stays on getRevenueAnalytics's existing Paid-invoices basis (the same
+    // basis Financial Overview's own vatCollected figure uses) - this fix
+    // is scoped to the competing Revenue/Expense calculation, not to
+    // introducing a new VAT accrual figure on the Dashboard.
     try {
       setRevenueLoading(true);
       setRevenueError(null);
 
-      const [monthRevenue, chartData] = await Promise.all([
+      const [profitAndLoss, monthRevenue, chartData] = await Promise.all([
+        getProfitAndLoss(monthStart, monthEnd),
         getRevenueAnalytics("This Month"),
         getRevenueChartData("30 Days"),
       ]);
 
-      setRevenue(monthRevenue.totalRevenue);
+      setRevenue(profitAndLoss.revenue.total);
       setRevenueChart(chartData);
 
       setTaxCollected(
@@ -148,18 +171,22 @@ export default function AdminDashboard() {
       setRevenueLoading(false);
     }
 
-    // Isolated in its own try/catch, matching the revenue block above -
-    // a Money Out failure shouldn't take down the rest of the dashboard.
+    // Isolated in its own try/catch, matching the revenue block above - a
+    // Money Out failure shouldn't take down the rest of the dashboard. This
+    // duplicates the getProfitAndLoss() call made above rather than sharing
+    // it across both blocks, trading one extra RPC round trip for keeping
+    // the two widgets' failure domains genuinely independent, exactly as
+    // they were before this fix.
     try {
       setMoneyOutLoading(true);
       setMoneyOutError(null);
 
-      const summary = await getExpenseSummary("This Month");
+      const profitAndLoss = await getProfitAndLoss(monthStart, monthEnd);
 
-      setMoneyOut(summary.total);
+      setMoneyOut(profitAndLoss.totalOperatingExpenses);
       // Break-even revenue for the period = Total Costs Incurred for the
       // period - see the `breakEven` state doc above.
-      setBreakEven(summary.total);
+      setBreakEven(profitAndLoss.totalOperatingExpenses);
     } catch (error) {
       logError(
         "[dashboard page] Failed to load Money Out widget:",

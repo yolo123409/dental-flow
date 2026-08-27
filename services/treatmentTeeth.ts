@@ -1,8 +1,12 @@
 import { supabase } from "@/lib/supabase";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 
-import { isValidTooth } from "@/components/patients/dental/toothSelection";
+import {
+  isValidTooth,
+  isValidPrimaryTooth,
+} from "@/components/patients/dental/toothSelection";
 
 import { TreatmentPlanItem } from "@/types/treatmentPlan";
 
@@ -17,15 +21,23 @@ import { TreatmentPlanItem } from "@/types/treatmentPlan";
  */
 
 /**
- * Validates against real FDI tooth codes (11-18, 21-28, 31-38, 41-48) via
- * the same isValidTooth() the odontogram itself uses - not a plain
- * "1-32" numeric range. A naive 1-32 bound (what this function originally
- * used, and what treatment_plan_items.tooth_number's own client-side
- * check and patient_diagnosis_codes/patient_procedure_codes's DB
- * constraints still use) silently rejects every FDI code above 32 - all
- * of quadrant 4 (41-48) and most of quadrant 3 (33-38) - which is most of
- * the lower arch. Found via Phase C's own tests failing on tooth 36; see
- * migration 0074 for the matching database-level fix to treatment_teeth.
+ * Validates against real FDI tooth codes - permanent (11-18, 21-28,
+ * 31-38, 41-48) via isValidTooth(), or primary/deciduous (51-55, 61-65,
+ * 71-75, 81-85) via isValidPrimaryTooth() - the same functions the
+ * odontogram itself uses, not a plain numeric range. A naive 1-32 bound
+ * (what this function originally used) silently rejects every FDI code
+ * above 32 - all of quadrant 4 (41-48) and most of quadrant 3 (33-38) -
+ * which is most of the lower arch; found via Phase C's own tests failing
+ * on tooth 36 (see migration 0074's matching database-level fix).
+ *
+ * FIN-3.8: also accepts primary teeth - this function was still
+ * permanent-only after FIN-3.7 widened treatment_teeth's own database
+ * CHECK constraint, so a primary-tooth Treatment would have been rejected
+ * here, in the application layer, before ever reaching the database that
+ * phase fixed. Found while auditing this same file for FIN-3.8's
+ * database-level role-enforcement pass, corrected as part of it since
+ * it's the same "primary dentition through the Treatment Plan path"
+ * defect FIN-3.7 set out to close.
  */
 export function assertValidToothNumbers(toothNumbers: number[]): void {
   if (toothNumbers.length === 0) {
@@ -33,9 +45,12 @@ export function assertValidToothNumbers(toothNumbers: number[]): void {
   }
 
   for (const tooth of toothNumbers) {
-    if (!Number.isInteger(tooth) || !isValidTooth(tooth)) {
+    if (
+      !Number.isInteger(tooth) ||
+      (!isValidTooth(tooth) && !isValidPrimaryTooth(tooth))
+    ) {
       throw new Error(
-        `Tooth number ${tooth} is invalid - must be a real FDI tooth number (11-18, 21-28, 31-38, or 41-48).`
+        `Tooth number ${tooth} is invalid - must be a real FDI tooth number (permanent: 11-18, 21-28, 31-38, 41-48; primary: 51-55, 61-65, 71-75, 81-85).`
       );
     }
   }
@@ -174,6 +189,8 @@ export async function addTreatmentTeeth(
   treatmentPlanItemId: string,
   toothNumbers: number[]
 ): Promise<void> {
+  await assertPermission("treatments");
+
   const uniqueTeeth = [...new Set(toothNumbers)];
 
   assertValidToothNumbers(uniqueTeeth);
@@ -207,6 +224,8 @@ export async function removeTreatmentTooth(
   treatmentPlanItemId: string,
   toothNumber: number
 ): Promise<void> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   const { error } = await supabase
@@ -238,6 +257,8 @@ export async function replaceTreatmentTeeth(
   treatmentPlanItemId: string,
   toothNumbers: number[]
 ): Promise<void> {
+  await assertPermission("treatments");
+
   const clinicId = await getCurrentClinicId();
 
   const { error: deleteError } = await supabase

@@ -64,6 +64,7 @@ function ledgerSettingsRow() {
     default_expense_account_id: OTHER_EXPENSE_ACCOUNT_ID,
     default_cash_account_id: CASH_ACCOUNT_ID,
     opening_balance_equity_account_id: OBE_ACCOUNT_ID,
+    vat_payable_account_id: null,
     payment_method_accounts: {},
     updated_at: "2026-01-01T00:00:00.000Z",
   };

@@ -1435,8 +1435,15 @@ const EBIT_AMORTIZATION_PATTERN = /amortiz/i;
  * getEbitEbitdaForClinics (CEO Consolidated Financials) and the
  * single-clinic getEbitEbitda share this one computation, so batching
  * the data fetch can never silently change the numbers.
+ *
+ * FIN-3.10: also exported directly for services/organizations.ts#
+ * getOrganizationFinancials, which needs both the P&L map AND its
+ * derived EBIT/EBITDA for the same clinics/period - calling this on the
+ * P&L it already fetched avoids a second, redundant
+ * getProfitAndLossForClinics() round trip (found while auditing that
+ * page's query count at 47-branch scale; see that function's own comment).
  */
-function computeEbitEbitdaFromPL(pl: ProfitAndLossPeriod): EbitEbitdaPeriod {
+export function computeEbitEbitdaFromPL(pl: ProfitAndLossPeriod): EbitEbitdaPeriod {
   const interestLines = pl.operatingExpenses.lines.filter((line) =>
     INTEREST_NAME_PATTERN.test(line.accountName)
   );
