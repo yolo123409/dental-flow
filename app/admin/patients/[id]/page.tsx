@@ -11,6 +11,7 @@ import PatientProfileHeader from "@/components/patients/PatientProfileHeader";
 import PatientTabs from "@/components/patients/PatientTabs";
 import PatientTimeline from "@/components/patients/PatientTimeline";
 import BillingSummary from "@/components/patients/BillingSummary";
+import CustomerCreditCard from "@/components/patients/CustomerCreditCard";
 import PatientNotes from "@/components/patient-notes/PatientNotes";
 
 import {
@@ -266,12 +267,20 @@ function PatientProfilePageContent() {
       {/* Billing */}
 
       {activeTab === "Billing" && canViewBilling && (
-        <BillingSummary
-          total={billing.total}
-          paid={billing.paid}
-          currency={currency}
-          outstanding={billing.outstanding}
-        />
+        <div className="space-y-8">
+          <BillingSummary
+            total={billing.total}
+            paid={billing.paid}
+            currency={currency}
+            outstanding={billing.outstanding}
+          />
+
+          <CustomerCreditCard
+            patientId={patient.id}
+            patientName={`${patient.first_name} ${patient.last_name}`}
+            currency={currency}
+          />
+        </div>
       )}
 
       {/* Timeline */}

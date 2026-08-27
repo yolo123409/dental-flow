@@ -1024,129 +1024,32 @@ export async function recordPayment(
     );
   }
 
-  const clinicId =
-    await getCurrentClinicId();
+  // FIN-4.8: the load-then-insert-then-update sequence this function used
+  // to do itself (three separate client round trips) had a genuine lost-
+  // update race - two concurrent payments against the same invoice could
+  // both read the same stale balance, and the update that finished last
+  // silently overwrote the first's effect on amount_paid/balance, even
+  // though both clinic_payments rows were correctly inserted. Found by
+  // FIN-4.8's concurrency testing. record_payment() (migration 0102) does
+  // the entire read-validate-insert-update sequence atomically in one
+  // Postgres call, using a row lock (`select ... for update`) so a second
+  // concurrent caller sees the first payment's already-updated balance
+  // instead of a stale one - this function is now a thin wrapper over it,
+  // not a second implementation of the same balance arithmetic.
+  const { data: invoice, error } = await supabase.rpc("record_payment", {
+    p_invoice_id: invoiceId,
+    p_amount: amount,
+    p_payment_method: paymentMethod,
+    p_reference: reference ?? null,
+    p_notes: notes ?? null,
+    p_insurance_provider_id:
+      paymentMethod === "Insurance" ? (insuranceProviderId ?? null) : null,
+  });
 
-  /* ----------------------------- */
-  /* Load Invoice                  */
-  /* ----------------------------- */
+  if (error) {
+    logError("[billing] recordPayment failed:", error);
 
-  const {
-    data: invoice,
-    error: invoiceError,
-  } = await supabase
-    .from("clinic_invoices")
-    .select("*")
-    .eq("clinic_id", clinicId)
-    .eq("id", invoiceId)
-    .single();
-
-  if (invoiceError) {
-    logError("[billing] recordPayment (load invoice) failed:", invoiceError);
-
-    throw toError(invoiceError);
-  }
-
-  // Phase J section 5/24/34/37: the existing implementation had no
-  // overpayment guard at all - found during this phase's audit (J1/J37),
-  // not a deliberately-supported behavior, so it's closed here rather
-  // than silently left open. Read against the balance JUST fetched above
-  // (not whatever the calling UI had displayed), which narrows the
-  // concurrent-double-payment window (J24) to this function's own
-  // load-then-write round trip instead of however long a screen had been
-  // sitting open - a real improvement without the new RPC/migration this
-  // phase's own instructions say to avoid unless absolutely required.
-  const outstandingBalance = roundMoney(Number(invoice.balance));
-
-  if (amount > outstandingBalance) {
-    throw new Error(
-      `Payment amount exceeds the outstanding balance of ${outstandingBalance}.`
-    );
-  }
-
-  /* ----------------------------- */
-  /* Save Payment                  */
-  /* ----------------------------- */
-
-  const {
-    error: paymentError,
-  } = await supabase
-    .from("clinic_payments")
-    .insert({
-      clinic_id: clinicId,
-
-      invoice_id:
-        invoice.id,
-
-      patient_id:
-        invoice.patient_id,
-
-      amount,
-
-      payment_method:
-        paymentMethod,
-
-      insurance_provider_id:
-        paymentMethod === "Insurance"
-          ? insuranceProviderId
-          : null,
-
-      reference:
-        reference ?? null,
-
-      notes:
-        notes ?? null,
-    });
-
-  if (paymentError) {
-    logError("[billing] recordPayment (insert payment) failed:", paymentError);
-
-    throw toError(paymentError);
-  }
-
-  /* ----------------------------- */
-  /* Update Invoice                */
-  /* ----------------------------- */
-
-  const amountPaid = roundMoney(
-    Number(invoice.amount_paid) +
-      amount
-  );
-
-  const balance = roundMoney(
-    Number(invoice.total) -
-      amountPaid
-  );
-
-  let status = "Unpaid";
-
-  if (balance <= 0) {
-    status = "Paid";
-  } else if (
-    amountPaid > 0
-  ) {
-    status =
-      "Partially Paid";
-  }
-
-  const {
-    error: updateError,
-  } = await supabase
-    .from("clinic_invoices")
-    .update({
-      amount_paid:
-        amountPaid,
-
-      balance,
-
-      status,
-    })
-    .eq("id", invoice.id);
-
-  if (updateError) {
-    logError("[billing] recordPayment (update invoice) failed:", updateError);
-
-    throw toError(updateError);
+    throw toError(error);
   }
 
   await notifyPaymentRecorded({

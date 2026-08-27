@@ -44,19 +44,7 @@ import {
   dbStats,
   topoSortTables,
 } from "./lib/introspect.mjs";
-import {
-  extensionsDDL,
-  listCustomEnums,
-  enumDDL,
-  tableDDL,
-  listSequenceDefaults,
-  listConstraintsOrdered,
-  listNonConstraintIndexes,
-  listTriggers,
-  listTableGrants,
-  grantsDDL,
-  policyDDL,
-} from "./lib/ddl-generator.mjs";
+import { buildSchemaSql } from "./lib/ddl-generator.mjs";
 import { r2Put, r2Head } from "./lib/r2.mjs";
 import { encryptionAvailable, encryptBuffer } from "./lib/crypto.mjs";
 
@@ -68,75 +56,6 @@ function serializeValue(value, dataType) {
   if (dataType === "json" || dataType === "jsonb") return value; // kept as JS value; JSON.stringify of the whole row handles it
   if (Buffer.isBuffer(value)) return { __bytea_base64__: value.toString("base64") };
   return value;
-}
-
-async function buildSchemaSql(client, tables, functions, extensions) {
-  const parts = [];
-
-  const extDdl = extensionsDDL(extensions);
-  if (extDdl) parts.push("-- ==== extensions ====", extDdl);
-
-  const enums = await listCustomEnums(client);
-  if (enums.length > 0) parts.push("-- ==== enums ====", enumDDL(enums));
-
-  const seqDefaults = await listSequenceDefaults(client);
-  if (seqDefaults.length > 0) {
-    console.warn(
-      `WARNING: ${seqDefaults.length} column(s) use a plain sequence default (not identity) - verify these restore correctly: ${seqDefaults
-        .map((s) => `${s.table}.${s.column_name}`)
-        .join(", ")}`
-    );
-  }
-
-  parts.push("-- ==== tables ====");
-  for (const t of tables) {
-    parts.push(await tableDDL(client, t));
-  }
-
-  const constraints = await listConstraintsOrdered(client);
-  if (constraints.length > 0) {
-    parts.push(
-      "-- ==== constraints ====",
-      constraints.map((c) => `alter table public."${c.table.replace(/^public\./, "").replace(/"/g, "")}" add constraint "${c.conname}" ${c.definition};`).join("\n")
-    );
-  }
-
-  const indexes = await listNonConstraintIndexes(client);
-  if (indexes.length > 0) {
-    parts.push("-- ==== indexes ====", indexes.map((i) => `${i.indexdef};`).join("\n"));
-  }
-
-  parts.push("-- ==== functions ====", functions.map((f) => f.definition + ";").join("\n\n"));
-
-  const triggers = await listTriggers(client);
-  if (triggers.length > 0) {
-    parts.push("-- ==== triggers ====", triggers.map((t) => `${t.definition};`).join("\n"));
-  }
-
-  const grants = await listTableGrants(client);
-  if (grants.length > 0) parts.push("-- ==== grants ====", grantsDDL(grants));
-
-  const rlsStatus = await listRlsStatus(client);
-  const rlsEnabledTables = rlsStatus.filter((r) => r.rls_enabled);
-  if (rlsEnabledTables.length > 0) {
-    parts.push(
-      "-- ==== row level security ====",
-      rlsEnabledTables
-        .map((r) => {
-          let sql = `alter table public."${r.table}" enable row level security;`;
-          if (r.rls_forced) sql += `\nalter table public."${r.table}" force row level security;`;
-          return sql;
-        })
-        .join("\n")
-    );
-  }
-
-  const policies = await listPolicies(client);
-  if (policies.length > 0) {
-    parts.push("-- ==== policies ====", policies.map(policyDDL).join("\n"));
-  }
-
-  return parts.join("\n\n");
 }
 
 async function dumpData(client, tables) {

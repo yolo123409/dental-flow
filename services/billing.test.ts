@@ -389,134 +389,89 @@ function makeInvoiceRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("recordPayment (Phase J - the ONE payment source of truth)", () => {
-  it("rejects a zero amount before ever touching the database", async () => {
-    mockClient = createSupabaseMock({});
+describe("recordPayment (Phase J - the ONE payment source of truth; FIN-4.8 - now a thin wrapper over the atomic record_payment() RPC, migration 0102)", () => {
+  it("rejects a zero amount before ever calling the RPC", async () => {
+    const rpc = vi.fn();
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
     await expect(
       recordPayment("invoice-1", 0, "Cash")
     ).rejects.toThrow(/greater than zero/i);
 
-    expect(getCurrentClinicId).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("rejects a negative amount", async () => {
-    mockClient = createSupabaseMock({});
+    const rpc = vi.fn();
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
     await expect(
       recordPayment("invoice-1", -500, "Cash")
     ).rejects.toThrow(/greater than zero/i);
+
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("rejects an Insurance payment with no insurance provider selected", async () => {
-    mockClient = createSupabaseMock({});
+    const rpc = vi.fn();
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
     await expect(
       recordPayment("invoice-1", 1000, "Insurance")
     ).rejects.toThrow(/select an insurance provider/i);
+
+    expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("rejects overpayment (amount exceeds the outstanding balance) and never creates a payment or updates the invoice", async () => {
-    let paymentInsertCalled = false;
-    let invoiceUpdateCalled = false;
-
-    mockClient = createSupabaseMock({
-      clinic_invoices: ({ op }) => {
-        if (op === "update") invoiceUpdateCalled = true;
-
-        return {
-          data: makeInvoiceRow({
-            balance: 20000,
-            total: 60000,
-            amount_paid: 40000,
-          }),
-          error: null,
-        };
-      },
-      clinic_payments: () => {
-        paymentInsertCalled = true;
-
-        return { data: null, error: null };
-      },
+  it("surfaces the RPC's own overpayment rejection rather than computing it client-side (FIN-4.8: the balance check now lives in the DB, under the same row lock as the write, so it can never race)", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "Payment amount exceeds the outstanding balance of 20000." },
     });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
     await expect(
       recordPayment("invoice-1", 25000, "Cash")
     ).rejects.toThrow(/exceeds the outstanding balance/i);
 
-    expect(paymentInsertCalled).toBe(false);
-    expect(invoiceUpdateCalled).toBe(false);
     expect(notifyPaymentRecorded).not.toHaveBeenCalled();
   });
 
-  it("accepts a payment exactly equal to the outstanding balance (not treated as overpayment)", async () => {
-    let updatePayload: unknown;
-
-    mockClient = createSupabaseMock({
-      clinic_invoices: ({ op, calls }) => {
-        if (op === "update") {
-          updatePayload = calls.find((c) => c.method === "update")?.args[0];
-
-          return { data: null, error: null };
-        }
-
-        return {
-          data: makeInvoiceRow({ balance: 60000, total: 60000, amount_paid: 0 }),
-          error: null,
-        };
-      },
-      clinic_payments: () => ({ data: null, error: null }),
+  it("passes every field through to record_payment, defaulting reference/notes/insurance provider to null", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: makeInvoiceRow({ balance: 0, total: 60000, amount_paid: 60000, status: "Paid" }),
+      error: null,
     });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
     await recordPayment("invoice-1", 60000, "Cash");
 
-    expect(updatePayload).toEqual({
-      amount_paid: 60000,
-      balance: 0,
-      status: "Paid",
+    expect(rpc).toHaveBeenCalledWith("record_payment", {
+      p_invoice_id: "invoice-1",
+      p_amount: 60000,
+      p_payment_method: "Cash",
+      p_reference: null,
+      p_notes: null,
+      p_insurance_provider_id: null,
     });
   });
 
-  it("records a full payment - amount_paid becomes total, balance 0, status Paid (Phase J section 7)", async () => {
-    let insertPayload: Record<string, unknown> | undefined;
-    let updatePayload: unknown;
-
-    mockClient = createSupabaseMock({
-      clinic_invoices: ({ op, calls }) => {
-        if (op === "update") {
-          updatePayload = calls.find((c) => c.method === "update")?.args[0];
-
-          return { data: null, error: null };
-        }
-
-        return {
-          data: makeInvoiceRow({ balance: 60000, total: 60000, amount_paid: 0 }),
-          error: null,
-        };
-      },
-      clinic_payments: ({ calls }) => {
-        insertPayload = calls.find((c) => c.method === "insert")?.args[0] as
-          | Record<string, unknown>
-          | undefined;
-
-        return { data: null, error: null };
-      },
+  it("records a full payment and notifies with the RPC's own returned invoice (Phase J section 7)", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: makeInvoiceRow({ balance: 0, total: 60000, amount_paid: 60000, status: "Paid" }),
+      error: null,
     });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
     await recordPayment("invoice-1", 60000, "Cash", "REF1", "note");
 
-    expect(insertPayload).toMatchObject({
-      invoice_id: "invoice-1",
-      patient_id: "patient-1",
-      amount: 60000,
-      payment_method: "Cash",
-      reference: "REF1",
-      notes: "note",
-    });
-    expect(updatePayload).toEqual({
-      amount_paid: 60000,
-      balance: 0,
-      status: "Paid",
+    expect(rpc).toHaveBeenCalledWith("record_payment", {
+      p_invoice_id: "invoice-1",
+      p_amount: 60000,
+      p_payment_method: "Cash",
+      p_reference: "REF1",
+      p_notes: "note",
+      p_insurance_provider_id: null,
     });
     expect(notifyPaymentRecorded).toHaveBeenCalledWith({
       id: "invoice-1",
@@ -525,64 +480,22 @@ describe("recordPayment (Phase J - the ONE payment source of truth)", () => {
     });
   });
 
-  it("records a partial payment - balance recalculated, status Partially Paid (Phase J section 6)", async () => {
-    let updatePayload: unknown;
-
-    mockClient = createSupabaseMock({
-      clinic_invoices: ({ op, calls }) => {
-        if (op === "update") {
-          updatePayload = calls.find((c) => c.method === "update")?.args[0];
-
-          return { data: null, error: null };
-        }
-
-        return {
-          data: makeInvoiceRow({ balance: 60000, total: 60000, amount_paid: 0 }),
-          error: null,
-        };
-      },
-      clinic_payments: () => ({ data: null, error: null }),
+  it("passes the insurance provider id through only for an Insurance payment", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: makeInvoiceRow({ balance: 40000, total: 60000, amount_paid: 20000, status: "Partially Paid" }),
+      error: null,
     });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
 
-    await recordPayment("invoice-1", 20000, "M-Pesa");
+    await recordPayment("invoice-1", 20000, "Insurance", undefined, undefined, "provider-1");
 
-    expect(updatePayload).toEqual({
-      amount_paid: 20000,
-      balance: 40000,
-      status: "Partially Paid",
-    });
-  });
-
-  it("a second payment against a Partially Paid invoice can complete it to Paid (Phase J section 6)", async () => {
-    let updatePayload: unknown;
-
-    mockClient = createSupabaseMock({
-      clinic_invoices: ({ op, calls }) => {
-        if (op === "update") {
-          updatePayload = calls.find((c) => c.method === "update")?.args[0];
-
-          return { data: null, error: null };
-        }
-
-        return {
-          data: makeInvoiceRow({
-            balance: 40000,
-            total: 60000,
-            amount_paid: 20000,
-            status: "Partially Paid",
-          }),
-          error: null,
-        };
-      },
-      clinic_payments: () => ({ data: null, error: null }),
-    });
-
-    await recordPayment("invoice-1", 40000, "Cash");
-
-    expect(updatePayload).toEqual({
-      amount_paid: 60000,
-      balance: 0,
-      status: "Paid",
+    expect(rpc).toHaveBeenCalledWith("record_payment", {
+      p_invoice_id: "invoice-1",
+      p_amount: 20000,
+      p_payment_method: "Insurance",
+      p_reference: null,
+      p_notes: null,
+      p_insurance_provider_id: "provider-1",
     });
   });
 });

@@ -29,13 +29,25 @@ import {
 
 /**
  * Phase Q4: the canonical, typed definition of every currently-known
- * historical payment-ledger exception - the 4 invoices Phase P's own
+ * historical payment-ledger exception. Originally 4 invoices Phase P's
  * final report named as deliberately, explicitly left unposted (a
  * user-approved scope decision, not an oversight): INV-00007/INV-00010
- * (overpaid - fully posting them would legitimately shift Ledger AR by
- * their real overpayment) and INV-00012/INV-00018 (blocked outright by
+ * (overpaid) and INV-00012/INV-00018 (blocked outright by
  * idx_clinic_ledger_transactions_reference_unique, migration 0044 - Phase
  * N already posted their one allowed Invoice-type transaction).
+ *
+ * FIN-4.4 (migration 0101) resolved INV-00007/INV-00010 for real, after
+ * discovering the true gap was bigger than Phase P described (neither
+ * invoice had ANY ledger posting at all, not just a missing payment
+ * side) - see each entry's own `reason` below. They stay in this list
+ * deliberately, not removed: get_payment_ledger_exceptions() checks for
+ * a posting per INDIVIDUAL payment row, and FIN-4.4's fix posted one
+ * combined journal entry per invoice instead (the economically correct
+ * treatment, not a workaround) - so these specific payment rows will
+ * always show as "missing" from that RPC's narrower point of view,
+ * permanently, by design. Removing them from this list would make that
+ * permanent, expected, already-resolved state get reported as a brand
+ * new critical exception instead.
  *
  * This lives here, in the service layer, deliberately NOT in a UI
  * component (Q4's explicit instruction) - a page only ever renders the
@@ -51,13 +63,13 @@ export const KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS: readonly KnownPaymentException
     invoiceNumber: "INV-00007",
     amount: 58000,
     reason:
-      "Historical payment ledger posting absent. This invoice is overpaid - posting its full payment history would legitimately shift Ledger AR by the overpayment amount, so Phase P deliberately left it unposted pending a dedicated future decision.",
+      "RESOLVED (FIN-4.4, migration 0101): this invoice never had any ledger posting at all - not just a missing payment side. Its true economic position (58,000 real cash received, 57,996.52 real revenue, 3.48 real overpayment) was posted as a single combined journal entry, and the 3.48 overpayment became a tracked Customer Credit. get_payment_ledger_exceptions() will always report these 2 payment rows as individually unposted, permanently - by design, since they were deliberately posted together rather than one-per-payment-row. This is expected, not unresolved.",
   },
   {
     invoiceNumber: "INV-00010",
     amount: 11000,
     reason:
-      "Historical payment ledger posting absent. This invoice is overpaid - posting its full payment history would legitimately shift Ledger AR by the overpayment amount, so Phase P deliberately left it unposted pending a dedicated future decision.",
+      "RESOLVED (FIN-4.4, migration 0101): this invoice never had any ledger posting at all - not just a missing payment side. Its true economic position (11,000 real cash received, 10,000 real revenue, 1,000 real overpayment) was posted as a single combined journal entry, and the 1,000 overpayment became a tracked Customer Credit. get_payment_ledger_exceptions() will always report these 2 payment rows as individually unposted, permanently - by design, since they were deliberately posted together rather than one-per-payment-row. This is expected, not unresolved.",
   },
   {
     invoiceNumber: "INV-00012",

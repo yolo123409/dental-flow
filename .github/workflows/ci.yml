@@ -1,0 +1,109 @@
+name: CI
+
+# FIN-4.6. Closes the exact gap that let the FIN-3.8 regression (a
+# broken clinic_invoice_items trigger) reach production undetected: 418
+# passing Vitest tests, all mocking the Supabase client, could never
+# have caught a real SQL trigger bug. This pipeline adds the layer that
+# can - real database integration tests, run against a real Postgres
+# database, gated before merge.
+#
+# Required conceptual pipeline (per FIN-4.6's brief):
+#   TypeScript -> Vitest -> DB integration tests -> Production build
+#
+# DB integration tests NEVER run against production. They run against
+# the isolated restore-test/staging project, gated by the same
+# assertDistinctProjects live-cluster check every other write-capable
+# script in this repo already uses (scripts/backup/lib/env.mjs) - so
+# even a misconfigured secret can't silently point this workflow at
+# production.
+#
+# CONCURRENCY: staging is a single, shared Supabase project (there is
+# no per-run ephemeral database - see docs/ENVIRONMENTS.md for why).
+# The group below is a FIXED name, not per-branch/per-PR, so two CI
+# runs never touch staging at the same time - a second run queues
+# behind the first instead of racing it. This trades some parallelism
+# for correctness; see docs/ENVIRONMENTS.md for the honest limitation
+# this implies.
+#
+# REQUIRED SECRETS (repository settings -> Actions -> secrets), all
+# already required by .github/workflows/backup-database.yml except
+# NEXT_PUBLIC_SUPABASE_ANON_KEY:
+#   SUPABASE_DB_URL                 - production, read-only here (schema
+#                                      introspection + a live identity
+#                                      check only - no row data is ever
+#                                      read or written)
+#   NEXT_PUBLIC_SUPABASE_URL        - production's public project URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY   - production's anon key (safe to
+#                                      expose - it's already shipped in
+#                                      the production browser bundle;
+#                                      needed only so `next build`'s
+#                                      static analysis can construct a
+#                                      Supabase client without throwing)
+#   RESTORE_TEST_DB_URL             - staging
+#   RESTORE_TEST_SUPABASE_URL       - staging's public project URL
+#
+# Never commit real values for any of these - they are read only from
+# GitHub's encrypted secrets store below.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-staging-db
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Unit / component tests (Vitest)
+        run: npm test
+
+      - name: Sync staging schema from production (schema only, zero data)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          RESTORE_TEST_DB_URL: ${{ secrets.RESTORE_TEST_DB_URL }}
+          RESTORE_TEST_SUPABASE_URL: ${{ secrets.RESTORE_TEST_SUPABASE_URL }}
+        run: npm run staging:sync-schema
+
+      - name: Apply this branch's pending migrations onto staging
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          RESTORE_TEST_DB_URL: ${{ secrets.RESTORE_TEST_DB_URL }}
+          RESTORE_TEST_SUPABASE_URL: ${{ secrets.RESTORE_TEST_SUPABASE_URL }}
+        run: npm run staging:apply-pending-migrations
+
+      - name: Database integration tests (real Postgres, staging only)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          RESTORE_TEST_DB_URL: ${{ secrets.RESTORE_TEST_DB_URL }}
+          RESTORE_TEST_SUPABASE_URL: ${{ secrets.RESTORE_TEST_SUPABASE_URL }}
+        run: npm run test:db-integration
+
+      - name: Production build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npm run build

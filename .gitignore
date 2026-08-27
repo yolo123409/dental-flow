@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # large third-party reference data (import source only, not read at
 # runtime - see data/README.md for provenance/how to re-obtain)

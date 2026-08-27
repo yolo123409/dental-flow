@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/dev-safety-check.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -19,7 +20,12 @@
     "backup:restore-test": "node scripts/backup/restore-database-test.mjs",
     "backup:storage-restore-test": "node scripts/backup/restore-storage-test.mjs",
     "backup:failure-tests": "node scripts/backup/failure-tests.mjs",
-    "backup:retention": "node scripts/backup/apply-retention.mjs"
+    "backup:retention": "node scripts/backup/apply-retention.mjs",
+    "staging:sync-schema": "node scripts/staging/sync-schema.mjs",
+    "staging:apply-pending-migrations": "node scripts/staging/apply-pending-migrations.mjs",
+    "staging:concurrency-test": "node scripts/staging/concurrency-test.mjs",
+    "test:db-integration": "node scripts/staging/db-integration-tests.mjs",
+    "db:whoami": "node scripts/db/whoami.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.21",

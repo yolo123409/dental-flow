@@ -22,6 +22,7 @@ import {
 } from "@/services/settings";
 
 import RecordPaymentModal from "@/components/billing/RecordPaymentModal";
+import GrantCustomerCreditModal from "@/components/billing/GrantCustomerCreditModal";
 import ClinicBrandingHeader from "@/components/branding/ClinicBrandingHeader";
 import PermissionGuard from "@/components/auth/PermissionGuard";
 import { getSafeErrorMessage } from "@/lib/logError";
@@ -60,6 +61,8 @@ function InvoicePageContent() {
     showPaymentModal,
     setShowPaymentModal,
   ] = useState(false);
+
+  const [showGrantCreditModal, setShowGrantCreditModal] = useState(false);
 
   useEffect(() => {
     loadInvoice();
@@ -601,19 +604,33 @@ async function downloadPDF() {
 
               </div>
 
-              <div className="flex justify-between text-lg font-bold text-red-600">
+              <div
+                className={`flex justify-between text-lg font-bold ${
+                  Number(invoice.balance) < 0 ? "text-amber-600" : "text-red-600"
+                }`}
+              >
 
                 <span>
-                  Outstanding
+                  {Number(invoice.balance) < 0 ? "Overpaid" : "Outstanding"}
                 </span>
 
                 <span>
                   {formatMoney(
-                    Number(invoice.balance)
+                    Number(invoice.balance) < 0
+                      ? Math.abs(Number(invoice.balance))
+                      : Number(invoice.balance)
                   )}
                 </span>
 
               </div>
+
+              {Number(invoice.balance) < 0 && (
+                <div className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+                  This invoice has been paid {formatMoney(Math.abs(Number(invoice.balance)))}{" "}
+                  more than its total. Grant the excess as a Customer Credit so it can be
+                  applied to a future invoice or refunded.
+                </div>
+              )}
 
               <div className="rounded-lg bg-slate-50 p-4">
 
@@ -662,7 +679,7 @@ async function downloadPDF() {
 
         <div className="flex justify-end gap-4 print:hidden">
 
-          {invoice.status !== "Paid" && (
+          {invoice.status !== "Paid" && Number(invoice.balance) > 0 && (
 
             <Button
               onClick={() =>
@@ -670,6 +687,18 @@ async function downloadPDF() {
               }
             >
               Record Payment
+            </Button>
+
+          )}
+
+          {Number(invoice.balance) < 0 && (
+
+            <Button
+              onClick={() =>
+                setShowGrantCreditModal(true)
+              }
+            >
+              Grant Customer Credit
             </Button>
 
           )}
@@ -711,6 +740,19 @@ async function downloadPDF() {
         onClose={() =>
           setShowPaymentModal(false)
         }
+        onSuccess={loadInvoice}
+      />
+
+      <GrantCustomerCreditModal
+        invoiceId={invoice.id}
+        invoiceNumber={invoice.invoice_number}
+        patientName={
+          patient ? `${patient.first_name} ${patient.last_name}` : "-"
+        }
+        currency={clinic?.currency ?? "KES"}
+        overpaymentAmount={Math.abs(Number(invoice.balance))}
+        open={showGrantCreditModal}
+        onClose={() => setShowGrantCreditModal(false)}
         onSuccess={loadInvoice}
       />
 

@@ -8,6 +8,7 @@
 // Concatenating migrations would therefore produce a backup that fails
 // to restore. Catalog introspection reflects whatever is actually
 // running in production right now, regardless of migration history.
+import { listRlsStatus, listPolicies } from "./introspect.mjs";
 
 export function extensionsDDL(extensions) {
   return extensions
@@ -191,4 +192,83 @@ export function policyDDL(policy) {
   if (policy.qual) sql += ` using (${policy.qual})`;
   if (policy.with_check) sql += ` with check (${policy.with_check})`;
   return sql + ";";
+}
+
+/**
+ * The full public-schema DDL for a live database, in dependency order
+ * (extensions -> enums -> tables -> constraints -> indexes -> functions
+ * -> triggers -> grants -> RLS -> policies), assembled entirely from the
+ * primitives above. Originally private to backup-database.mjs; exported
+ * here (FIN-4.1) so scripts/staging/sync-schema.mjs can build the exact
+ * same schema-only clone the backup pipeline already proved correct,
+ * without duplicating this composition or risking it drifting from the
+ * backup's own definition of "the schema".
+ */
+export async function buildSchemaSql(client, tables, functions, extensions) {
+  const parts = [];
+
+  const extDdl = extensionsDDL(extensions);
+  if (extDdl) parts.push("-- ==== extensions ====", extDdl);
+
+  const enums = await listCustomEnums(client);
+  if (enums.length > 0) parts.push("-- ==== enums ====", enumDDL(enums));
+
+  const seqDefaults = await listSequenceDefaults(client);
+  if (seqDefaults.length > 0) {
+    console.warn(
+      `WARNING: ${seqDefaults.length} column(s) use a plain sequence default (not identity) - verify these restore correctly: ${seqDefaults
+        .map((s) => `${s.table}.${s.column_name}`)
+        .join(", ")}`
+    );
+  }
+
+  parts.push("-- ==== tables ====");
+  for (const t of tables) {
+    parts.push(await tableDDL(client, t));
+  }
+
+  const constraints = await listConstraintsOrdered(client);
+  if (constraints.length > 0) {
+    parts.push(
+      "-- ==== constraints ====",
+      constraints.map((c) => `alter table public."${c.table.replace(/^public\./, "").replace(/"/g, "")}" add constraint "${c.conname}" ${c.definition};`).join("\n")
+    );
+  }
+
+  const indexes = await listNonConstraintIndexes(client);
+  if (indexes.length > 0) {
+    parts.push("-- ==== indexes ====", indexes.map((i) => `${i.indexdef};`).join("\n"));
+  }
+
+  parts.push("-- ==== functions ====", functions.map((f) => f.definition + ";").join("\n\n"));
+
+  const triggers = await listTriggers(client);
+  if (triggers.length > 0) {
+    parts.push("-- ==== triggers ====", triggers.map((t) => `${t.definition};`).join("\n"));
+  }
+
+  const grants = await listTableGrants(client);
+  if (grants.length > 0) parts.push("-- ==== grants ====", grantsDDL(grants));
+
+  const rlsStatus = await listRlsStatus(client);
+  const rlsEnabledTables = rlsStatus.filter((r) => r.rls_enabled);
+  if (rlsEnabledTables.length > 0) {
+    parts.push(
+      "-- ==== row level security ====",
+      rlsEnabledTables
+        .map((r) => {
+          let sql = `alter table public."${r.table}" enable row level security;`;
+          if (r.rls_forced) sql += `\nalter table public."${r.table}" force row level security;`;
+          return sql;
+        })
+        .join("\n")
+    );
+  }
+
+  const policies = await listPolicies(client);
+  if (policies.length > 0) {
+    parts.push("-- ==== policies ====", policies.map(policyDDL).join("\n"));
+  }
+
+  return parts.join("\n\n");
 }
