@@ -322,7 +322,9 @@ function AccountsReceivablePageContent() {
                         <td className="px-6 py-4 text-slate-600">
                           {new Date(invoice.invoiceDate).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 text-slate-400">—</td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "—"}
+                        </td>
                         <td className="px-6 py-4 text-right">{formatMoney(invoice.invoiceAmount)}</td>
                         <td className="px-6 py-4 text-right">{formatMoney(invoice.amountPaid)}</td>
                         <td className="px-6 py-4 text-right font-semibold">
@@ -344,10 +346,9 @@ function AccountsReceivablePageContent() {
             )}
 
             <p className="mt-4 text-xs text-mineral">
-              DentalFlow invoices don&apos;t have a due date in this system, so &quot;Days
-              Outstanding&quot; is measured from the invoice date, the Due Date column is shown as
-              &quot;—&quot; rather than a fabricated value, and Status is a simple Current
-              (0–30 days) / Overdue (30+ days) split rather than a real due-date comparison.
+              &quot;Days Outstanding&quot; is measured from each invoice&apos;s due date, not the
+              invoice date - an invoice isn&apos;t Overdue until its due date has actually passed.
+              Historical invoices were backfilled to due on receipt (due date = invoice date).
             </p>
           </Card>
 

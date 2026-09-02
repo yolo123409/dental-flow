@@ -24,6 +24,9 @@
     "staging:sync-schema": "node scripts/staging/sync-schema.mjs",
     "staging:apply-pending-migrations": "node scripts/staging/apply-pending-migrations.mjs",
     "staging:concurrency-test": "node scripts/staging/concurrency-test.mjs",
+    "staging:appointment-billing-concurrency-test": "node scripts/staging/appointment-billing-concurrency-test.mjs",
+    "staging:billing-audit-concurrency-test": "node scripts/staging/billing-audit-concurrency-test.mjs",
+    "staging:suspended-user-concurrency-test": "node scripts/staging/suspended-user-concurrency-test.mjs",
     "test:db-integration": "node scripts/staging/db-integration-tests.mjs",
     "db:whoami": "node scripts/db/whoami.mjs"
   },

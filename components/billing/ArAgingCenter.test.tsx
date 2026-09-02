@@ -15,6 +15,17 @@ vi.mock("@/services/insurance", () => ({
   getClinicInsuranceProviders: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/services/settings", () => ({
+  getClinicSettings: vi.fn().mockResolvedValue({
+    clinic_name: "Test Clinic",
+    phone: "0700111222",
+  }),
+}));
+
+vi.mock("@/services/billingReminders", () => ({
+  recordReminderOpened: vi.fn().mockResolvedValue(undefined),
+}));
+
 import ArAgingCenter from "./ArAgingCenter";
 import { ArSummary } from "@/services/billing";
 
@@ -23,8 +34,10 @@ function makeSummary(overrides: Partial<ArSummary> = {}): ArSummary {
     invoiceId: "invoice-old",
     invoiceNumber: "INV-00010",
     invoiceDate: "2025-01-01T00:00:00.000Z",
+    dueDate: "2025-01-01",
     patientId: "patient-1",
     patientName: "Amina Otieno",
+    patientPhone: "0700123456",
     treatmentSummary: "Root Canal (+1 more)",
     total: 60000,
     amountPaid: 0,
@@ -41,8 +54,10 @@ function makeSummary(overrides: Partial<ArSummary> = {}): ArSummary {
     invoiceId: "invoice-recent",
     invoiceNumber: "INV-00020",
     invoiceDate: "2026-08-01T00:00:00.000Z",
+    dueDate: "2026-08-01",
     patientId: "patient-1",
     patientName: "Amina Otieno",
+    patientPhone: "0700123456",
     treatmentSummary: "Filling",
     total: 20000,
     amountPaid: 5000,
@@ -140,8 +155,10 @@ describe("ArAgingCenter (Phase K - AR / Collections Center)", () => {
             invoiceId: "invoice-x",
             invoiceNumber: "INV-X",
             invoiceDate: "2026-08-01T00:00:00.000Z",
+            dueDate: "2026-08-01",
             patientId: "patient-2",
             patientName: "Brian Kamau",
+            patientPhone: "0700123456",
             treatmentSummary: "Cleaning",
             total: 5000,
             amountPaid: 0,
@@ -157,8 +174,10 @@ describe("ArAgingCenter (Phase K - AR / Collections Center)", () => {
             invoiceId: "invoice-y",
             invoiceNumber: "INV-Y",
             invoiceDate: "2026-08-01T00:00:00.000Z",
+            dueDate: "2026-08-01",
             patientId: "patient-3",
             patientName: "Carol Njeri",
+            patientPhone: "0700123456",
             treatmentSummary: "Extraction",
             total: 8000,
             amountPaid: 0,

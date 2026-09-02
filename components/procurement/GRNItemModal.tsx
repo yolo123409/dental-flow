@@ -61,8 +61,16 @@ export default function GRNItemModal({
     if (allowItemPicker && !isPoLine) {
       setLoadingItems(true);
 
-      getInventoryItems()
-        .then((data) => {
+      getInventoryItems({ activeOnly: true })
+        .then(async (activeData) => {
+          // Full-app audit fix H15: the picker only offers active items,
+          // but if we're editing an existing line whose item was since
+          // deactivated, fall back to the full list so it still resolves.
+          const data =
+            item && !activeData.some((i) => i.id === item.inventory_item_id)
+              ? await getInventoryItems()
+              : activeData;
+
           setItems(data);
 
           if (item) {
@@ -130,6 +138,16 @@ export default function GRNItemModal({
       return;
     }
 
+    // Full-app audit fix H13: unit cost was optional and silently
+    // defaulted to 0 on submit (`Number(unitCost) || 0` below) - the
+    // exact one-blank-field mistake that corrupts this item's valuation
+    // (and every future consumption's COGS) clinic-wide once confirmed.
+    const parsedUnitCost = Number(unitCost);
+    if (!unitCost.trim() || !Number.isFinite(parsedUnitCost) || parsedUnitCost <= 0) {
+      toast.error("Enter a unit cost greater than 0.");
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -141,7 +159,7 @@ export default function GRNItemModal({
         quantity_previously_received: item?.quantity_previously_received ?? 0,
         quantity_received: qty,
         unit: unit.trim(),
-        unit_cost: Number(unitCost) || 0,
+        unit_cost: parsedUnitCost,
         batch_number: batchNumber.trim() || null,
         expiry_date: expiryDate || null,
         notes: notes.trim() || null,
@@ -263,6 +281,7 @@ export default function GRNItemModal({
       <FormInput
         label="Unit Cost (actual received cost)"
         type="number"
+        required
         value={unitCost}
         onChange={setUnitCost}
       />

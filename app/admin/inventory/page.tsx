@@ -37,6 +37,8 @@ import {
   ExpiryStatus,
   getInventoryItems,
   deleteInventoryItem,
+  deactivateInventoryItem,
+  reactivateInventoryItem,
   getStockStatus,
   getExpiryStatus,
   getRecentMovements,
@@ -48,7 +50,8 @@ type StatusFilter =
   | "All"
   | StockStatus
   | ExpiryStatus
-  | "Needs Attention";
+  | "Needs Attention"
+  | "Inactive";
 
 const STATUS_FILTERS: StatusFilter[] = [
   "All",
@@ -58,6 +61,7 @@ const STATUS_FILTERS: StatusFilter[] = [
   "Expiring Soon",
   "Expired",
   "Needs Attention",
+  "Inactive",
 ];
 
 const STOCK_BADGE_CLASSES: Record<StockStatus, string> = {
@@ -209,6 +213,9 @@ function InventoryPageContent() {
 
   const [deleting, setDeleting] = useState(false);
 
+  const [togglingActiveId, setTogglingActiveId] =
+    useState<string | null>(null);
+
   const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -354,6 +361,10 @@ function InventoryPageContent() {
       );
     }
 
+    if (filter === "Inactive") {
+      return !item.active;
+    }
+
     if (
       filter === "Expiring Soon" ||
       filter === "Expired"
@@ -488,6 +499,37 @@ function InventoryPageContent() {
   function handleDelete(item: ClinicInventoryItem) {
     setSelected(item);
     setShowDeleteDialog(true);
+  }
+
+  async function handleToggleActive(
+    item: ClinicInventoryItem
+  ) {
+    try {
+      setTogglingActiveId(item.id);
+
+      if (item.active) {
+        await deactivateInventoryItem(item.id);
+
+        toast.success(
+          `${item.name} deactivated — hidden from new orders and consumption.`
+        );
+      } else {
+        await reactivateInventoryItem(item.id);
+
+        toast.success(`${item.name} reactivated.`);
+      }
+
+      await refreshAll();
+    } catch (error) {
+      toast.error(
+        getSafeErrorMessage(
+          error,
+          "Failed to update material status."
+        )
+      );
+    } finally {
+      setTogglingActiveId(null);
+    }
   }
 
   async function confirmDelete() {
@@ -911,7 +953,9 @@ function InventoryPageContent() {
                   return (
                     <tr
                       key={item.id}
-                      className="border-t border-slate-200"
+                      className={`border-t border-slate-200 ${
+                        item.active ? "" : "opacity-60"
+                      }`}
                     >
 
                       <td className="px-6 py-5 font-medium">
@@ -998,6 +1042,12 @@ function InventoryPageContent() {
                             </span>
                           )}
 
+                          {!item.active && (
+                            <span className="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                              Inactive
+                            </span>
+                          )}
+
                         </div>
 
                       </td>
@@ -1027,6 +1077,24 @@ function InventoryPageContent() {
                               }
                             >
                               Stock
+                            </Button>
+
+                            <Button
+                              variant="secondary"
+                              className="px-3 py-2"
+                              disabled={
+                                togglingActiveId ===
+                                item.id
+                              }
+                              onClick={() =>
+                                handleToggleActive(
+                                  item
+                                )
+                              }
+                            >
+                              {item.active
+                                ? "Deactivate"
+                                : "Reactivate"}
                             </Button>
 
                             <Button
@@ -1165,7 +1233,7 @@ function InventoryPageContent() {
         title="Delete material"
         description={
           selected
-            ? `Delete "${selected.name}"? This cannot be undone.`
+            ? `Delete "${selected.name}"? This cannot be undone. Materials with stock movement or usage history can't be deleted — deactivate them instead.`
             : undefined
         }
         confirmText="Delete"

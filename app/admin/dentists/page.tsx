@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Dentist } from "@/types/dentist";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import {
   getDentists,
@@ -84,7 +85,7 @@ function DentistsPageContent() {
 
     } catch (error) {
       console.error(error);
-      toast.error("Failed to delete dentist.");
+      toast.error(getSafeErrorMessage(error, "Failed to delete dentist."));
     } finally {
       setDeleting(false);
     }

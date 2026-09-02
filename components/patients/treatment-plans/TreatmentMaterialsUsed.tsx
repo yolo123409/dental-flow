@@ -157,7 +157,7 @@ export default function TreatmentMaterialsUsed({
 
     (async () => {
       try {
-        setItems(await getInventoryItems());
+        setItems(await getInventoryItems({ activeOnly: true }));
       } catch (error) {
         console.error(error);
       }

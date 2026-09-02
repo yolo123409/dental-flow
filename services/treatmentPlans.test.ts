@@ -19,6 +19,7 @@ vi.mock("./billing", () => ({
 
 vi.mock("./authorization", () => ({
   assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {},
 }));
 
 vi.mock("./notifications", () => ({
@@ -118,10 +119,18 @@ const {
   updateTreatmentItem,
   getItemTeeth,
   isItemInvoiced,
+  isItemChargeCancelled,
+  getItemBillableAmount,
+  getItemInvoicedAmount,
   billTreatmentPlanItems,
+  completeTreatmentItem,
+  completeAndBillTreatmentItem,
+  addTreatmentDeposit,
+  removeTreatmentDeposit,
 } = await import("./treatmentPlans");
 
 const { createInvoice } = await import("./billing");
+const { AuthorizationError } = await import("./authorization");
 
 const CLINIC_ID = "clinic-a";
 
@@ -149,6 +158,7 @@ function makeItem(
     status: "Planned",
     sort_order: 0,
     charge_id: null,
+    deposit_charge_id: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -226,7 +236,7 @@ describe("isItemInvoiced", () => {
     // still Pending - charge_id alone must never be read as "invoiced".
     const item = makeItem({
       charge_id: "charge-1",
-      clinic_charges: { status: "Pending" },
+      clinic_charges: { status: "Pending", amount: 5000 },
     });
 
     expect(isItemInvoiced(item)).toBe(false);
@@ -235,7 +245,7 @@ describe("isItemInvoiced", () => {
   it("IS invoiced when the linked charge's status is Invoiced", () => {
     const item = makeItem({
       charge_id: "charge-1",
-      clinic_charges: { status: "Invoiced" },
+      clinic_charges: { status: "Invoiced", amount: 5000 },
     });
 
     expect(isItemInvoiced(item)).toBe(true);
@@ -253,6 +263,105 @@ describe("isItemInvoiced", () => {
 
     expect(isItemInvoiced(invoicedFallback)).toBe(true);
     expect(isItemInvoiced(unbilledFallback)).toBe(false);
+  });
+
+  it("full-app audit fix C6: is NOT invoiced when the linked charge was Cancelled - a bare '!== Pending' check would have wrongly read this as Billed", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Cancelled", amount: 5000 },
+    });
+
+    expect(isItemInvoiced(item)).toBe(false);
+  });
+
+  it("full-app audit fix C6: a split item is not invoiced when the balance was Cancelled, even if the deposit was Invoiced", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Cancelled", amount: 3500 },
+      deposit_charge_id: "deposit-1",
+      deposit_charge: { status: "Invoiced", amount: 1500 },
+    });
+
+    expect(isItemInvoiced(item)).toBe(false);
+  });
+});
+
+describe("isItemChargeCancelled (full-app audit fix C6)", () => {
+  it("is true when the main charge was cancelled", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Cancelled", amount: 5000 },
+    });
+
+    expect(isItemChargeCancelled(item)).toBe(true);
+  });
+
+  it("is true when a split item's deposit was cancelled, even if the balance wasn't", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Pending", amount: 3500 },
+      deposit_charge_id: "deposit-1",
+      deposit_charge: { status: "Cancelled", amount: 1500 },
+    });
+
+    expect(isItemChargeCancelled(item)).toBe(true);
+  });
+
+  it("is false for a normal Pending or Invoiced charge", () => {
+    expect(
+      isItemChargeCancelled(
+        makeItem({ charge_id: "charge-1", clinic_charges: { status: "Pending", amount: 5000 } })
+      )
+    ).toBe(false);
+    expect(
+      isItemChargeCancelled(
+        makeItem({ charge_id: "charge-1", clinic_charges: { status: "Invoiced", amount: 5000 } })
+      )
+    ).toBe(false);
+  });
+});
+
+describe("getItemInvoicedAmount (full-app audit fix H1)", () => {
+  it("returns 0 for an item that isn't invoiced at all", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Pending", amount: 5000 },
+    });
+
+    expect(getItemInvoicedAmount(item)).toBe(0);
+  });
+
+  it("returns the real, frozen charge amount for a simple invoiced item - never the editable estimated_price * quantity", () => {
+    const item = makeItem({
+      estimated_price: 999999, // deliberately drifted from the real charge
+      quantity: 1,
+      charge_id: "charge-1",
+      clinic_charges: { status: "Invoiced", amount: 5000 },
+    });
+
+    expect(getItemInvoicedAmount(item)).toBe(5000);
+  });
+
+  it("sums both halves of a fully-invoiced split item", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Invoiced", amount: 3500 },
+      deposit_charge_id: "deposit-1",
+      deposit_charge: { status: "Invoiced", amount: 1500 },
+    });
+
+    expect(getItemInvoicedAmount(item)).toBe(5000);
+  });
+
+  it("returns 0 for a half-billed split item (deposit invoiced, balance still Pending) - it isn't fully invoiced yet", () => {
+    const item = makeItem({
+      charge_id: "charge-1",
+      clinic_charges: { status: "Pending", amount: 3500 },
+      deposit_charge_id: "deposit-1",
+      deposit_charge: { status: "Invoiced", amount: 1500 },
+    });
+
+    expect(getItemInvoicedAmount(item)).toBe(0);
   });
 });
 
@@ -682,6 +791,81 @@ describe("billTreatmentPlanItems", () => {
     );
   });
 
+  it("bills only the still-Pending balance for a split item whose deposit was already invoiced separately (billing audit fix #3)", async () => {
+    mockClient = createSupabaseMock({
+      clinic_charges: () => ({
+        data: [
+          { id: "balance-charge", status: "Pending", amount: 3000, treatment_name: "Root Canal - Balance" },
+          { id: "deposit-charge", status: "Invoiced", amount: 2000, treatment_name: "Root Canal - Deposit" },
+        ],
+        error: null,
+      }),
+    });
+
+    const plan = makePlan([
+      makeItem({
+        id: "item-1",
+        procedure: "Root Canal",
+        estimated_price: 5000,
+        quantity: 1,
+        charge_id: "balance-charge",
+        deposit_charge_id: "deposit-charge",
+      }),
+    ]);
+
+    await billTreatmentPlanItems(plan, "all");
+
+    // Only the balance (3000) is billed this round - the already-
+    // invoiced deposit (2000) must never be included again, and the
+    // amount must come from the real charge row, not
+    // estimated_price * quantity (5000, which would double-count it).
+    expect(createInvoice).toHaveBeenCalledWith(
+      "patient-1",
+      [{ id: "balance-charge", treatment_name: "Root Canal - Balance", amount: 3000 }],
+      0,
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  it("bills both the deposit and balance together for a split item that hasn't been invoiced at all yet", async () => {
+    mockClient = createSupabaseMock({
+      clinic_charges: () => ({
+        data: [
+          { id: "balance-charge", status: "Pending", amount: 3000, treatment_name: "Root Canal - Balance" },
+          { id: "deposit-charge", status: "Pending", amount: 2000, treatment_name: "Root Canal - Deposit" },
+        ],
+        error: null,
+      }),
+    });
+
+    const plan = makePlan([
+      makeItem({
+        id: "item-1",
+        procedure: "Root Canal",
+        estimated_price: 5000,
+        quantity: 1,
+        charge_id: "balance-charge",
+        deposit_charge_id: "deposit-charge",
+      }),
+    ]);
+
+    await billTreatmentPlanItems(plan, "all");
+
+    expect(createInvoice).toHaveBeenCalledWith(
+      "patient-1",
+      [
+        { id: "deposit-charge", treatment_name: "Root Canal - Deposit", amount: 2000 },
+        { id: "balance-charge", treatment_name: "Root Canal - Balance", amount: 3000 },
+      ],
+      0,
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
   it("bills a grouped 3-tooth Treatment as one charge with quantity x price (16,17,18)", async () => {
     let capturedInsert: Record<string, unknown> | null = null;
 
@@ -724,5 +908,294 @@ describe("billTreatmentPlanItems", () => {
     const chargesArg = invoiceCall[1] as Array<{ amount: number }>;
     expect(chargesArg).toHaveLength(1);
     expect(chargesArg[0].amount).toBe(60000);
+  });
+});
+
+describe("completeTreatmentItem (Phase B/C - thin wrapper over complete_treatment_item RPC, migration 0108)", () => {
+  it("calls the RPC with the item id and returns its row", async () => {
+    const item = makeItem({ status: "Completed", charge_id: "charge-1" });
+
+    mockClient = createSupabaseMock({}, (name, args) => {
+      expect(name).toBe("complete_treatment_item");
+      expect(args).toEqual({ p_treatment_plan_item_id: "item-1" });
+      return { data: item, error: null };
+    });
+
+    const result = await completeTreatmentItem("item-1");
+
+    expect(result).toEqual(item);
+  });
+
+  it("passes through null - the RPC's own signal that another request already completed this treatment", async () => {
+    mockClient = createSupabaseMock({}, () => ({ data: null, error: null }));
+
+    const result = await completeTreatmentItem("item-1");
+
+    expect(result).toBeNull();
+  });
+
+  it("propagates the RPC's error rather than swallowing it", async () => {
+    mockClient = createSupabaseMock({}, () => ({
+      data: null,
+      error: { message: "boom" },
+    }));
+
+    await expect(completeTreatmentItem("item-1")).rejects.toBeTruthy();
+  });
+});
+
+describe("addTreatmentDeposit / removeTreatmentDeposit (billing audit fix #3 - thin wrappers over migration 0112)", () => {
+  it("addTreatmentDeposit calls the RPC with the item id and deposit amount, returning the updated item", async () => {
+    const item = makeItem({ charge_id: "charge-1", deposit_charge_id: "deposit-1" });
+
+    mockClient = createSupabaseMock({}, (name, args) => {
+      expect(name).toBe("add_treatment_deposit");
+      expect(args).toEqual({
+        p_treatment_plan_item_id: "item-1",
+        p_deposit_amount: 2000,
+      });
+      return { data: item, error: null };
+    });
+
+    const result = await addTreatmentDeposit("item-1", 2000);
+
+    expect(result).toEqual(item);
+  });
+
+  it("addTreatmentDeposit surfaces the RPC's own rejection (e.g. deposit >= full amount) rather than validating client-side", async () => {
+    mockClient = createSupabaseMock({}, () => ({
+      data: null,
+      error: { message: "The deposit must be less than the full treatment amount of 5000." },
+    }));
+
+    await expect(addTreatmentDeposit("item-1", 5000)).rejects.toThrow(
+      /must be less than the full treatment amount/i
+    );
+  });
+
+  it("removeTreatmentDeposit calls the RPC with the item id, returning the merged-back item", async () => {
+    const item = makeItem({ charge_id: "charge-1", deposit_charge_id: null });
+
+    mockClient = createSupabaseMock({}, (name, args) => {
+      expect(name).toBe("remove_treatment_deposit");
+      expect(args).toEqual({ p_treatment_plan_item_id: "item-1" });
+      return { data: item, error: null };
+    });
+
+    const result = await removeTreatmentDeposit("item-1");
+
+    expect(result.deposit_charge_id).toBeNull();
+  });
+
+  it("removeTreatmentDeposit surfaces the RPC's own rejection when either charge is no longer unpaid", async () => {
+    mockClient = createSupabaseMock({}, () => ({
+      data: null,
+      error: { message: "Both the deposit and balance must still be unpaid/uninvoiced to undo the split." },
+    }));
+
+    await expect(removeTreatmentDeposit("item-1")).rejects.toThrow(
+      /must still be unpaid\/uninvoiced/i
+    );
+  });
+});
+
+describe("isItemInvoiced / getItemBillableAmount with a deposit split (billing audit fix #3)", () => {
+  it("is NOT invoiced when the deposit is Invoiced but the balance is still Pending", () => {
+    const item = makeItem({
+      charge_id: "charge-balance",
+      clinic_charges: { status: "Pending", amount: 3000 },
+      deposit_charge_id: "charge-deposit",
+      deposit_charge: { status: "Invoiced", amount: 2000 },
+    });
+
+    expect(isItemInvoiced(item)).toBe(false);
+  });
+
+  it("IS invoiced only once both the deposit and the balance are Invoiced", () => {
+    const item = makeItem({
+      charge_id: "charge-balance",
+      clinic_charges: { status: "Invoiced", amount: 3000 },
+      deposit_charge_id: "charge-deposit",
+      deposit_charge: { status: "Invoiced", amount: 2000 },
+    });
+
+    expect(isItemInvoiced(item)).toBe(true);
+  });
+
+  it("getItemBillableAmount returns the full price for an item with no deposit", () => {
+    const item = makeItem({ estimated_price: 5000, quantity: 1, deposit_charge_id: null });
+
+    expect(getItemBillableAmount(item)).toBe(5000);
+  });
+
+  it("getItemBillableAmount sums only the still-Pending charge(s) once split", () => {
+    const item = makeItem({
+      estimated_price: 5000,
+      quantity: 1,
+      charge_id: "charge-balance",
+      clinic_charges: { status: "Pending", amount: 3000 },
+      deposit_charge_id: "charge-deposit",
+      deposit_charge: { status: "Pending", amount: 2000 },
+    });
+
+    expect(getItemBillableAmount(item)).toBe(5000);
+  });
+
+  it("getItemBillableAmount excludes a deposit that's already been invoiced separately", () => {
+    const item = makeItem({
+      estimated_price: 5000,
+      quantity: 1,
+      charge_id: "charge-balance",
+      clinic_charges: { status: "Pending", amount: 3000 },
+      deposit_charge_id: "charge-deposit",
+      deposit_charge: { status: "Invoiced", amount: 2000 },
+    });
+
+    // Only the still-Pending balance (3000) is billable right now - the
+    // deposit (2000) was already invoiced separately and must not be
+    // double-counted in a fresh invoicing pass.
+    expect(getItemBillableAmount(item)).toBe(3000);
+  });
+});
+
+describe("completeAndBillTreatmentItem (Phase B/C - the appointment-completion billing trigger)", () => {
+  beforeEach(() => {
+    vi.mocked(createInvoice).mockReset();
+  });
+
+  it("does nothing further when the treatment was already completed (lost the race, or a no-op)", async () => {
+    mockClient = createSupabaseMock({}, () => ({ data: null, error: null }));
+
+    const result = await completeAndBillTreatmentItem("item-1");
+
+    expect(result).toEqual({
+      item: null,
+      treatmentCompleted: false,
+      invoiced: false,
+      billingDeferred: false,
+    });
+    expect(createInvoice).not.toHaveBeenCalled();
+  });
+
+  it("completes a non-billable treatment (no charge_id) without attempting to invoice", async () => {
+    const item = makeItem({ status: "Completed", charge_id: null });
+
+    mockClient = createSupabaseMock({}, () => ({ data: item, error: null }));
+
+    const result = await completeAndBillTreatmentItem("item-1");
+
+    expect(result).toEqual({
+      item,
+      treatmentCompleted: true,
+      invoiced: false,
+      billingDeferred: false,
+    });
+    expect(createInvoice).not.toHaveBeenCalled();
+  });
+
+  it("completes the treatment but does not re-invoice a charge already invoiced through another path", async () => {
+    const item = makeItem({ status: "Completed", charge_id: "charge-1" });
+
+    mockClient = createSupabaseMock(
+      {
+        clinic_charges: () => ({
+          data: { id: "charge-1", status: "Invoiced", amount: 18000, patient_id: "patient-1" },
+          error: null,
+        }),
+      },
+      () => ({ data: item, error: null })
+    );
+
+    const result = await completeAndBillTreatmentItem("item-1");
+
+    expect(result).toEqual({
+      item,
+      treatmentCompleted: true,
+      invoiced: false,
+      billingDeferred: false,
+    });
+    expect(createInvoice).not.toHaveBeenCalled();
+  });
+
+  it("completes the treatment and invoices its Pending charge through the canonical createInvoice()", async () => {
+    const item = makeItem({
+      status: "Completed",
+      charge_id: "charge-1",
+      procedure: "Root Canal",
+    });
+
+    vi.mocked(createInvoice).mockResolvedValue({ id: "invoice-1" } as never);
+
+    mockClient = createSupabaseMock(
+      {
+        clinic_charges: () => ({
+          data: { id: "charge-1", status: "Pending", amount: 18000, patient_id: "patient-1" },
+          error: null,
+        }),
+      },
+      () => ({ data: item, error: null })
+    );
+
+    const result = await completeAndBillTreatmentItem("item-1", "Cash", null);
+
+    expect(result).toEqual({
+      item,
+      treatmentCompleted: true,
+      invoiced: true,
+      billingDeferred: false,
+    });
+    expect(createInvoice).toHaveBeenCalledWith(
+      "patient-1",
+      [{ id: "charge-1", treatment_name: "Root Canal", amount: 18000 }],
+      0,
+      undefined,
+      "Cash",
+      null
+    );
+  });
+
+  it("completes the treatment and defers billing gracefully when the caller lacks billing permission - never blocks completion", async () => {
+    const item = makeItem({ status: "Completed", charge_id: "charge-1" });
+
+    vi.mocked(createInvoice).mockRejectedValue(new AuthorizationError());
+
+    mockClient = createSupabaseMock(
+      {
+        clinic_charges: () => ({
+          data: { id: "charge-1", status: "Pending", amount: 18000, patient_id: "patient-1" },
+          error: null,
+        }),
+      },
+      () => ({ data: item, error: null })
+    );
+
+    const result = await completeAndBillTreatmentItem("item-1");
+
+    expect(result).toEqual({
+      item,
+      treatmentCompleted: true,
+      invoiced: false,
+      billingDeferred: true,
+    });
+  });
+
+  it("lets a genuine (non-permission) invoicing error propagate rather than silently deferring it", async () => {
+    const item = makeItem({ status: "Completed", charge_id: "charge-1" });
+
+    vi.mocked(createInvoice).mockRejectedValue(new Error("Database is unreachable"));
+
+    mockClient = createSupabaseMock(
+      {
+        clinic_charges: () => ({
+          data: { id: "charge-1", status: "Pending", amount: 18000, patient_id: "patient-1" },
+          error: null,
+        }),
+      },
+      () => ({ data: item, error: null })
+    );
+
+    await expect(completeAndBillTreatmentItem("item-1")).rejects.toThrow(
+      "Database is unreachable"
+    );
   });
 });

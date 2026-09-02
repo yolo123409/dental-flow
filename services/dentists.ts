@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { Dentist } from "@/types/dentist";
 
 import { getCurrentClinicId } from "./clinic";
+import { assertPermission } from "./authorization";
 
 export async function getDentists(): Promise<Dentist[]> {
   const clinicId = await getCurrentClinicId();
@@ -142,7 +143,37 @@ export async function updateDentist(
 }
 
 export async function deleteDentist(id: string) {
+  // Full-app audit fix H7: deleteDentist had no permission check at all
+  // (every other write in this file was already missing one too - not
+  // widening scope here, just matching the page's own existing gate,
+  // app/admin/dentists/page.tsx's PermissionGuard permission="patients").
+  await assertPermission("patients");
+
   const clinicId = await getCurrentClinicId();
+
+  // Full-app audit fix H7: no check for existing appointments before this
+  // unconditional delete - the safe, correct action for a dentist who's
+  // left (or is being temporarily removed from scheduling) is
+  // toggleDentistStatus(id, false), which already exists and is already
+  // respected by every booking picker (getDentistOptions filters on
+  // active). Blocking here, rather than letting an unknown FK behavior
+  // decide the outcome, protects appointment history regardless of what
+  // that FK actually does today.
+  const { count: appointmentCount, error: countError } = await supabase
+    .from("appointments")
+    .select("*", { count: "exact", head: true })
+    .eq("clinic_id", clinicId)
+    .eq("dentist_id", id);
+
+  if (countError) {
+    throw countError;
+  }
+
+  if ((appointmentCount ?? 0) > 0) {
+    throw new Error(
+      "This dentist has appointment history and cannot be deleted. Deactivate them instead to hide them from new bookings."
+    );
+  }
 
   const { error } = await supabase
     .from("dentists")

@@ -11,16 +11,23 @@ interface InvoiceRow {
   created_at: string;
   total: number;
   amount_paid: number;
+  balance: number;
   patients: { first_name: string; last_name: string } | null;
 }
 
 /**
- * Only genuinely outstanding invoices (status != Paid) - a Paid invoice
- * never appears here even if it was paid off after being partially paid
- * for a while. clinic_invoices has no due-date column in this schema, so
- * "Days Outstanding" is measured from the invoice's creation date rather
- * than a due date, and the "Due Date" column from the spec is
- * intentionally omitted (see the notice below) rather than shown blank.
+ * Only genuinely outstanding invoices (status not in Paid/Voided) - a
+ * Paid invoice never appears here even if it was paid off after being
+ * partially paid for a while, and a Voided invoice never appears here
+ * either: void_invoice() zeroes `balance` but deliberately leaves `total`
+ * unchanged for history, so this must read the already-correct `balance`
+ * column rather than recompute total - amount_paid (Critical Safety
+ * Closure fix #4 - the recompute was showing every voided invoice as
+ * fully outstanding forever). clinic_invoices has no due-date column in
+ * this schema, so "Days Outstanding" is measured from the invoice's
+ * creation date rather than a due date, and the "Due Date" column from
+ * the spec is intentionally omitted (see the notice below) rather than
+ * shown blank.
  */
 export async function generateOutstandingBalancesReport(
   period: ReportPeriod,
@@ -39,10 +46,11 @@ export async function generateOutstandingBalancesReport(
       let query = supabase
         .from("clinic_invoices")
         .select(
-          "id, invoice_number, created_at, total, amount_paid, patients(first_name, last_name)"
+          "id, invoice_number, created_at, total, amount_paid, balance, patients(first_name, last_name)"
         )
         .eq("clinic_id", clinicMeta.clinicId)
         .neq("status", "Paid")
+        .neq("status", "Voided")
         .order("created_at", { ascending: true });
 
       if (period.start && period.end) {
@@ -65,7 +73,7 @@ export async function generateOutstandingBalancesReport(
   const now = Date.now();
 
   const rows = invoiceRows.map((row) => {
-    const outstanding = Number(row.total) - Number(row.amount_paid);
+    const outstanding = Number(row.balance);
     const daysOutstanding = Math.max(
       0,
       Math.floor((now - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))

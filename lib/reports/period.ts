@@ -1,4 +1,5 @@
 import { getDateRange } from "@/services/analytics/dateRange";
+import { localDateString } from "@/lib/dateUtils";
 
 /**
  * Shared by every ledger-based financial report (Profit & Loss, Cash
@@ -22,7 +23,7 @@ export interface ResolvedPeriod {
 }
 
 export function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return localDateString(date);
 }
 
 export function monthLabel(date: Date): string {

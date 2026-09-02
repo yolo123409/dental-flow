@@ -57,6 +57,13 @@ export interface ClinicInvoice {
   tax_inclusive: boolean;
   tax_registration_number: string | null;
 
+  // Set only when status = "Voided" - see void_invoice() (0110). A
+  // voided invoice's charges are freed back to Pending for correction,
+  // never deleted or left dangling.
+  voided_at: string | null;
+  voided_by: string | null;
+  void_reason: string | null;
+
   created_at: string;
 
   updated_at: string;
@@ -99,6 +106,14 @@ export interface ClinicPayment {
   reference: string | null;
 
   notes: string | null;
+
+  // "Recorded" | "Voided" - see void_payment() (0110). A voided payment
+  // is never deleted (clinic_payments has no DELETE policy at all,
+  // 0094); it's reversed via a ledger entry and marked Voided in place.
+  status: string;
+  voided_at: string | null;
+  voided_by: string | null;
+  void_reason: string | null;
 
   received_at: string;
 
@@ -789,6 +804,18 @@ export interface ChargeSelection {
   amount: number;
 }
 
+/**
+ * Phase B/C (appointment-completion billing): the multi-table write below
+ * used to be three separate, non-atomic client round trips - a real,
+ * pre-existing race (confirmed by reading the old code: the final charge
+ * update was unconditional, `where status = 'Pending'` was never checked).
+ * Now a thin wrapper over create_invoice_from_charges() (migration 0109),
+ * which does the whole lock-check-insert-mark-invoiced sequence in one
+ * atomic transaction. Signature, callers, and success-path behavior are
+ * unchanged - invoice numbering, tax/currency handling, and totals are
+ * still computed here in TypeScript exactly as before and passed in
+ * already-computed; only the write itself became atomic.
+ */
 export async function createInvoice(
   patientId: string,
   charges: ChargeSelection[],
@@ -808,9 +835,8 @@ export async function createInvoice(
     );
   }
 
-  const [clinicId, invoiceNumber, clinicSettings] =
+  const [invoiceNumber, clinicSettings] =
     await Promise.all([
-      getCurrentClinicId(),
       generateInvoiceNumber(),
       getClinicSettings(),
     ]);
@@ -839,85 +865,38 @@ export async function createInvoice(
       taxSettings
     );
 
-  const balance =
-    total;
-
-  const {
-    data: invoice,
-    error: invoiceError,
-  } = await supabase
-    .from("clinic_invoices")
-    .insert({
-      clinic_id: clinicId,
-      patient_id: patientId,
-      invoice_number: invoiceNumber,
-      subtotal,
-      discount,
-      tax,
-      total,
-      amount_paid: 0,
-      balance,
-      status: "Unpaid",
-      notes: notes ?? null,
-      payment_method: paymentMethod ?? null,
-      insurance_provider_id:
+  const { data, error } = await supabase.rpc(
+    "create_invoice_from_charges",
+    {
+      p_charge_ids: charges.map((charge) => charge.id),
+      p_patient_id: patientId,
+      p_invoice_number: invoiceNumber,
+      p_subtotal: subtotal,
+      p_discount: discount,
+      p_tax: tax,
+      p_total: total,
+      p_notes: notes ?? null,
+      p_payment_method: paymentMethod ?? null,
+      p_insurance_provider_id:
         paymentMethod === "Insurance"
           ? insuranceProviderId
           : null,
-      tax_enabled: taxSettings.enabled,
-      tax_name: taxSettings.name,
-      tax_rate: taxSettings.rate,
-      tax_inclusive: taxSettings.inclusive,
-      tax_registration_number:
+      p_tax_enabled: taxSettings.enabled,
+      p_tax_name: taxSettings.name,
+      p_tax_rate: taxSettings.rate,
+      p_tax_inclusive: taxSettings.inclusive,
+      p_tax_registration_number:
         taxSettings.registrationNumber,
-    })
-    .select()
-    .single();
+    }
+  );
 
-  if (invoiceError) {
-    logError("[billing] createInvoice (insert invoice) failed:", invoiceError);
+  if (error) {
+    logError("[billing] createInvoice failed:", error);
 
-    throw toError(invoiceError);
+    throw toError(error);
   }
 
-  const items =
-    charges.map((charge) => ({
-      invoice_id: invoice.id,
-      treatment_name:
-        charge.treatment_name,
-      quantity: 1,
-      unit_price: charge.amount,
-      total_price: charge.amount,
-    }));
-
-  const { error: itemError } =
-    await supabase
-      .from("clinic_invoice_items")
-      .insert(items);
-
-  if (itemError) {
-    logError("[billing] createInvoice (insert items) failed:", itemError);
-
-    throw toError(itemError);
-  }
-
-  const chargeIds =
-    charges.map((c) => c.id);
-
-  const { error: chargeError } =
-    await supabase
-      .from("clinic_charges")
-      .update({
-        status: "Invoiced",
-        invoice_id: invoice.id,
-      })
-      .in("id", chargeIds);
-
-  if (chargeError) {
-    logError("[billing] createInvoice (update charges) failed:", chargeError);
-
-    throw toError(chargeError);
-  }
+  const invoice = data as ClinicInvoice;
 
   await notifyInvoiceCreated(invoice);
 
@@ -964,18 +943,28 @@ export async function getPatientInvoices(
 export function calculateBalance(
   invoices: Pick<
     ClinicInvoice,
-    "total" | "amount_paid"
+    "total" | "amount_paid" | "status"
   >[]
 ) {
+  // Critical Safety Closure fix #4: a Voided invoice keeps its original
+  // `total` for history but is never real revenue or real debt - void_
+  // invoice() always zeroes amount_paid/balance for it. Summing it in
+  // here inflated "Total Billed" and "Outstanding Balance" (this
+  // function's callers, e.g. the patient Billing Summary) by the voided
+  // invoice's full amount, forever.
+  const activeInvoices = invoices.filter(
+    (invoice) => invoice.status !== "Voided"
+  );
+
   const total =
-    invoices.reduce(
+    activeInvoices.reduce(
       (sum, invoice) =>
         sum + Number(invoice.total),
       0
     );
 
   const paid =
-    invoices.reduce(
+    activeInvoices.reduce(
       (sum, invoice) =>
         sum +
         Number(invoice.amount_paid),
@@ -1060,19 +1049,72 @@ export async function recordPayment(
 }
 
 /* -------------------------------------- */
+/* Void invoice / void payment            */
+/* (billing audit fix #1)                 */
+/* -------------------------------------- */
+
+/**
+ * Voids an invoice that has nothing paid against it yet, reversing its
+ * ledger entry (via the existing reverse_ledger_transaction RPC) and
+ * freeing its charges back to Pending so they can be corrected and
+ * re-invoiced. Owner/Admin only - void_invoice() (0110) enforces this at
+ * the database level regardless of what the client checks.
+ */
+export async function voidInvoice(invoiceId: string, reason: string) {
+  await assertPermission("ledger");
+
+  const { data, error } = await supabase.rpc("void_invoice", {
+    p_invoice_id: invoiceId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    logError("[billing] voidInvoice failed:", error);
+
+    throw toError(error);
+  }
+
+  return data as ClinicInvoice;
+}
+
+/**
+ * Reverses a single payment - the invoice's amount_paid/balance/status
+ * are backed out by exactly this payment's amount, the mirror image of
+ * recordPayment()'s own arithmetic. The payment row is never deleted
+ * (clinic_payments has no DELETE policy at all); it's marked Voided in
+ * place. Owner/Admin only, enforced in void_payment() (0110).
+ */
+export async function voidPayment(paymentId: string, reason: string) {
+  await assertPermission("ledger");
+
+  const { data, error } = await supabase.rpc("void_payment", {
+    p_payment_id: paymentId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    logError("[billing] voidPayment failed:", error);
+
+    throw toError(error);
+  }
+
+  return data as ClinicPayment;
+}
+
+/* -------------------------------------- */
 /* Accounts Receivable / Collections      */
 /* (Phase K)                              */
 /* -------------------------------------- */
 
-// Phase K section 1/2: clinic_invoices has no due_date column and there is
-// no payment-terms concept anywhere in this schema (confirmed against the
-// same finding types/accountsReceivable.ts already documents for the
-// Ledger's AR report) - so "age" is measured from the invoice's own
-// created_at, never a fabricated due date. Buckets mirror that report's
-// day boundaries exactly (0/30/60/90) so the two AR surfaces never
-// disagree about what "60 days" means, even though this one is scoped to
-// "billing" (not "ledger") permission and computed straight from
-// clinic_invoices rather than the ledger account balance.
+// Billing audit fix #2 (was Phase K section 1/2): "age" is now measured
+// from clinic_invoices.due_date (migration 0111, backfilled to due-on-
+// receipt for every existing invoice) rather than created_at - an
+// invoice isn't aging toward overdue until its due date has actually
+// passed. Buckets mirror the Ledger AR report's day boundaries exactly
+// (0/30/60/90) so the two AR surfaces never disagree about what "60
+// days" means, even though this one is scoped to "billing" (not
+// "ledger") permission and computed straight from clinic_invoices
+// rather than the ledger account balance.
 export type ArAgingBucketKey = "0-30" | "31-60" | "61-90" | "90+";
 
 export interface ArAgingBucket {
@@ -1086,8 +1128,10 @@ export interface ArOutstandingInvoice {
   invoiceId: string;
   invoiceNumber: string;
   invoiceDate: string;
+  dueDate: string | null;
   patientId: string;
   patientName: string;
+  patientPhone: string | null;
   /** From clinic_invoice_items - the existing invoice line-item
    * architecture (Phase K section 21), never re-derived from charges. */
   treatmentSummary: string;
@@ -1129,6 +1173,7 @@ interface RawArInvoiceRow {
   id: string;
   invoice_number: string;
   created_at: string;
+  due_date: string | null;
   total: number;
   amount_paid: number;
   balance: number;
@@ -1136,7 +1181,7 @@ interface RawArInvoiceRow {
   patient_id: string;
   payment_method: string | null;
   insurance_provider_id: string | null;
-  patients: { id: string; first_name: string; last_name: string } | null;
+  patients: { id: string; first_name: string; last_name: string; phone: string | null } | null;
   insurance_provider: { name: string } | null;
   clinic_invoice_items: { treatment_name: string }[] | null;
 }
@@ -1200,9 +1245,9 @@ export async function getArSummary(): Promise<ArSummary> {
         .from("clinic_invoices")
         .select(
           `
-          id, invoice_number, created_at, total, amount_paid, balance, status,
+          id, invoice_number, created_at, due_date, total, amount_paid, balance, status,
           patient_id, payment_method, insurance_provider_id,
-          patients ( id, first_name, last_name ),
+          patients ( id, first_name, last_name, phone ),
           insurance_provider:insurance_providers ( name ),
           clinic_invoice_items ( treatment_name )
         `
@@ -1217,19 +1262,24 @@ export async function getArSummary(): Promise<ArSummary> {
   );
 
   const invoices: ArOutstandingInvoice[] = rows.map((row) => {
+    // due_date is backfilled for every invoice (migration 0111); the ??
+    // guards only a theoretical null.
+    const dueDate = row.due_date ?? row.created_at;
     const ageDays = Math.max(
       0,
-      Math.floor((now - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))
+      Math.floor((now - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24))
     );
 
     return {
       invoiceId: row.id,
       invoiceNumber: row.invoice_number,
       invoiceDate: row.created_at,
+      dueDate: row.due_date,
       patientId: row.patient_id,
       patientName: row.patients
         ? `${row.patients.first_name} ${row.patients.last_name}`
         : "—",
+      patientPhone: row.patients?.phone ?? null,
       treatmentSummary: summarizeInvoiceTreatments(row.clinic_invoice_items),
       total: Number(row.total),
       amountPaid: Number(row.amount_paid),

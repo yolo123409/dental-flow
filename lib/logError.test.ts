@@ -21,6 +21,18 @@ describe("getSafeErrorMessage", () => {
     );
   });
 
+  it("returns the message of a wrapped RPC error whose code is P0001 (a plain `raise exception` in Postgres) - a hand-written, user-facing guard message", () => {
+    const pgError = {
+      message: "This invoice has 500 paid against it - void each payment first, then void the invoice.",
+      code: "P0001",
+    };
+    const wrapped = toError(pgError);
+
+    expect(getSafeErrorMessage(wrapped, "Failed to void invoice.")).toBe(
+      "This invoice has 500 paid against it - void each payment first, then void the invoice."
+    );
+  });
+
   it("returns the fallback even when the wrapped Postgrest error's code is undefined - presence of the key matters, not its value", () => {
     const pgError = { message: "some internal detail" };
     const wrapped = toError(pgError);

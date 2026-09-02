@@ -6,6 +6,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 import { getCurrentClinicId } from "./clinic";
 import { getDateRange } from "./analytics/dateRange";
 import { assertPermission } from "./authorization";
+import { localDateString } from "@/lib/dateUtils";
 
 import {
   Expense,
@@ -47,8 +48,8 @@ function resolveDateBounds(
 
     if (start && end) {
       return {
-        start: start.toISOString().slice(0, 10),
-        end: end.toISOString().slice(0, 10),
+        start: localDateString(start),
+        end: localDateString(end),
       };
     }
   }
@@ -145,8 +146,8 @@ export async function getPaidExpenseTotalsByClinic(
   // expense, so it can't hit that cap at any realistic organization size.
   const { data, error } = await supabase.rpc("get_organization_expenses_by_clinic", {
     p_clinic_ids: clinicIds,
-    p_start: start ? start.toISOString().slice(0, 10) : null,
-    p_end: end ? end.toISOString().slice(0, 10) : null,
+    p_start: start ? localDateString(start) : null,
+    p_end: end ? localDateString(end) : null,
   });
 
   if (error) {
@@ -421,8 +422,8 @@ export async function getMonthOverMonthExpenses(): Promise<MonthOverMonthExpense
     .select("amount, expense_date")
     .eq("clinic_id", clinicId)
     .eq("status", "Paid")
-    .gte("expense_date", previousStart.toISOString().slice(0, 10))
-    .lte("expense_date", now.toISOString().slice(0, 10));
+    .gte("expense_date", localDateString(previousStart))
+    .lte("expense_date", localDateString(now));
 
   if (error) {
     logError("[expenses] getMonthOverMonthExpenses failed:", error);
@@ -430,9 +431,9 @@ export async function getMonthOverMonthExpenses(): Promise<MonthOverMonthExpense
     throw toError(error);
   }
 
-  const currentStartStr = currentStart.toISOString().slice(0, 10);
-  const previousStartStr = previousStart.toISOString().slice(0, 10);
-  const previousEndStr = previousEnd.toISOString().slice(0, 10);
+  const currentStartStr = localDateString(currentStart);
+  const previousStartStr = localDateString(previousStart);
+  const previousEndStr = localDateString(previousEnd);
 
   const current = roundMoney(
     (data ?? [])

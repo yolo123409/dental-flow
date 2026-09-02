@@ -6,6 +6,7 @@ import { getCurrentClinicId } from "./clinic";
 import { getPurchaseOrder } from "./purchaseOrders";
 import { assertPermission } from "./authorization";
 import { generateDocumentNumber } from "@/lib/documentNumber";
+import { localDateString } from "@/lib/dateUtils";
 
 import {
   GRN,
@@ -228,7 +229,7 @@ export async function createManualGRN(input: GRNHeaderInput): Promise<GRN> {
       supplier_id: input.supplier_id,
       supplier_contact_id: input.supplier_contact_id ?? null,
       supplier_delivery_note: input.supplier_delivery_note ?? null,
-      date_received: input.date_received ?? new Date().toISOString().slice(0, 10),
+      date_received: input.date_received ?? localDateString(new Date()),
       notes: input.notes ?? null,
     })
     .select()
@@ -395,4 +396,68 @@ export async function cancelGRN(id: string): Promise<void> {
 
     throw toError(error);
   }
+}
+
+export interface ReceivedGrnOption {
+  grnId: string;
+  grnNumber: string;
+  dateReceived: string;
+}
+
+/**
+ * Full-app audit fix H14: every Received GRN this specific inventory item
+ * was ever received through, for one supplier - powers "which delivery
+ * is this from?" in ReturnToSupplierModal, so a return can be linked back
+ * to the GRN it netted out against (adjust_inventory_stock's p_grn_id,
+ * migration 0123) instead of permanently overstating that GRN's - and
+ * the supplier's overall - outstanding balance.
+ */
+export async function getReceivedGrnsForItem(
+  inventoryItemId: string,
+  supplierId: string
+): Promise<ReceivedGrnOption[]> {
+  await assertPermission("procurement");
+
+  const clinicId = await getCurrentClinicId();
+
+  const { data, error } = await supabase
+    .from("clinic_grn_items")
+    .select(
+      "clinic_goods_received_notes!inner(id, grn_number, date_received, status, supplier_id, clinic_id)"
+    )
+    .eq("inventory_item_id", inventoryItemId)
+    .eq("clinic_goods_received_notes.clinic_id", clinicId)
+    .eq("clinic_goods_received_notes.supplier_id", supplierId)
+    .eq("clinic_goods_received_notes.status", "Received");
+
+  if (error) {
+    logError("[grns] getReceivedGrnsForItem failed:", error);
+
+    throw toError(error);
+  }
+
+  type Row = {
+    clinic_goods_received_notes: {
+      id: string;
+      grn_number: string;
+      date_received: string;
+    } | null;
+  };
+
+  const seen = new Map<string, ReceivedGrnOption>();
+
+  for (const row of (data ?? []) as unknown as Row[]) {
+    const grn = row.clinic_goods_received_notes;
+    if (!grn || seen.has(grn.id)) continue;
+
+    seen.set(grn.id, {
+      grnId: grn.id,
+      grnNumber: grn.grn_number,
+      dateReceived: grn.date_received,
+    });
+  }
+
+  return Array.from(seen.values()).sort((a, b) =>
+    b.dateReceived.localeCompare(a.dateReceived)
+  );
 }

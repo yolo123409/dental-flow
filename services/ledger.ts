@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 import { fetchAllRows } from "@/lib/fetchAllRows";
+import { localDateString } from "@/lib/dateUtils";
 
 import { getCurrentClinicId } from "./clinic";
 import { assertPermission } from "./authorization";
@@ -474,7 +475,7 @@ export async function setOpeningBalance(
     p_clinic_id: clinicId,
     p_account_id: accountId,
     p_amount: amount,
-    p_as_of: asOf ?? new Date().toISOString().slice(0, 10),
+    p_as_of: asOf ?? localDateString(new Date()),
   });
 
   if (error) {
@@ -877,8 +878,8 @@ export async function getProfitAndLoss(
 ): Promise<ProfitAndLossPeriod> {
   await assertPermission("ledger");
 
-  const startIso = start.toISOString().slice(0, 10);
-  const endIso = end.toISOString().slice(0, 10);
+  const startIso = localDateString(start);
+  const endIso = localDateString(end);
 
   const clinicId = overrideClinicId ?? (await getCurrentClinicId());
 
@@ -925,8 +926,8 @@ export async function getProfitAndLossForClinics(
     return results;
   }
 
-  const startIso = start.toISOString().slice(0, 10);
-  const endIso = end.toISOString().slice(0, 10);
+  const startIso = localDateString(start);
+  const endIso = localDateString(end);
 
   const { error: provisionError } = await supabase.rpc(
     "ensure_ledger_provisioned_multi",
@@ -1056,8 +1057,8 @@ export async function getProfitAndLossForClinics(
 export async function getCashFlowStatement(start: Date, end: Date): Promise<CashFlowPeriod> {
   await assertPermission("ledger");
 
-  const startIso = start.toISOString().slice(0, 10);
-  const endIso = end.toISOString().slice(0, 10);
+  const startIso = localDateString(start);
+  const endIso = localDateString(end);
 
   const [settings, allAccounts] = await Promise.all([
     getLedgerSettings(),
@@ -1282,7 +1283,7 @@ function toBalanceSheetSection(lines: BalanceSheetLine[]): BalanceSheetSection {
 export async function getBalanceSheet(asOf: Date): Promise<BalanceSheetPeriod> {
   await assertPermission("ledger");
 
-  const asOfIso = asOf.toISOString().slice(0, 10);
+  const asOfIso = localDateString(asOf);
 
   const clinicId = await getCurrentClinicId();
 

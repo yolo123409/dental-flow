@@ -4,6 +4,7 @@ import { runExclusive } from "@/lib/inFlightGuard";
 import { generateToken } from "@/lib/generateToken";
 import { fetchAllRows } from "@/lib/fetchAllRows";
 import { InvitableRole } from "@/lib/permissions";
+import { localDateString } from "@/lib/dateUtils";
 import { computeEbitEbitdaFromPL, getProfitAndLossForClinics } from "./ledger";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { sendInvitationEmail } from "./invitationEmail";
@@ -315,7 +316,7 @@ export async function getOrganizationOverview(
     };
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateString(new Date());
   const branchIds = branches.map((branch) => branch.id);
 
   // ONE aggregate RPC (migration 0065) instead of fetching one row per

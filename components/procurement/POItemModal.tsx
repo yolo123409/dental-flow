@@ -48,11 +48,18 @@ export default function POItemModal({ open, item, onClose, onSave }: Props) {
     try {
       setLoadingItems(true);
 
-      const data = await getInventoryItems();
+      const activeData = await getInventoryItems({ activeOnly: true });
+      const targetId = preferredId ?? item?.inventory_item_id;
+
+      // Full-app audit fix H15: pickers only offer active items, but if
+      // we're editing an existing line whose item was since deactivated,
+      // fall back to the full list so it still resolves for display.
+      const data =
+        targetId && !activeData.some((i) => i.id === targetId)
+          ? await getInventoryItems()
+          : activeData;
 
       setItems(data);
-
-      const targetId = preferredId ?? item?.inventory_item_id;
 
       if (targetId) {
         const match = data.find((i) => i.id === targetId);
@@ -109,7 +116,7 @@ export default function POItemModal({ open, item, onClose, onSave }: Props) {
   async function handleNewItemSaved() {
     const previousIds = items.map((i) => i.id);
 
-    const data = await getInventoryItems();
+    const data = await getInventoryItems({ activeOnly: true });
     setItems(data);
 
     const newlyAdded = data.filter((i) => !previousIds.includes(i.id));

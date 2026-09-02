@@ -207,6 +207,18 @@ export function toError(error: unknown): Error {
  * to be rewritten to use a special error class - own-property presence,
  * not value, is what's checked, so it also still works even if a real
  * Postgrest error happens to have a null/undefined code.
+ *
+ * One more case is just as safe as having no code at all: Postgres's
+ * P0001 SQLSTATE is specifically what a bare `raise exception '<message>'`
+ * produces (with no explicit `using errcode = ...`), which is exactly how
+ * every hand-written, user-facing guard message in this codebase's RPCs is
+ * written (e.g. "This invoice has % paid against it - void each payment
+ * first, then void the invoice."). Every OTHER code (23505 unique_violation,
+ * 42501 insufficient_privilege, RLS-denial codes, etc.) is a genuine raw
+ * internal this function exists to hide - only P0001 is a message a
+ * developer specifically wrote in English for a user to read, so it's
+ * treated as safe alongside the no-code case rather than masked with
+ * every real leaky internal.
  */
 export function getSafeErrorMessage(
   error: unknown,
@@ -215,11 +227,14 @@ export function getSafeErrorMessage(
 ): string {
   logError(context, error);
 
-  if (
-    error instanceof Error &&
-    !Object.prototype.hasOwnProperty.call(error, "code")
-  ) {
-    return error.message;
+  if (error instanceof Error) {
+    if (!Object.prototype.hasOwnProperty.call(error, "code")) {
+      return error.message;
+    }
+
+    if ((error as { code?: unknown }).code === "P0001") {
+      return error.message;
+    }
   }
 
   return fallback;

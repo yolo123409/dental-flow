@@ -26,6 +26,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 
 import usePermissions from "@/hooks/usePermissions";
 import { getDateRange } from "@/services/analytics/dateRange";
+import { localDateString } from "@/lib/dateUtils";
 import { getClinicSettings } from "@/services/settings";
 import { getPatientOptions } from "@/services/patients";
 import { getSuppliers } from "@/services/suppliers";
@@ -143,8 +144,8 @@ function LedgerPageContent() {
       setLoading(true);
 
       const page = await getLedgerTransactions({
-        startDate: period.start ? period.start.toISOString().slice(0, 10) : undefined,
-        endDate: period.end ? period.end.toISOString().slice(0, 10) : undefined,
+        startDate: period.start ? localDateString(period.start) : undefined,
+        endDate: period.end ? localDateString(period.end) : undefined,
         accountId: accountFilter || undefined,
         transactionType: (typeFilter as LedgerTransactionType) || undefined,
         patientId: patientFilter || undefined,

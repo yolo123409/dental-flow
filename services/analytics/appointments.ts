@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentClinicId } from "@/services/clinic";
 
 import { getDateRange } from "./dateRange";
+import { localDateString } from "@/lib/dateUtils";
 
 import {
   AppointmentAnalytics,
@@ -31,14 +32,10 @@ export async function getAppointmentAnalytics(
       {
         p_clinic_id: clinicId,
         p_start: start
-          ? start
-              .toISOString()
-              .split("T")[0]
+          ? localDateString(start)
           : null,
         p_end: end
-          ? end
-              .toISOString()
-              .split("T")[0]
+          ? localDateString(end)
           : null,
       }
     );

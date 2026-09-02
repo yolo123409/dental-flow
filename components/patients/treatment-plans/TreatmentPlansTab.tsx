@@ -225,7 +225,9 @@ export default function TreatmentPlansTab({
     } catch (error) {
       console.error(error);
 
-      toast.error("Failed to delete treatment plan.");
+      toast.error(
+        getSafeErrorMessage(error, "Failed to delete treatment plan.")
+      );
     } finally {
       setDeletingPlan(false);
     }

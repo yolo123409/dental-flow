@@ -10,7 +10,9 @@ import PaymentMethodField from "@/components/billing/PaymentMethodField";
 
 import {
   billTreatmentPlanItems,
+  getItemBillableAmount,
   getItemTeeth,
+  isItemInvoiced,
   InvoiceScope,
 } from "@/services/treatmentPlans";
 import { calculateInvoiceTotals } from "@/services/billing";
@@ -65,19 +67,38 @@ export default function CreateInvoiceFromPlanModal({
     setPaymentMethod(null);
     setInsuranceProviderId(null);
 
+    // Default to billing only what's actually been completed, not the
+    // whole plan - a deliberate nudge against invoicing treatment that
+    // hasn't been performed yet. Staff can still choose "Entire plan" or
+    // "Selected treatments" explicitly when that's the legitimate call.
+    const hasUnbilledCompletedItem = (
+      plan?.treatment_plan_items ?? []
+    ).some(
+      (item) => item.status === "Completed" && !isItemInvoiced(item)
+    );
+
+    setScope(hasUnbilledCompletedItem ? "completed" : "all");
+
     getClinicSettings()
       .then(setClinicSettings)
       .catch((error) =>
         console.error(error)
       );
-  }, [open]);
+  }, [open, plan]);
 
+  // A Treatment gets a Pending clinic_charges row the moment it's created
+  // (migration 0080), so charge_id being set no longer means "already
+  // invoiced" - isItemInvoiced() reads the linked charge's real status
+  // instead. Using the stale `!item.charge_id` check here excluded
+  // virtually every real treatment (each one has a charge_id from the
+  // start) and made this modal always report "already invoiced" even
+  // when nothing had actually been billed.
   const billableItems = useMemo(
     () =>
       (plan?.treatment_plan_items ?? []).filter(
         (item) =>
           item.status !== "Cancelled" &&
-          !item.charge_id
+          !isItemInvoiced(item)
       ),
     [plan]
   );
@@ -105,10 +126,7 @@ export default function CreateInvoiceFromPlanModal({
   const grossAmount = useMemo(
     () =>
       scopedItems.reduce(
-        (sum, item) =>
-          sum +
-          Number(item.estimated_price) *
-            item.quantity,
+        (sum, item) => sum + getItemBillableAmount(item),
         0
       ),
     [scopedItems]
@@ -225,6 +243,13 @@ export default function CreateInvoiceFromPlanModal({
         </p>
       ) : (
         <div className="space-y-5">
+          <p className="text-sm text-slate-500">
+            This creates a real invoice and accounts receivable for the
+            patient. Choose only what should actually be billed now -
+            billing treatment that hasn&apos;t been performed yet is
+            rarely correct.
+          </p>
+
           <div className="space-y-3">
             <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
               <input
@@ -303,10 +328,7 @@ export default function CreateInvoiceFromPlanModal({
                   </span>
 
                   <span className="text-sm font-medium text-slate-600">
-                    {formatCurrency(
-                      Number(item.estimated_price) *
-                        item.quantity
-                    )}
+                    {formatCurrency(getItemBillableAmount(item))}
                   </span>
                 </label>
               ))}

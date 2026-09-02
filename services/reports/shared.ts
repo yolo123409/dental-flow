@@ -1,6 +1,7 @@
 import { getCurrentClinicId } from "@/services/clinic";
 import { getClinicSettings } from "@/services/settings";
 import { getProfitAndLoss } from "@/services/ledger";
+import { localDateString } from "@/lib/dateUtils";
 
 import { ReportPeriod } from "@/types/reports";
 import { formatDateRangeLabel } from "@/lib/reports/format";
@@ -25,7 +26,7 @@ export async function getClinicMeta(): Promise<ClinicMeta> {
 }
 
 export function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return localDateString(date);
 }
 
 export function periodLabel(period: ReportPeriod): string {

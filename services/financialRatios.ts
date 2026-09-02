@@ -8,6 +8,7 @@ import {
 } from "./ledger";
 import { getAccountsReceivableReport } from "./accountsReceivable";
 import { assertPermission } from "./authorization";
+import { localDateString } from "@/lib/dateUtils";
 
 import { FinancialRatiosReport, RatioValue } from "@/types/financialRatios";
 
@@ -74,8 +75,8 @@ export async function getFinancialRatiosReport(
 ): Promise<FinancialRatiosReport> {
   await assertPermission("ledger");
 
-  const startIso = start.toISOString().slice(0, 10);
-  const endIso = end.toISOString().slice(0, 10);
+  const startIso = localDateString(start);
+  const endIso = localDateString(end);
   const dayBeforeStart = new Date(start.getTime() - DAY_MS);
   const days = periodDayCount(start, end);
 

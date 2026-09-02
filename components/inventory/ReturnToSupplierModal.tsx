@@ -14,6 +14,7 @@ import {
   returnToSupplier,
 } from "@/services/inventory";
 import { getSuppliers } from "@/services/suppliers";
+import { getReceivedGrnsForItem, ReceivedGrnOption } from "@/services/grns";
 import { Supplier } from "@/types/procurement";
 import { getSafeErrorMessage } from "@/lib/logError";
 
@@ -47,6 +48,14 @@ export default function ReturnToSupplierModal({
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
+  // Full-app audit fix H14: which delivery (GRN) this item was actually
+  // received through, for the currently-selected supplier - lets the
+  // return net out of that GRN's outstanding balance instead of
+  // permanently overstating it. Optional: not every returnable item was
+  // received via a tracked GRN.
+  const [grnOptions, setGrnOptions] = useState<ReceivedGrnOption[]>([]);
+  const [grnId, setGrnId] = useState(NONE);
+
   useEffect(() => {
     if (!open) return;
 
@@ -55,11 +64,29 @@ export default function ReturnToSupplierModal({
     setBatchNumber(NONE);
     setReference("");
     setNotes("");
+    setGrnOptions([]);
+    setGrnId(NONE);
 
     getSuppliers()
       .then(setSuppliers)
       .catch((error) => console.error(error));
   }, [open, material]);
+
+  useEffect(() => {
+    setGrnId(NONE);
+
+    if (!open || !material || !supplierId) {
+      setGrnOptions([]);
+      return;
+    }
+
+    getReceivedGrnsForItem(material.id, supplierId)
+      .then(setGrnOptions)
+      .catch((error) => {
+        console.error(error);
+        setGrnOptions([]);
+      });
+  }, [open, material, supplierId]);
 
   if (!open || !material) {
     return null;
@@ -95,6 +122,7 @@ export default function ReturnToSupplierModal({
         reference: reference || undefined,
         notes: notes || undefined,
         batchNumber: batchNumber || null,
+        grnId: grnId || null,
       });
 
       toast.success("Return to supplier recorded.");
@@ -158,6 +186,32 @@ export default function ReturnToSupplierModal({
             </select>
           </div>
         </div>
+
+        {grnOptions.length > 0 && (
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-graphite">
+              Which Delivery Is This From? (optional)
+            </label>
+
+            <select
+              value={grnId}
+              onChange={(e) => setGrnId(e.target.value)}
+              className="min-h-11 w-full rounded-lg border border-sea-glass bg-enamel px-3 py-2.5 text-sm text-graphite transition-colors hover:border-mineral/50 focus:border-eucalyptus focus:outline-none"
+            >
+              <option value={NONE}>Not linked to a specific delivery</option>
+              {grnOptions.map((grn) => (
+                <option key={grn.grnId} value={grn.grnId}>
+                  {grn.grnNumber} ({grn.dateReceived})
+                </option>
+              ))}
+            </select>
+
+            <p className="mt-1.5 text-xs text-mineral">
+              Linking a delivery reduces what&apos;s shown as still owed for
+              it, instead of overstating this supplier&apos;s balance.
+            </p>
+          </div>
+        )}
 
         <div className="grid gap-5 sm:grid-cols-2">
           {batches.length > 0 && (

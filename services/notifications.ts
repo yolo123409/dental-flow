@@ -4,6 +4,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
+import { localDateString } from "@/lib/dateUtils";
 
 import {
   CreateNotificationInput,
@@ -354,16 +355,20 @@ export async function notifyTreatmentCompleted(item: {
 /* clinic_invoices - no new table, no polling. Notifications already        */
 /* created for an invoice are looked up first so re-checking never          */
 /* duplicates them.                                                         */
+/*                                                                            */
+/* Billing audit fix #2: "overdue" now means due_date has passed (migration */
+/* 0111), not "older than a hardcoded 30 days" - and Voided invoices        */
+/* (billing audit fix #1) are explicitly excluded, since void_invoice()     */
+/* zeroes their balance but their status is neither "Paid" nor unpaid in    */
+/* any way that should ever notify anyone.                                  */
 
-const OVERDUE_AFTER_DAYS = 30;
 const OVERDUE_TITLE = "Invoice overdue";
 
 export async function checkOverdueInvoices(): Promise<void> {
   try {
     const clinicId = await getCurrentClinicId();
 
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - OVERDUE_AFTER_DAYS);
+    const today = localDateString(new Date());
 
     // Paged rather than a single unbounded fetch - a best-effort
     // background check, but still shouldn't silently miss overdue
@@ -379,7 +384,9 @@ export async function checkOverdueInvoices(): Promise<void> {
         .select("id, invoice_number, balance")
         .eq("clinic_id", clinicId)
         .neq("status", "Paid")
-        .lt("created_at", cutoff.toISOString())
+        .neq("status", "Voided")
+        .lt("due_date", today)
+        .gt("balance", 0)
         .range(from, to)
     ).catch(() => []);
 

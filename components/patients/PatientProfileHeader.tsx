@@ -9,6 +9,7 @@ import WhatsAppReminderButton from "@/components/appointments/WhatsAppReminderBu
 import WhatsAppReminderModal from "@/components/appointments/WhatsAppReminderModal";
 
 import { Patient, Appointment } from "@/types";
+import { localDateString } from "@/lib/dateUtils";
 
 const REMINDER_ELIGIBLE_STATUSES: Appointment["status"][] = [
   "Scheduled",
@@ -27,7 +28,7 @@ export default function PatientProfileHeader({
   const [reminderOpen, setReminderOpen] = useState(false);
 
   const hasUpcomingAppointment = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateString(new Date());
 
     return appointments.some(
       (appointment) =>

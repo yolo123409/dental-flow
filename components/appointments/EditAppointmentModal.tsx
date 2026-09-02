@@ -51,6 +51,7 @@ const EMPTY_FORM: AppointmentFormData = {
   appointment_time: "",
   notes: "",
   status: "Scheduled",
+  treatment_plan_item_id: "",
 };
 
 export default function EditAppointmentModal({
@@ -104,6 +105,9 @@ export default function EditAppointmentModal({
 
       status:
         appointment.status,
+
+      treatment_plan_item_id:
+        appointment.treatment_plan_item_id ?? "",
     });
   }, [open, appointment]);
 
@@ -204,16 +208,18 @@ export default function EditAppointmentModal({
               Cancel
             </Button>
 
-            <Button
-              onClick={
-                saveChanges
-              }
-              disabled={loading}
-            >
-              {loading
-                ? "Saving..."
-                : "Save Changes"}
-            </Button>
+            {appointment?.status !== "Completed" && (
+              <Button
+                onClick={
+                  saveChanges
+                }
+                disabled={loading}
+              >
+                {loading
+                  ? "Saving..."
+                  : "Save Changes"}
+              </Button>
+            )}
           </>
         }
       >

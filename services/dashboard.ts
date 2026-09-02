@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { logError, toError } from "@/lib/logError";
 
 import { getCurrentClinicId } from "./clinic";
+import { localDateString } from "@/lib/dateUtils";
 
 export interface DashboardStats {
   patients: number;
@@ -82,9 +83,7 @@ export async function getRecentPatients(limit = 5) {
 export async function getTodaysAppointments() {
   const clinicId = await getCurrentClinicId();
 
-  const today = new Date()
-    .toISOString()
-    .split("T")[0];
+  const today = localDateString(new Date());
 
   const { data, error } = await supabase
     .from("appointments")

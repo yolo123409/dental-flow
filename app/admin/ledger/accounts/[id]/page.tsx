@@ -13,6 +13,7 @@ import { getClinicSettings } from "@/services/settings";
 import { getAccountLedger } from "@/services/ledger";
 import { AccountLedger } from "@/types/ledger";
 import { getSafeErrorMessage } from "@/lib/logError";
+import { localDateString } from "@/lib/dateUtils";
 
 const DATE_RANGES = ["This Month", "Last Month", "This Year", "All Time"];
 
@@ -31,20 +32,20 @@ function AccountLedgerPage() {
 
     if (rangeLabel === "This Month") {
       return {
-        start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+        start: localDateString(new Date(now.getFullYear(), now.getMonth(), 1)),
         end: null,
       };
     }
 
     if (rangeLabel === "Last Month") {
       return {
-        start: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10),
-        end: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10),
+        start: localDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+        end: localDateString(new Date(now.getFullYear(), now.getMonth(), 0)),
       };
     }
 
     if (rangeLabel === "This Year") {
-      return { start: new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10), end: null };
+      return { start: localDateString(new Date(now.getFullYear(), 0, 1)), end: null };
     }
 
     return { start: null, end: null };

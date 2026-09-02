@@ -41,6 +41,7 @@ const EMPTY_FORM: AppointmentFormData = {
   appointment_time: "",
   notes: "",
   status: "Scheduled",
+  treatment_plan_item_id: "",
 };
 
 export default function AddAppointmentModal({

@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { Appointment } from "@/types";
 
 import { getCurrentClinicId } from "./clinic";
+import { localDateString } from "@/lib/dateUtils";
 
 export async function getCalendarAppointments(
   startDate: string,
@@ -52,7 +53,7 @@ export async function moveAppointment(
   const clinicId = await getCurrentClinicId();
 
   const appointmentDate =
-    start.toISOString().split("T")[0];
+    localDateString(start);
 
   const appointmentTime =
     start.toTimeString().slice(0, 5);
@@ -92,7 +93,7 @@ export async function resizeAppointment(
   const clinicId = await getCurrentClinicId();
 
   const appointmentDate =
-    start.toISOString().split("T")[0];
+    localDateString(start);
 
   const appointmentTime =
     start.toTimeString().slice(0, 5);

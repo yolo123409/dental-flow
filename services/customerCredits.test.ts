@@ -47,8 +47,13 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
-const { grantCustomerCredit, applyCustomerCredit, refundCustomerCredit, getPatientCredits } =
-  await import("./customerCredits");
+const {
+  grantCustomerCredit,
+  applyCustomerCredit,
+  refundCustomerCredit,
+  reverseCustomerCreditApplication,
+  getPatientCredits,
+} = await import("./customerCredits");
 
 const CREDIT_ROW = {
   id: "credit-1",
@@ -132,6 +137,51 @@ describe("applyCustomerCredit", () => {
       p_invoice_id: "inv-2",
       p_amount: 150,
     });
+  });
+});
+
+describe("reverseCustomerCreditApplication", () => {
+  it("checks the stricter 'ledger' permission, not 'billing' - matching voidInvoice/voidPayment, since undoing money movement is stricter than creating it", async () => {
+    const rpc = vi.fn(() => Promise.resolve({ data: { id: "inv-2", balance: 500 }, error: null }));
+    mockClient = { ...mockClient, rpc };
+
+    await reverseCustomerCreditApplication("credit-1", "inv-2", 150);
+
+    expect(assertPermission).toHaveBeenCalledWith("ledger");
+  });
+
+  it("rejects a non-positive amount before ever calling the RPC", async () => {
+    const rpc = vi.fn();
+    mockClient = { ...mockClient, rpc };
+
+    await expect(reverseCustomerCreditApplication("credit-1", "inv-2", 0)).rejects.toThrow(/greater than zero/i);
+    await expect(reverseCustomerCreditApplication("credit-1", "inv-2", -5)).rejects.toThrow(/greater than zero/i);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("passes credit id, invoice id, amount, and reason through to reverse_customer_credit_application", async () => {
+    const rpc = vi.fn(() => Promise.resolve({ data: { id: "inv-2", balance: 500 }, error: null }));
+    mockClient = { ...mockClient, rpc };
+
+    await reverseCustomerCreditApplication("credit-1", "inv-2", 150, "applied to the wrong invoice");
+
+    expect(rpc).toHaveBeenCalledWith("reverse_customer_credit_application", {
+      p_credit_id: "credit-1",
+      p_invoice_id: "inv-2",
+      p_amount: 150,
+      p_reason: "applied to the wrong invoice",
+    });
+  });
+
+  it("defaults reason to null when omitted", async () => {
+    const rpc = vi.fn(() => Promise.resolve({ data: { id: "inv-2", balance: 500 }, error: null }));
+    mockClient = { ...mockClient, rpc };
+
+    await reverseCustomerCreditApplication("credit-1", "inv-2", 150);
+
+    expect(rpc).toHaveBeenCalledWith("reverse_customer_credit_application", expect.objectContaining({
+      p_reason: null,
+    }));
   });
 });
 

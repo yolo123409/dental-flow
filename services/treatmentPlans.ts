@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentClinicId } from "./clinic";
 import { getCurrentClinicUser } from "./clinicUsers";
 import { createInvoice, ChargeSelection } from "./billing";
-import { assertPermission } from "./authorization";
+import { assertPermission, AuthorizationError } from "./authorization";
 import { assertValidToothNumbers } from "./treatmentTeeth";
 import {
   notifyTreatmentPlanCreated,
@@ -51,7 +51,12 @@ const TREATMENT_PLAN_ITEMS_SELECT = `
       tooth_number
     ),
     clinic_charges!treatment_plan_items_charge_id_fkey (
-      status
+      status,
+      amount
+    ),
+    deposit_charge:clinic_charges!treatment_plan_items_deposit_charge_id_fkey (
+      status,
+      amount
     )
   )
 `;
@@ -575,13 +580,108 @@ export function getItemTeeth(item: TreatmentPlanItem): number[] {
  * TREATMENT_PLAN_ITEMS_SELECT's clinic_charges(status) embed) whenever
  * it's available, and only falls back to the old charge_id-only
  * heuristic for a caller that hasn't fetched the nested embed.
+ *
+ * Billing audit fix #3: once a treatment is split into a deposit +
+ * balance (deposit_charge_id set), it's only fully invoiced once BOTH
+ * charges are - a deposit that's already been invoiced/paid while the
+ * balance is still Pending is not "invoiced" yet, it's half-billed.
+ *
+ * Full-app audit fix C6: checks `=== "Invoiced"` specifically, not
+ * `!== "Pending"` - a cancelled treatment's charge (migration 0119) is
+ * also no longer "Pending", but it must never read as "Billed" either,
+ * which the old inequality check would have wrongly done.
  */
 export function isItemInvoiced(item: TreatmentPlanItem): boolean {
-  if (item.clinic_charges) {
-    return item.clinic_charges.status !== "Pending";
+  const mainInvoiced = item.clinic_charges
+    ? item.clinic_charges.status === "Invoiced"
+    : item.charge_id != null;
+
+  if (!item.deposit_charge_id) {
+    return mainInvoiced;
   }
 
-  return item.charge_id != null;
+  const depositInvoiced = item.deposit_charge
+    ? item.deposit_charge.status === "Invoiced"
+    : false;
+
+  return mainInvoiced && depositInvoiced;
+}
+
+/**
+ * Full-app audit fix C6: whether this item's charge (or, for a split
+ * item, either half) was cancelled along with the treatment itself
+ * (migration 0119's trigger) rather than ever being billed - the single
+ * place this is answered, so a "Cancelled" badge agrees with
+ * isItemInvoiced() rather than the two silently disagreeing about the
+ * same charge.
+ */
+export function isItemChargeCancelled(item: TreatmentPlanItem): boolean {
+  return (
+    item.clinic_charges?.status === "Cancelled" ||
+    item.deposit_charge?.status === "Cancelled"
+  );
+}
+
+/**
+ * How much of this item is still billable right now - the item's full
+ * price when it isn't on a deposit plan, or just whichever of its two
+ * charges (deposit/balance) are still Pending when it is. A split item's
+ * still-Pending charges don't necessarily sum to estimated_price *
+ * quantity (e.g. the deposit was already invoiced separately), so any
+ * UI previewing "what will this invoice actually total" must use this,
+ * not the item's raw price fields.
+ */
+export function getItemBillableAmount(item: TreatmentPlanItem): number {
+  if (!item.deposit_charge_id) {
+    return Number(item.estimated_price) * item.quantity;
+  }
+
+  let total = 0;
+
+  if (item.deposit_charge && item.deposit_charge.status === "Pending") {
+    total += Number(item.deposit_charge.amount);
+  }
+
+  if (item.clinic_charges && item.clinic_charges.status === "Pending") {
+    total += Number(item.clinic_charges.amount);
+  }
+
+  return total;
+}
+
+/**
+ * Full-app audit fix H1: how much of this item has actually been
+ * invoiced, read from the real, frozen clinic_charges/deposit_charge
+ * amount(s) - never the item's own editable estimated_price/quantity,
+ * which TreatmentPlanDetail's "Invoiced" stat used to read directly and
+ * could silently disagree with the real invoice the moment either field
+ * was edited after invoicing (now also locked once invoiced, but this
+ * keeps the stat correct regardless of when a row was invoiced relative
+ * to that lock). Returns 0 for anything not (fully) invoiced -
+ * isItemInvoiced() remains the single source of truth for that.
+ */
+export function getItemInvoicedAmount(item: TreatmentPlanItem): number {
+  if (!isItemInvoiced(item)) {
+    return 0;
+  }
+
+  if (!item.deposit_charge_id) {
+    return item.clinic_charges
+      ? Number(item.clinic_charges.amount)
+      : Number(item.estimated_price) * item.quantity;
+  }
+
+  let total = 0;
+
+  if (item.deposit_charge) {
+    total += Number(item.deposit_charge.amount);
+  }
+
+  if (item.clinic_charges) {
+    total += Number(item.clinic_charges.amount);
+  }
+
+  return total;
 }
 
 /* -------------------------------------- */
@@ -647,16 +747,23 @@ export async function billTreatmentPlanItems(
     );
   }
 
+  // Billing audit fix #3: a split (deposit + balance) item has TWO
+  // independently-invoiceable charges, not one - both are collected here
+  // so either can be billed on its own, or together, exactly like any
+  // other selectable charge.
   const linkedChargeIds = items
-    .map((item) => item.charge_id)
+    .flatMap((item) => [item.charge_id, item.deposit_charge_id])
     .filter((id): id is string => id != null);
 
-  let pendingChargeIds = new Set<string>();
+  let existingChargesById = new Map<
+    string,
+    { id: string; status: string; amount: number; treatment_name: string }
+  >();
 
   if (linkedChargeIds.length > 0) {
     const { data: existingCharges, error: chargesError } = await supabase
       .from("clinic_charges")
-      .select("id, status")
+      .select("id, status, amount, treatment_name")
       .eq("clinic_id", clinicId)
       .in("id", linkedChargeIds);
 
@@ -664,16 +771,29 @@ export async function billTreatmentPlanItems(
       throw chargesError;
     }
 
-    pendingChargeIds = new Set(
-      (existingCharges ?? [])
-        .filter((charge) => charge.status === "Pending")
-        .map((charge) => charge.id as string)
+    existingChargesById = new Map(
+      (existingCharges ?? []).map((charge) => [charge.id as string, charge])
     );
   }
 
-  const unbilled = items.filter(
-    (item) => !item.charge_id || pendingChargeIds.has(item.charge_id)
-  );
+  // An item counts as still billable if EITHER of its charges is Pending -
+  // a split item whose deposit was already invoiced separately is still
+  // very much billable for its remaining balance alone. Note the
+  // asymmetry: a null main charge_id means "not created yet" (billable,
+  // via the fallback below), but a null deposit_charge_id just means
+  // "not on a deposit plan" - it must never count as an independent
+  // Pending signal, or every non-split item would look billable twice.
+  const unbilled = items.filter((item) => {
+    const mainPending =
+      !item.charge_id ||
+      existingChargesById.get(item.charge_id)?.status === "Pending";
+
+    const depositPending =
+      item.deposit_charge_id != null &&
+      existingChargesById.get(item.deposit_charge_id)?.status === "Pending";
+
+    return mainPending || depositPending;
+  });
 
   if (unbilled.length === 0) {
     throw new Error(
@@ -684,14 +804,47 @@ export async function billTreatmentPlanItems(
   const charges: ChargeSelection[] = [];
 
   for (const item of unbilled) {
-    const amount = Number(item.estimated_price) * item.quantity;
+    // Deposit charge, if any and still Pending - its real amount/name
+    // are always read fresh from the DB (never recomputed from the
+    // item's price), since a deposit is a fixed, independently-set
+    // figure that has nothing to do with estimated_price * quantity.
+    if (item.deposit_charge_id) {
+      const depositCharge = existingChargesById.get(item.deposit_charge_id);
+
+      if (depositCharge && depositCharge.status === "Pending") {
+        charges.push({
+          id: depositCharge.id,
+          treatment_name: depositCharge.treatment_name,
+          amount: Number(depositCharge.amount),
+        });
+      }
+    }
+
     let chargeId = item.charge_id;
+    const existingMainCharge = chargeId
+      ? existingChargesById.get(chargeId)
+      : undefined;
+
+    if (chargeId && existingMainCharge && existingMainCharge.status !== "Pending") {
+      // Main/balance charge already invoiced (only the deposit, if any,
+      // was still outstanding) - nothing more to add for this item.
+      continue;
+    }
+
+    let amount: number;
+    let treatmentName: string;
 
     if (!chargeId) {
       // Fallback for an item with no charge at all yet (e.g. it
       // predates Phase H, or was created with price 0 and never edited
       // through a path that would have staged one) - creates it now,
-      // the exact same shape sync_treatment_charge_amount uses.
+      // the exact same shape sync_treatment_charge_amount uses. Never
+      // reached for a split item (a deposit can only be added to an
+      // item that already has a charge), so this is always the item's
+      // full price.
+      amount = Number(item.estimated_price) * item.quantity;
+      treatmentName = item.procedure;
+
       const { data: charge, error } = await supabase
         .from("clinic_charges")
         .insert({
@@ -717,6 +870,16 @@ export async function billTreatmentPlanItems(
         .update({ charge_id: chargeId })
         .eq("clinic_id", clinicId)
         .eq("id", item.id);
+    } else {
+      // A real charge already exists - its amount is the source of
+      // truth (for a split item this is the BALANCE only, already
+      // reduced by add_treatment_deposit/sync_treatment_charge_amount),
+      // never recomputed from the item's own price fields.
+      amount = Number(
+        existingMainCharge?.amount ??
+          Number(item.estimated_price) * item.quantity
+      );
+      treatmentName = existingMainCharge?.treatment_name ?? item.procedure;
     }
 
     if (!chargeId) {
@@ -727,7 +890,7 @@ export async function billTreatmentPlanItems(
 
     charges.push({
       id: chargeId,
-      treatment_name: item.procedure,
+      treatment_name: treatmentName,
       amount,
     });
   }
@@ -740,6 +903,204 @@ export async function billTreatmentPlanItems(
     paymentMethod,
     insuranceProviderId
   );
+}
+
+/* -------------------------------------- */
+/* Appointment-completion billing         */
+/* -------------------------------------- */
+
+/**
+ * Phase B/C: marks a single treatment INSTANCE (not the whole plan, not an
+ * appointment) as clinically Completed - the one and only billing trigger
+ * per the audit's Issue 2 resolution. Appointment completion is a separate
+ * concept entirely (services/appointments.ts#completeAppointment()); this
+ * is what that function calls only after the clinician has explicitly
+ * confirmed the treatment itself is actually finished.
+ *
+ * A thin wrapper over complete_treatment_item() (migration 0108), which
+ * does the real work atomically: a `for update` lock on this treatment's
+ * own row is what makes it safe for two DIFFERENT appointments to point
+ * at the SAME treatment_plan_item (multi-visit) - two concurrent attempts
+ * to complete the same treatment serialize on that lock, and the loser
+ * gets null back here, exactly like calling this twice on an
+ * already-completed item. Callers must treat null as "nothing to bill" -
+ * never re-derive "did I win" any other way.
+ */
+export async function completeTreatmentItem(
+  itemId: string
+): Promise<TreatmentPlanItem | null> {
+  await assertPermission("treatments");
+
+  const { data, error } = await supabase.rpc("complete_treatment_item", {
+    p_treatment_plan_item_id: itemId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as TreatmentPlanItem | null;
+}
+
+/* -------------------------------------- */
+/* Deposit / balance payment plans        */
+/* (billing audit fix #3)                 */
+/* -------------------------------------- */
+
+/**
+ * Splits a treatment's single Pending charge into a deposit + balance -
+ * two independently-invoiceable clinic_charges rows reusing the exact
+ * existing charge -> create_invoice_from_charges -> ledger pipeline.
+ * Only possible while the treatment hasn't been invoiced yet. Gated the
+ * same as any other clinical/pricing change to a treatment item
+ * ("treatments" - Owner/Admin/Dentist, matching the DB's own
+ * trg_guard_treatment_plan_item_role restriction).
+ */
+export async function addTreatmentDeposit(
+  itemId: string,
+  depositAmount: number
+): Promise<TreatmentPlanItem> {
+  await assertPermission("treatments");
+
+  const { data, error } = await supabase.rpc("add_treatment_deposit", {
+    p_treatment_plan_item_id: itemId,
+    p_deposit_amount: depositAmount,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as TreatmentPlanItem;
+}
+
+/**
+ * Undoes a deposit split, merging the deposit and balance back into one
+ * charge for the treatment's full amount. Only possible while both
+ * charges are still unpaid/uninvoiced.
+ */
+export async function removeTreatmentDeposit(
+  itemId: string
+): Promise<TreatmentPlanItem> {
+  await assertPermission("treatments");
+
+  const { data, error } = await supabase.rpc("remove_treatment_deposit", {
+    p_treatment_plan_item_id: itemId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as TreatmentPlanItem;
+}
+
+export interface CompleteAndBillResult {
+  /** Null when this call lost the race, or the treatment was already
+   * Completed before it ran - nothing further happened. */
+  item: TreatmentPlanItem | null;
+  /** True only when THIS call performed the Planned/In Progress ->
+   * Completed transition (not merely observed it already Completed). */
+  treatmentCompleted: boolean;
+  /** True only when this call also successfully created the invoice. */
+  invoiced: boolean;
+  /** True when the treatment was completed but the caller lacks
+   * "billing" permission - the charge is left exactly as it already was
+   * (Pending), for an authorized billing user to invoice manually via
+   * the existing Billing Control Center or Treatment Plan "Create
+   * Invoice" action. Not an error - completion still succeeded. */
+  billingDeferred: boolean;
+}
+
+/**
+ * Completes a treatment instance and, in the same step, attempts to bill
+ * it through the exact same canonical createInvoice() every other billing
+ * path already uses - never a second accounting engine. Called only when
+ * the clinician has explicitly confirmed the linked treatment is now
+ * fully done (see services/appointments.ts#completeAppointment()).
+ */
+export async function completeAndBillTreatmentItem(
+  itemId: string,
+  paymentMethod?: string | null,
+  insuranceProviderId?: string | null
+): Promise<CompleteAndBillResult> {
+  const item = await completeTreatmentItem(itemId);
+
+  if (!item) {
+    return {
+      item: null,
+      treatmentCompleted: false,
+      invoiced: false,
+      billingDeferred: false,
+    };
+  }
+
+  if (!item.charge_id) {
+    // Not a billable treatment (e.g. price 0) - nothing to invoice.
+    return {
+      item,
+      treatmentCompleted: true,
+      invoiced: false,
+      billingDeferred: false,
+    };
+  }
+
+  const { data: charge, error: chargeError } = await supabase
+    .from("clinic_charges")
+    .select("id, status, amount, patient_id")
+    .eq("id", item.charge_id)
+    .single();
+
+  if (chargeError) {
+    throw chargeError;
+  }
+
+  if (charge.status !== "Pending") {
+    // Already invoiced through some other path (e.g. a manual invoice
+    // created moments before this treatment was confirmed complete) -
+    // the treatment-completion side still succeeded; nothing to bill.
+    return {
+      item,
+      treatmentCompleted: true,
+      invoiced: false,
+      billingDeferred: false,
+    };
+  }
+
+  try {
+    await createInvoice(
+      charge.patient_id,
+      [
+        {
+          id: charge.id,
+          treatment_name: item.procedure,
+          amount: Number(charge.amount),
+        },
+      ],
+      0,
+      undefined,
+      paymentMethod,
+      insuranceProviderId
+    );
+
+    return {
+      item,
+      treatmentCompleted: true,
+      invoiced: true,
+      billingDeferred: false,
+    };
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return {
+        item,
+        treatmentCompleted: true,
+        invoiced: false,
+        billingDeferred: true,
+      };
+    }
+
+    throw error;
+  }
 }
 
 /* -------------------------------------- */

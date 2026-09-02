@@ -4,6 +4,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 
 import { ReportFilters, ReportPeriod, ReportResult } from "@/types/reports";
 import { getClinicMeta, periodLabel } from "./shared";
+import { localDateString } from "@/lib/dateUtils";
 
 interface AppointmentRow {
   dentist_id: string | null;
@@ -47,8 +48,8 @@ export async function generateDentistRevenueReport(
 
       if (period.start && period.end) {
         query = query
-          .gte("appointment_date", period.start.toISOString().slice(0, 10))
-          .lte("appointment_date", period.end.toISOString().slice(0, 10));
+          .gte("appointment_date", localDateString(period.start))
+          .lte("appointment_date", localDateString(period.end));
       }
 
       if (filters.dentistId) {

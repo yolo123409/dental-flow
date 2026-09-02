@@ -11,10 +11,12 @@ import EmptyState from "@/components/ui/EmptyState";
 
 import ApplyCustomerCreditModal from "@/components/billing/ApplyCustomerCreditModal";
 import RefundCustomerCreditModal from "@/components/billing/RefundCustomerCreditModal";
+import ReverseCustomerCreditModal from "@/components/billing/ReverseCustomerCreditModal";
 
 import { getPatientCredits } from "@/services/customerCredits";
 import { getPatientInvoices, ClinicInvoice } from "@/services/billing";
 import { getSafeErrorMessage } from "@/lib/logError";
+import usePermissions from "@/hooks/usePermissions";
 
 import { CustomerCreditWithInvoice } from "@/types/customerCredits";
 
@@ -38,12 +40,15 @@ interface Props {
  * Control Center page.
  */
 export default function CustomerCreditCard({ patientId, patientName, currency }: Props) {
+  const { hasPermission } = usePermissions();
   const [credits, setCredits] = useState<CustomerCreditWithInvoice[]>([]);
   const [outstandingInvoices, setOutstandingInvoices] = useState<ClinicInvoice[]>([]);
+  const [allInvoices, setAllInvoices] = useState<ClinicInvoice[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [applyTarget, setApplyTarget] = useState<CustomerCreditWithInvoice | null>(null);
   const [refundTarget, setRefundTarget] = useState<CustomerCreditWithInvoice | null>(null);
+  const [reverseTarget, setReverseTarget] = useState<CustomerCreditWithInvoice | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +59,7 @@ export default function CustomerCreditCard({ patientId, patientName, currency }:
       ]);
       setCredits(creditRows);
       setOutstandingInvoices(invoices.filter((inv) => Number(inv.balance) > 0));
+      setAllInvoices(invoices);
     } catch (error) {
       toast.error(getSafeErrorMessage(error, "Failed to load customer credit."));
     } finally {
@@ -77,6 +83,7 @@ export default function CustomerCreditCard({ patientId, patientName, currency }:
   async function handleActionSuccess() {
     setApplyTarget(null);
     setRefundTarget(null);
+    setReverseTarget(null);
     await load();
   }
 
@@ -111,6 +118,7 @@ export default function CustomerCreditCard({ patientId, patientName, currency }:
               {credits.map((credit) => {
                 const remaining = Number(credit.remaining_amount);
                 const isAvailable = remaining > 0;
+                const hasEverBeenApplied = remaining < Number(credit.amount);
 
                 return (
                   <div
@@ -154,22 +162,35 @@ export default function CustomerCreditCard({ patientId, patientName, currency }:
                       </div>
                     </div>
 
-                    {isAvailable && (
+                    {(isAvailable || (hasEverBeenApplied && hasPermission("ledger"))) && (
                       <div className="mt-3 flex gap-2 border-t border-sea-glass pt-3">
-                        <Button
-                          variant="secondary"
-                          className="px-3 py-1.5 text-xs"
-                          onClick={() => setApplyTarget(credit)}
-                        >
-                          Apply to Invoice
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="px-3 py-1.5 text-xs"
-                          onClick={() => setRefundTarget(credit)}
-                        >
-                          Refund
-                        </Button>
+                        {isAvailable && (
+                          <>
+                            <Button
+                              variant="secondary"
+                              className="px-3 py-1.5 text-xs"
+                              onClick={() => setApplyTarget(credit)}
+                            >
+                              Apply to Invoice
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              className="px-3 py-1.5 text-xs"
+                              onClick={() => setRefundTarget(credit)}
+                            >
+                              Refund
+                            </Button>
+                          </>
+                        )}
+                        {hasEverBeenApplied && hasPermission("ledger") && (
+                          <Button
+                            variant="secondary"
+                            className="px-3 py-1.5 text-xs"
+                            onClick={() => setReverseTarget(credit)}
+                          >
+                            Reverse Application
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -201,6 +222,20 @@ export default function CustomerCreditCard({ patientId, patientName, currency }:
           currency={currency}
           open={refundTarget != null}
           onClose={() => setRefundTarget(null)}
+          onSuccess={handleActionSuccess}
+        />
+      )}
+
+      {reverseTarget && (
+        <ReverseCustomerCreditModal
+          creditId={reverseTarget.id}
+          creditAmount={Number(reverseTarget.amount)}
+          creditRemaining={Number(reverseTarget.remaining_amount)}
+          patientName={patientName}
+          currency={currency}
+          patientInvoices={allInvoices}
+          open={reverseTarget != null}
+          onClose={() => setReverseTarget(null)}
           onSuccess={handleActionSuccess}
         />
       )}

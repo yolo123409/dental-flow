@@ -83,8 +83,16 @@ export interface TreatmentPlanItem {
    * billable Treatment gets a charge immediately on creation, while
    * still Pending) - use isItemInvoiced() in services/treatmentPlans.ts
    * rather than reading charge_id directly for anything UI-facing
-   * (a "Billed" badge, a teeth-locked check, an "Invoiced" total). */
-  clinic_charges?: { status: string } | null;
+   * (a "Billed" badge, a teeth-locked check, an "Invoiced" total).
+   *
+   * Billing audit fix #3 (migration 0112): once deposit_charge_id is
+   * set, charge_id refers to the BALANCE, not the whole treatment - the
+   * item is only fully invoiced once BOTH charges are Invoiced. Use
+   * isItemInvoiced() rather than reading either status directly. */
+  clinic_charges?: { status: string; amount: number } | null;
+
+  deposit_charge_id: string | null;
+  deposit_charge?: { status: string; amount: number } | null;
 }
 
 export interface TreatmentPlanWithItems extends TreatmentPlan {

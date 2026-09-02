@@ -67,7 +67,11 @@ export async function getRevenueAnalyticsForPeriod(
       head: true,
     })
     .eq("clinic_id", clinicId)
-    .neq("status", "Paid");
+    .neq("status", "Paid")
+    // Critical Safety Closure fix #4: a Voided invoice is never
+    // "unpaid" - it carries zero real financial standing (void_invoice
+    // always zeroes its amount_paid/balance).
+    .neq("status", "Voided");
 
   let totalInvoicesQuery = supabase
     .from("clinic_invoices")

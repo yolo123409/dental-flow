@@ -57,27 +57,38 @@ import {
  * payments), matched against live data by summing all of that invoice's
  * live exception rows - never against a single payment row, since
  * INV-00007 and INV-00010 each have two separate missing payments.
+ *
+ * Full-app audit fix H11: every entry below is additionally scoped to
+ * "DentalFlow Demo Clinic" (the one specific clinic these four invoices
+ * belong to, confirmed live) via `clinicId` - see KnownPaymentException's
+ * own doc comment for why matching by invoice number alone isn't safe.
  */
+const DEMO_CLINIC_ID = "ed2d8fb6-3603-47bd-ac8e-061a324a489d";
+
 export const KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS: readonly KnownPaymentException[] = [
   {
+    clinicId: DEMO_CLINIC_ID,
     invoiceNumber: "INV-00007",
     amount: 58000,
     reason:
       "RESOLVED (FIN-4.4, migration 0101): this invoice never had any ledger posting at all - not just a missing payment side. Its true economic position (58,000 real cash received, 57,996.52 real revenue, 3.48 real overpayment) was posted as a single combined journal entry, and the 3.48 overpayment became a tracked Customer Credit. get_payment_ledger_exceptions() will always report these 2 payment rows as individually unposted, permanently - by design, since they were deliberately posted together rather than one-per-payment-row. This is expected, not unresolved.",
   },
   {
+    clinicId: DEMO_CLINIC_ID,
     invoiceNumber: "INV-00010",
     amount: 11000,
     reason:
       "RESOLVED (FIN-4.4, migration 0101): this invoice never had any ledger posting at all - not just a missing payment side. Its true economic position (11,000 real cash received, 10,000 real revenue, 1,000 real overpayment) was posted as a single combined journal entry, and the 1,000 overpayment became a tracked Customer Credit. get_payment_ledger_exceptions() will always report these 2 payment rows as individually unposted, permanently - by design, since they were deliberately posted together rather than one-per-payment-row. This is expected, not unresolved.",
   },
   {
+    clinicId: DEMO_CLINIC_ID,
     invoiceNumber: "INV-00012",
     amount: 40,
     reason:
       "Historical payment posting absent. This invoice already has one Invoice-type ledger transaction from Phase N - the database's own reference-uniqueness constraint (migration 0044) permanently blocks a second posting for it, so this gap cannot be safely closed by any future backfill.",
   },
   {
+    clinicId: DEMO_CLINIC_ID,
     invoiceNumber: "INV-00018",
     amount: 10000,
     reason:
@@ -206,7 +217,8 @@ function buildArCheck(ar: {
  * - is classified entirely as new, never partially.
  */
 function classifyPaymentExceptions(
-  rows: PaymentExceptionRow[]
+  rows: PaymentExceptionRow[],
+  clinicId: string
 ): { known: PaymentExceptionRow[]; new: PaymentExceptionRow[] } {
   const byInvoice = new Map<string, PaymentExceptionRow[]>();
 
@@ -221,7 +233,7 @@ function classifyPaymentExceptions(
 
   for (const [invoiceNumber, invoiceRows] of byInvoice) {
     const knownDefinition = KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS.find(
-      (k) => k.invoiceNumber === invoiceNumber
+      (k) => k.invoiceNumber === invoiceNumber && k.clinicId === clinicId
     );
 
     const allMissing = invoiceRows.every((r) => r.exceptionType === "missing");
@@ -249,9 +261,10 @@ function buildPaymentReconciliationCheck(
     missingPaymentAmount: number;
     matches: boolean;
   },
-  exceptionRows: PaymentExceptionRow[]
+  exceptionRows: PaymentExceptionRow[],
+  clinicId: string
 ): PaymentReconciliationCheck {
-  const { known, new: newExceptions } = classifyPaymentExceptions(exceptionRows);
+  const { known, new: newExceptions } = classifyPaymentExceptions(exceptionRows, clinicId);
 
   let status: HealthStatus = "healthy";
   if (newExceptions.length > 0) status = "critical";
@@ -299,7 +312,10 @@ function buildPaymentReconciliationCheck(
 /* Historical exceptions (Q4)             */
 /* -------------------------------------- */
 
-function buildHistoricalExceptionsCheck(exceptionRows: PaymentExceptionRow[]): HistoricalExceptionsCheck {
+function buildHistoricalExceptionsCheck(
+  exceptionRows: PaymentExceptionRow[],
+  clinicId: string
+): HistoricalExceptionsCheck {
   const byInvoice = new Map<string, PaymentExceptionRow[]>();
 
   for (const row of exceptionRows) {
@@ -308,7 +324,11 @@ function buildHistoricalExceptionsCheck(exceptionRows: PaymentExceptionRow[]): H
     byInvoice.set(row.invoiceNumber, list);
   }
 
-  const entries: HistoricalExceptionEntry[] = KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS.map((known) => {
+  const applicableExceptions = KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS.filter(
+    (k) => k.clinicId === clinicId
+  );
+
+  const entries: HistoricalExceptionEntry[] = applicableExceptions.map((known) => {
     const liveRows = byInvoice.get(known.invoiceNumber) ?? [];
     const allMissing = liveRows.length > 0 && liveRows.every((r) => r.exceptionType === "missing");
     const liveAmount = liveRows.reduce((sum, r) => sum + r.amount, 0);
@@ -394,8 +414,10 @@ function buildInvoiceConsistencyCheck(rows: RawInvoiceConsistencyRow[]): Invoice
 /* Overpayments (Q7)                      */
 /* -------------------------------------- */
 
-function buildOverpaymentsCheck(rows: RawInvoiceConsistencyRow[]): OverpaymentsCheck {
-  const knownInvoiceNumbers = new Set(KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS.map((k) => k.invoiceNumber));
+function buildOverpaymentsCheck(rows: RawInvoiceConsistencyRow[], clinicId: string): OverpaymentsCheck {
+  const knownInvoiceNumbers = new Set(
+    KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS.filter((k) => k.clinicId === clinicId).map((k) => k.invoiceNumber)
+  );
 
   const overpayments: OverpaymentRow[] = rows
     .filter(isOverpaymentRow)
@@ -623,7 +645,7 @@ export async function getAccountingHealthReport(): Promise<AccountingHealthRepor
     duplicate_reference_transactions: 0,
   }) as RawLedgerIntegrityRow;
 
-  const paymentCheck = buildPaymentReconciliationCheck(paymentReconciliation, paymentExceptionRows);
+  const paymentCheck = buildPaymentReconciliationCheck(paymentReconciliation, paymentExceptionRows, clinicId);
   const cashAccountsConfigured =
     !!settings.default_cash_account_id || Object.keys(settings.payment_method_accounts ?? {}).length > 0;
 
@@ -631,8 +653,8 @@ export async function getAccountingHealthReport(): Promise<AccountingHealthRepor
     arReconciliation: buildArCheck(arStatus),
     paymentReconciliation: paymentCheck,
     invoiceConsistency: buildInvoiceConsistencyCheck(invoiceRows),
-    historicalExceptions: buildHistoricalExceptionsCheck(paymentExceptionRows),
-    overpayments: buildOverpaymentsCheck(invoiceRows),
+    historicalExceptions: buildHistoricalExceptionsCheck(paymentExceptionRows, clinicId),
+    overpayments: buildOverpaymentsCheck(invoiceRows, clinicId),
     cashFlowReconciliation: buildCashFlowCheck(
       cashAccountsConfigured,
       paymentCheck.knownExceptions,

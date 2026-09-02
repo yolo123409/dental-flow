@@ -53,6 +53,13 @@ vi.mock("@/services/settings", () => ({
     Promise.resolve({ currency: "KES", tax_enabled: false, tax_rate: 0 }),
 }));
 
+// ArAgingCenter (billing audit fix #2) imports this for its "Send
+// Reminder" action - mocked so its real supabase-js module-scope client
+// is never constructed here.
+vi.mock("@/services/billingReminders", () => ({
+  recordReminderOpened: () => Promise.resolve(),
+}));
+
 import BillingPage from "./page";
 
 function makeCharge(overrides: Partial<Record<string, unknown>> = {}) {

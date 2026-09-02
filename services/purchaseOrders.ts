@@ -5,6 +5,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 import { getCurrentClinicId } from "./clinic";
 import { assertPermission } from "./authorization";
 import { generateDocumentNumber } from "@/lib/documentNumber";
+import { localDateString } from "@/lib/dateUtils";
 
 import {
   PurchaseOrder,
@@ -136,7 +137,7 @@ export async function createDraftPurchaseOrder(
       po_number: poNumber,
       supplier_id: input.supplier_id,
       supplier_contact_id: input.supplier_contact_id ?? null,
-      order_date: input.order_date ?? new Date().toISOString().slice(0, 10),
+      order_date: input.order_date ?? localDateString(new Date()),
       expected_delivery_date: input.expected_delivery_date ?? null,
       delivery_location: input.delivery_location ?? null,
       notes: input.notes ?? null,

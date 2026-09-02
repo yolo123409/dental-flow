@@ -98,3 +98,40 @@ export function buildReminderMessage(input: ReminderMessageInput): string {
 export function buildWhatsAppLink(normalizedPhone: string, message: string): string {
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 }
+
+interface BalanceReminderMessageInput {
+  patientFirstName: string;
+  clinicName: string;
+  invoiceNumber: string;
+  balance: string; // pre-formatted with currency (formatMoney at the call site)
+  dueDate: string | null; // YYYY-MM-DD, or null for a legacy invoice with no due date
+  clinicPhone?: string | null;
+}
+
+// Billing audit fix #2 - the manual "Send Reminder" action on the AR
+// aging table. Same click-to-chat mechanism as buildReminderMessage()
+// above (appointment reminders); this one carries balance/invoice
+// content instead of an appointment's date/time.
+export function buildBalanceReminderMessage(input: BalanceReminderMessageInput): string {
+  const dueLine = input.dueDate
+    ? `Due: ${new Intl.DateTimeFormat("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(new Date(input.dueDate + "T00:00:00Z"))}`
+    : null;
+
+  const contactLine = input.clinicPhone
+    ? `If you have any questions, please contact us at ${input.clinicPhone}.`
+    : "If you have any questions, please contact the clinic.";
+
+  return [
+    `Hello ${input.patientFirstName}, this is a reminder from ${input.clinicName} about an outstanding balance.`,
+    "",
+    `Invoice: ${input.invoiceNumber}`,
+    `Balance due: ${input.balance}`,
+    ...(dueLine ? [dueLine] : []),
+    "",
+    contactLine,
+  ].join("\n");
+}

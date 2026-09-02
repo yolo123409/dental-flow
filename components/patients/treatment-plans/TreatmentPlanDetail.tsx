@@ -26,7 +26,7 @@ import {
   deleteTreatmentItem,
   reorderTreatmentItems,
   getItemTeeth,
-  isItemInvoiced,
+  getItemInvoicedAmount,
 } from "@/services/treatmentPlans";
 
 import {
@@ -90,6 +90,11 @@ export default function TreatmentPlanDetail({
   // status), not merely "has a charge_id" - every billable Treatment now
   // gets a charge immediately on creation, while still Pending, so
   // charge_id alone no longer means invoiced.
+  //
+  // Full-app audit fix H1: sums getItemInvoicedAmount() - the real,
+  // frozen charge amount(s) - not estimated_price * quantity, which is
+  // the item's own editable form field and could silently drift from
+  // what was actually invoiced.
   const teethAndBilling = useMemo(() => {
     const active = items.filter((item) => item.status !== "Cancelled");
 
@@ -101,9 +106,7 @@ export default function TreatmentPlanDetail({
         teeth.add(tooth);
       }
 
-      if (isItemInvoiced(item)) {
-        invoicedValue += Number(item.estimated_price) * item.quantity;
-      }
+      invoicedValue += getItemInvoicedAmount(item);
     }
 
     return { teethCount: teeth.size, invoicedValue };
@@ -230,7 +233,9 @@ export default function TreatmentPlanDetail({
     } catch (error) {
       console.error(error);
 
-      toast.error("Failed to remove treatment.");
+      toast.error(
+        getSafeErrorMessage(error, "Failed to remove treatment.")
+      );
     } finally {
       setDeletingItem(false);
     }
@@ -319,13 +324,13 @@ export default function TreatmentPlanDetail({
               ).toLocaleDateString()}
             </p>
           </div>
-
-          <Button onClick={onCreateInvoice}>
-            <Receipt size={15} className="mr-1.5 inline" />
-            Create Invoice
-          </Button>
         </div>
 
+        {/* Clinical planning metrics only - no financial obligation is
+            created by anything reflected in this grid. Estimated Cost is
+            a planning figure, not revenue or an amount owed; it only
+            becomes real once explicitly invoiced (see the separate
+            Billing card below). */}
         <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -352,6 +357,9 @@ export default function TreatmentPlanDetail({
             <p className="mt-1 text-2xl font-bold">
               {formatCurrency(totals.totalEstimated)}
             </p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Planned value, not a bill
+            </p>
           </div>
 
           <div className="rounded-xl bg-green-50 p-4">
@@ -369,15 +377,6 @@ export default function TreatmentPlanDetail({
             </p>
             <p className="mt-1 text-2xl font-bold text-amber-600">
               {formatCurrency(totals.remaining)}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-blue-50 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Invoiced
-            </p>
-            <p className="mt-1 text-2xl font-bold text-blue-600">
-              {formatCurrency(teethAndBilling.invoicedValue)}
             </p>
           </div>
         </div>
@@ -399,6 +398,30 @@ export default function TreatmentPlanDetail({
               style={{ width: `${totals.progress}%` }}
             />
           </div>
+        </div>
+      </Card>
+
+      <Card title="Billing">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Invoiced
+            </p>
+            <p className="mt-1 text-2xl font-bold text-blue-600">
+              {formatCurrency(teethAndBilling.invoicedValue)}
+            </p>
+            <p className="mt-1 max-w-md text-sm text-slate-500">
+              The only figure on this plan that reflects a real financial
+              obligation. Treatment plans and treatments never bill the
+              patient on their own - an invoice is created here only when
+              explicitly requested.
+            </p>
+          </div>
+
+          <Button variant="secondary" onClick={onCreateInvoice}>
+            <Receipt size={15} className="mr-1.5 inline" />
+            Create Invoice
+          </Button>
         </div>
       </Card>
 

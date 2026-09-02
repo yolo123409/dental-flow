@@ -62,6 +62,7 @@ function makeItem(
     status: "Planned",
     sort_order: 0,
     charge_id: null,
+    deposit_charge_id: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -206,7 +207,7 @@ describe("TreatmentItemModal - teeth editing (Phase D)", () => {
         item={makeItem({
           tooth_number: null,
           charge_id: "charge-1",
-          clinic_charges: { status: "Invoiced" },
+          clinic_charges: { status: "Invoiced", amount: 5000 },
           treatment_teeth: [{ tooth_number: 16 }],
         })}
         patientId="patient-1"
@@ -217,7 +218,7 @@ describe("TreatmentItemModal - teeth editing (Phase D)", () => {
 
     expect(screen.getByText(/🦷\s*16/)).toBeInTheDocument();
     expect(
-      screen.getByText(/already been invoiced/i)
+      screen.getByText(/its teeth can no longer be changed/i)
     ).toBeInTheDocument();
     expect(
       screen.queryByPlaceholderText(toothInputPlaceholder)
@@ -225,6 +226,60 @@ describe("TreatmentItemModal - teeth editing (Phase D)", () => {
     expect(
       screen.queryByRole("button", { name: "Remove tooth 16" })
     ).not.toBeInTheDocument();
+  });
+
+  it("full-app audit fix H1: locks price and quantity read-only once the treatment has been invoiced", () => {
+    render(
+      <TreatmentItemModal
+        open
+        item={makeItem({
+          tooth_number: null,
+          charge_id: "charge-1",
+          clinic_charges: { status: "Invoiced", amount: 5000 },
+          treatment_teeth: [],
+        })}
+        patientId="patient-1"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByText(/its price and quantity can no longer be changed/i)
+    ).toBeInTheDocument();
+
+    const numberInputs = screen.getAllByRole("spinbutton") as HTMLInputElement[];
+    expect(numberInputs.length).toBeGreaterThan(0);
+    for (const input of numberInputs) {
+      expect(input).toBeDisabled();
+    }
+  });
+
+  it("full-app audit fix H1: leaves price and quantity editable for a not-yet-invoiced treatment", () => {
+    render(
+      <TreatmentItemModal
+        open
+        item={makeItem({
+          tooth_number: null,
+          charge_id: "charge-1",
+          clinic_charges: { status: "Pending", amount: 5000 },
+          treatment_teeth: [],
+        })}
+        patientId="patient-1"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByText(/can no longer be changed/i)
+    ).not.toBeInTheDocument();
+
+    const numberInputs = screen.getAllByRole("spinbutton") as HTMLInputElement[];
+    expect(numberInputs.length).toBeGreaterThan(0);
+    for (const input of numberInputs) {
+      expect(input).not.toBeDisabled();
+    }
   });
 
   // Phase H: a billable Treatment gets a charge_id immediately on
@@ -238,7 +293,7 @@ describe("TreatmentItemModal - teeth editing (Phase D)", () => {
         item={makeItem({
           tooth_number: null,
           charge_id: "charge-1",
-          clinic_charges: { status: "Pending" },
+          clinic_charges: { status: "Pending", amount: 5000 },
           treatment_teeth: [{ tooth_number: 16 }],
         })}
         patientId="patient-1"

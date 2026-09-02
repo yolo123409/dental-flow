@@ -13,7 +13,7 @@ import {
   ItemStatusBadge,
 } from "./TreatmentPlanBadges";
 
-import { getItemTeeth, isItemInvoiced } from "@/services/treatmentPlans";
+import { getItemTeeth, isItemInvoiced, isItemChargeCancelled } from "@/services/treatmentPlans";
 import { TreatmentPlanItem } from "@/types/treatmentPlan";
 
 interface Props {
@@ -53,6 +53,7 @@ export default function TreatmentItemRow({
 
   const teeth = getItemTeeth(item);
   const invoiced = isItemInvoiced(item);
+  const chargeCancelled = isItemChargeCancelled(item);
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -134,6 +135,14 @@ export default function TreatmentItemRow({
             <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
               <CheckCircle2 size={13} />
               Billed
+            </span>
+          ) : chargeCancelled ? (
+            // Full-app audit fix C6: surfaces the new "Cancelled" charge
+            // state (migration 0119) so it isn't silently invisible next
+            // to "Billed"/"Not invoiced" - a cancelled treatment's charge
+            // was removed from billing, not merely not-yet-billed.
+            <span className="text-xs font-medium text-slate-400">
+              Cancelled
             </span>
           ) : (
             <span className="text-xs font-medium text-slate-400">

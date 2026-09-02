@@ -13,6 +13,7 @@ interface RawOutstandingInvoiceRow {
   id: string;
   invoice_number: string;
   created_at: string;
+  due_date: string | null;
   total: number;
   amount_paid: number;
   balance: number;
@@ -44,7 +45,7 @@ async function getOutstandingInvoiceRows(): Promise<ArInvoiceRow[]> {
       supabase
         .from("clinic_invoices")
         .select(
-          "id, invoice_number, created_at, total, amount_paid, balance, patient_id, patients ( first_name, last_name )"
+          "id, invoice_number, created_at, due_date, total, amount_paid, balance, patient_id, patients ( first_name, last_name )"
         )
         .eq("clinic_id", clinicId)
         .gt("balance", 0)
@@ -62,9 +63,15 @@ async function getOutstandingInvoiceRows(): Promise<ArInvoiceRow[]> {
   const now = Date.now();
 
   return data.map((row) => {
+    // Billing audit fix #2: aging is now days PAST DUE (0 until the due
+    // date has actually passed), not days since the invoice was issued -
+    // due_date is backfilled for every invoice (migration 0111), so this
+    // always has a real value in practice; the ?? guards only a
+    // theoretical null.
+    const dueDate = row.due_date ?? row.created_at;
     const daysOutstanding = Math.max(
       0,
-      Math.floor((now - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))
+      Math.floor((now - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24))
     );
 
     return {
@@ -73,12 +80,12 @@ async function getOutstandingInvoiceRows(): Promise<ArInvoiceRow[]> {
       patientId: row.patient_id,
       patientName: row.patients ? `${row.patients.first_name} ${row.patients.last_name}` : "—",
       invoiceDate: row.created_at,
-      dueDate: null,
+      dueDate: row.due_date,
       invoiceAmount: Number(row.total),
       amountPaid: Number(row.amount_paid),
       outstanding: Number(row.balance),
       daysOutstanding,
-      status: daysOutstanding > 30 ? "Overdue" : "Current",
+      status: daysOutstanding > 0 ? "Overdue" : "Current",
     };
   });
 }

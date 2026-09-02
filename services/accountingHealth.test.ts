@@ -32,7 +32,11 @@ vi.mock("./ledger", () => ({
 
 const { getAccountingHealthReport } = await import("./accountingHealth");
 
-const CLINIC_ID = "clinic-a";
+// The real, live clinic KNOWN_HISTORICAL_PAYMENT_EXCEPTIONS is scoped to
+// (full-app audit fix H11) - using the real id here means the existing
+// "known exception" tests below continue to exercise the actual fix
+// rather than coincidentally passing against an arbitrary placeholder.
+const CLINIC_ID = "ed2d8fb6-3603-47bd-ac8e-061a324a489d";
 
 function makeArStatus(overrides: Record<string, unknown> = {}) {
   return {
@@ -161,6 +165,25 @@ describe("getAccountingHealthReport", () => {
     expect(report.checks.cashFlowReconciliation.unexplainedGapAmount).toBe(0);
     expect(report.checks.cashFlowReconciliation.knownGapAmount).toBe(79040);
     expect(report.overallStatus).toBe("warning");
+  });
+
+  it("2b. full-app audit fix H11: the SAME exception rows on a DIFFERENT clinic are never absorbed into the known-exceptions allowlist - invoice numbers restart per clinic, so matching by number alone would let an unrelated clinic's genuinely new failure hide behind this clinic's resolved history", async () => {
+    getCurrentClinicId.mockResolvedValueOnce("some-other-clinic-with-its-own-invoice-numbered-INV-00007");
+    getArReconciliationStatus.mockResolvedValue(makeArStatus());
+    getPaymentLedgerReconciliation.mockResolvedValue(makePaymentReconciliation());
+    mockRpc({
+      get_invoice_consistency_exceptions: [],
+      get_payment_ledger_exceptions: knownExceptionRows(),
+      get_ledger_integrity_summary: ZERO_INTEGRITY_ROW,
+    });
+
+    const report = await getAccountingHealthReport();
+
+    expect(report.checks.paymentReconciliation.status).toBe("critical");
+    expect(report.checks.paymentReconciliation.knownExceptions).toEqual([]);
+    expect(report.checks.paymentReconciliation.newExceptions).toHaveLength(6);
+    expect(report.checks.historicalExceptions.entries).toEqual([]);
+    expect(report.overallStatus).toBe("critical");
   });
 
   it("3. classifies a new missing payment (unknown invoice) as a critical discrepancy", async () => {

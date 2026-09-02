@@ -18,6 +18,12 @@ vi.mock("./notifications", () => ({
   notifyInvoiceCreated: (...args: unknown[]) => notifyInvoiceCreated(...args),
 }));
 
+const getClinicSettings = vi.fn();
+
+vi.mock("./settings", () => ({
+  getClinicSettings: () => getClinicSettings(),
+}));
+
 /**
  * Minimal stand-in for supabase-js's chainable, thenable query builder -
  * same pattern as services/treatmentTeeth.test.ts and
@@ -105,10 +111,14 @@ vi.mock("@/lib/supabase", () => ({
 
 const {
   calculateInvoiceTotals,
+  calculateBalance,
   getCharges,
   getChargeById,
   findBrokenCanonicalChargeLinks,
   recordPayment,
+  createInvoice,
+  voidInvoice,
+  voidPayment,
   getArSummary,
   getDiscountTotal,
   getOutstandingInvoiceBalance,
@@ -121,6 +131,14 @@ beforeEach(() => {
   getCurrentClinicId.mockResolvedValue(CLINIC_ID);
   notifyPaymentRecorded.mockReset();
   notifyInvoiceCreated.mockReset();
+  getClinicSettings.mockReset();
+  getClinicSettings.mockResolvedValue({
+    tax_enabled: false,
+    tax_name: "VAT",
+    tax_rate: 0,
+    prices_include_tax: false,
+    tax_registration_number: null,
+  });
 });
 
 describe("calculateInvoiceTotals (Phase G section 24 - invoice arithmetic)", () => {
@@ -183,6 +201,34 @@ describe("calculateInvoiceTotals (Phase G section 24 - invoice arithmetic)", () 
       tax: 25600,
       total: 185600,
     });
+  });
+});
+
+describe("calculateBalance (Critical Safety Closure fix #4 - Voided invoices must never inflate Total Billed/Outstanding)", () => {
+  it("excludes a Voided invoice's total entirely, not just its outstanding contribution", () => {
+    const balance = calculateBalance([
+      { total: 5000, amount_paid: 2000, status: "Partially Paid" },
+      { total: 9000, amount_paid: 0, status: "Voided" },
+    ]);
+
+    expect(balance).toEqual({ total: 5000, paid: 2000, outstanding: 3000 });
+  });
+
+  it("sums normally when nothing is Voided", () => {
+    const balance = calculateBalance([
+      { total: 5000, amount_paid: 5000, status: "Paid" },
+      { total: 3000, amount_paid: 1000, status: "Partially Paid" },
+    ]);
+
+    expect(balance).toEqual({ total: 8000, paid: 6000, outstanding: 2000 });
+  });
+
+  it("returns all zeros when every invoice is Voided", () => {
+    const balance = calculateBalance([
+      { total: 5000, amount_paid: 0, status: "Voided" },
+    ]);
+
+    expect(balance).toEqual({ total: 0, paid: 0, outstanding: 0 });
   });
 });
 
@@ -497,6 +543,179 @@ describe("recordPayment (Phase J - the ONE payment source of truth; FIN-4.8 - no
       p_notes: null,
       p_insurance_provider_id: "provider-1",
     });
+  });
+});
+
+describe("voidInvoice / voidPayment (billing audit fix #1 - thin wrappers over void_invoice()/void_payment(), migration 0110)", () => {
+  it("voidInvoice calls the RPC with the invoice id and reason, returning the voided invoice", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: makeInvoiceRow({ status: "Voided" }),
+      error: null,
+    });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
+
+    const result = await voidInvoice("invoice-1", "Billed the wrong treatment");
+
+    expect(rpc).toHaveBeenCalledWith("void_invoice", {
+      p_invoice_id: "invoice-1",
+      p_reason: "Billed the wrong treatment",
+    });
+    expect(result.status).toBe("Voided");
+  });
+
+  it("voidInvoice surfaces the RPC's own rejection (e.g. payments already recorded) rather than re-deriving the rule client-side", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "This invoice has 5000 paid against it - void each payment first, then void the invoice." },
+    });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
+
+    await expect(voidInvoice("invoice-1", "mistake")).rejects.toThrow(
+      /void each payment first/i
+    );
+  });
+
+  it("voidPayment calls the RPC with the payment id and reason, returning the voided payment", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: { id: "payment-1", status: "Voided", amount: 5000 },
+      error: null,
+    });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
+
+    const result = await voidPayment("payment-1", "Recorded against the wrong invoice");
+
+    expect(rpc).toHaveBeenCalledWith("void_payment", {
+      p_payment_id: "payment-1",
+      p_reason: "Recorded against the wrong invoice",
+    });
+    expect(result.status).toBe("Voided");
+  });
+
+  it("voidPayment surfaces the RPC's own double-void rejection", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "This payment has already been voided" },
+    });
+    mockClient = { rpc } as unknown as ReturnType<typeof createSupabaseMock>;
+
+    await expect(voidPayment("payment-1", "again")).rejects.toThrow(
+      /already been voided/i
+    );
+  });
+});
+
+function mockInvoiceCreationClient(
+  rpcResult: { data: unknown; error: unknown },
+  invoiceCountSoFar = 0
+) {
+  const rpc = vi.fn().mockResolvedValue(rpcResult);
+
+  const withFrom = createSupabaseMock({
+    clinic_invoices: () => ({
+      data: null,
+      error: null,
+      count: invoiceCountSoFar,
+    }),
+  });
+
+  return { from: withFrom.from, rpc } as unknown as ReturnType<
+    typeof createSupabaseMock
+  > & { rpc: typeof rpc };
+}
+
+describe("createInvoice (Phase B/C appointment-completion billing - now a thin wrapper over the atomic create_invoice_from_charges() RPC, migration 0109)", () => {
+  it("rejects an Insurance invoice with no insurance provider selected, before ever calling the RPC", async () => {
+    const client = mockInvoiceCreationClient({ data: null, error: null });
+    mockClient = client;
+
+    await expect(
+      createInvoice(
+        "patient-1",
+        [{ id: "charge-1", treatment_name: "Root Canal", amount: 18000 }],
+        0,
+        undefined,
+        "Insurance",
+        null
+      )
+    ).rejects.toThrow(/select an insurance provider/i);
+
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("passes every charge id, computed totals, and the clinic's tax snapshot to create_invoice_from_charges", async () => {
+    getClinicSettings.mockResolvedValue({
+      tax_enabled: true,
+      tax_name: "VAT",
+      tax_rate: 16,
+      prices_include_tax: false,
+      tax_registration_number: "P000111222A",
+    });
+
+    const client = mockInvoiceCreationClient(
+      { data: makeInvoiceRow({ id: "invoice-9" }), error: null },
+      4
+    );
+    mockClient = client;
+
+    await createInvoice(
+      "patient-1",
+      [
+        { id: "charge-1", treatment_name: "Root Canal", amount: 18000 },
+        { id: "charge-2", treatment_name: "Cleaning", amount: 3000 },
+      ],
+      1000,
+      "Visit notes",
+      "Cash",
+      null
+    );
+
+    expect(client.rpc).toHaveBeenCalledWith("create_invoice_from_charges", {
+      p_charge_ids: ["charge-1", "charge-2"],
+      p_patient_id: "patient-1",
+      p_invoice_number: "INV-00005",
+      p_subtotal: 20000,
+      p_discount: 1000,
+      p_tax: 3200,
+      p_total: 23200,
+      p_notes: "Visit notes",
+      p_payment_method: "Cash",
+      p_insurance_provider_id: null,
+      p_tax_enabled: true,
+      p_tax_name: "VAT",
+      p_tax_rate: 16,
+      p_tax_inclusive: false,
+      p_tax_registration_number: "P000111222A",
+    });
+  });
+
+  it("surfaces the RPC's own already-invoiced rejection rather than assuming success (the concurrent-double-invoice race this RPC exists to close)", async () => {
+    const client = mockInvoiceCreationClient({
+      data: null,
+      error: { message: 'Treatment "Root Canal" has already been invoiced.' },
+    });
+    mockClient = client;
+
+    await expect(
+      createInvoice("patient-1", [
+        { id: "charge-1", treatment_name: "Root Canal", amount: 18000 },
+      ])
+    ).rejects.toThrow(/already been invoiced/i);
+
+    expect(notifyInvoiceCreated).not.toHaveBeenCalled();
+  });
+
+  it("notifies with the RPC's own returned invoice on success", async () => {
+    const invoice = makeInvoiceRow({ id: "invoice-9", invoice_number: "INV-00005" });
+
+    const client = mockInvoiceCreationClient({ data: invoice, error: null }, 4);
+    mockClient = client;
+
+    const result = await createInvoice("patient-1", [
+      { id: "charge-1", treatment_name: "Root Canal", amount: 18000 },
+    ]);
+
+    expect(result).toEqual(invoice);
+    expect(notifyInvoiceCreated).toHaveBeenCalledWith(invoice);
   });
 });
 

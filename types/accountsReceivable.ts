@@ -6,10 +6,11 @@
  * per-invoice detail is read directly from clinic_invoices since the
  * ledger doesn't decompose AR by individual invoice.
  *
- * clinic_invoices has no due_date column and there is no payment-terms
- * concept anywhere in this schema, so "days outstanding" is measured
- * from the invoice date, not a due date - status/aging below are
- * explicitly framed that way rather than fabricating a due date.
+ * Billing audit fix #2: clinic_invoices.due_date (migration 0111) is now
+ * real - "days outstanding"/Overdue are measured from it, not from the
+ * invoice date. Existing invoices were backfilled to due_date =
+ * created_at (due on receipt), so historical behavior is unchanged
+ * unless a clinic has since raised its default payment terms.
  */
 
 export type ArInvoiceStatus = "Current" | "Overdue";
@@ -20,8 +21,7 @@ export interface ArInvoiceRow {
   patientId: string;
   patientName: string;
   invoiceDate: string;
-  /** Always null - clinic_invoices has no due_date column. Rendered as "—", never fabricated. */
-  dueDate: null;
+  dueDate: string | null;
   invoiceAmount: number;
   amountPaid: number;
   outstanding: number;

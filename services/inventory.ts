@@ -35,6 +35,12 @@ export interface ClinicInventoryItem {
   target_markup_percent: number | null;
   priced_at_cost: number | null;
 
+  // Full-app audit fix H15: mirrors the existing pattern on
+  // clinic_suppliers/clinic_expense_categories - lets a discontinued item
+  // be hidden from new-consumption/GRN/PO pickers without touching its
+  // history at all.
+  active: boolean;
+
   created_at: string;
 
   updated_at: string;
@@ -151,9 +157,9 @@ export function getExpiryStatus(
 /* Get Inventory Items                    */
 /* -------------------------------------- */
 
-export async function getInventoryItems(): Promise<
-  ClinicInventoryItem[]
-> {
+export async function getInventoryItems(
+  options: { activeOnly?: boolean } = {}
+): Promise<ClinicInventoryItem[]> {
   const clinicId =
     await getCurrentClinicId();
 
@@ -163,14 +169,22 @@ export async function getInventoryItems(): Promise<
   let data: ClinicInventoryItem[];
 
   try {
-    data = (await fetchAllRows((from, to) =>
-      supabase
+    data = (await fetchAllRows((from, to) => {
+      let query = supabase
         .from("clinic_inventory_items")
         .select("*")
-        .eq("clinic_id", clinicId)
-        .order("name")
-        .range(from, to)
-    )) as unknown as ClinicInventoryItem[];
+        .eq("clinic_id", clinicId);
+
+      // Full-app audit fix H15: callers picking an item for NEW
+      // consumption/a GRN/PO line pass activeOnly - the main inventory
+      // list (and every report) still sees deactivated items too, since
+      // hiding them there would look like their history disappeared.
+      if (options.activeOnly) {
+        query = query.eq("active", true);
+      }
+
+      return query.order("name").range(from, to);
+    })) as unknown as ClinicInventoryItem[];
   } catch (error) {
     logError("[inventory] getInventoryItems failed:", error);
 
@@ -178,6 +192,49 @@ export async function getInventoryItems(): Promise<
   }
 
   return data;
+}
+
+/**
+ * Full-app audit fix H15: hides a discontinued item from new-consumption/
+ * GRN/PO pickers without touching any of its history - the safe
+ * alternative to deleteInventoryItem(), which either FK-fails (if the
+ * item was ever ordered/received) or cascades away its movement/
+ * material-usage audit trail (if not).
+ */
+export async function deactivateInventoryItem(id: string): Promise<void> {
+  await assertPermission("inventory_manage");
+
+  const clinicId = await getCurrentClinicId();
+
+  const { error } = await supabase
+    .from("clinic_inventory_items")
+    .update({ active: false, updated_at: new Date().toISOString() })
+    .eq("clinic_id", clinicId)
+    .eq("id", id);
+
+  if (error) {
+    logError("[inventory] deactivateInventoryItem failed:", error);
+
+    throw toError(error);
+  }
+}
+
+export async function reactivateInventoryItem(id: string): Promise<void> {
+  await assertPermission("inventory_manage");
+
+  const clinicId = await getCurrentClinicId();
+
+  const { error } = await supabase
+    .from("clinic_inventory_items")
+    .update({ active: true, updated_at: new Date().toISOString() })
+    .eq("clinic_id", clinicId)
+    .eq("id", id);
+
+  if (error) {
+    logError("[inventory] reactivateInventoryItem failed:", error);
+
+    throw toError(error);
+  }
 }
 
 export async function getInventoryItem(
@@ -472,6 +529,11 @@ export interface AdjustStockExtras {
   patientId?: string | null;
   treatmentId?: string | null;
   reference?: string | null;
+  /** Full-app audit fix H14: which GRN this movement (a "Returned to
+   * Supplier" decrease, in practice) came from - lets the supplier's
+   * outstanding-AP figure net out the return, instead of overstating
+   * what's actually still owed. */
+  grnId?: string | null;
 }
 
 /**
@@ -511,6 +573,7 @@ export async function adjustStock(
       p_patient_id: extras.patientId ?? null,
       p_treatment_id: extras.treatmentId ?? null,
       p_reference: extras.reference ?? null,
+      p_grn_id: extras.grnId ?? null,
     }
   );
 
@@ -563,6 +626,12 @@ export async function returnToSupplier(
     reference?: string;
     notes?: string;
     batchNumber?: string | null;
+    /** Full-app audit fix H14: which delivery this item was received
+     * through, if known - nets the return out of that GRN's (and the
+     * supplier's overall) outstanding-AP figure. Optional because not
+     * every returnable item was received via a tracked GRN (e.g. an
+     * item added directly to inventory). */
+    grnId?: string | null;
   } = {}
 ): Promise<ClinicInventoryItem> {
   await assertPermission("inventory_manage");
@@ -579,6 +648,7 @@ export async function returnToSupplier(
     supplierId,
     reference: options.reference,
     batchNumber: options.batchNumber,
+    grnId: options.grnId,
   });
 }
 
@@ -593,6 +663,41 @@ export async function deleteInventoryItem(
 
   const clinicId =
     await getCurrentClinicId();
+
+  // Full-app audit fix H15: block outright when this item has any
+  // movement or treatment-material-usage history - the previous
+  // unconditional delete either FK-failed with a generic error (if ever
+  // ordered/received via a PO/GRN) or silently cascaded away this exact
+  // audit trail (if not). deactivateInventoryItem() is the safe
+  // alternative regardless of which of those two outcomes would have
+  // happened.
+  const [{ count: movementCount, error: movementError }, { count: usageCount, error: usageError }] =
+    await Promise.all([
+      supabase
+        .from("clinic_inventory_movements")
+        .select("*", { count: "exact", head: true })
+        .eq("clinic_id", clinicId)
+        .eq("inventory_item_id", id),
+      supabase
+        .from("treatment_material_usage")
+        .select("*", { count: "exact", head: true })
+        .eq("clinic_id", clinicId)
+        .eq("inventory_item_id", id),
+    ]);
+
+  if (movementError) {
+    throw movementError;
+  }
+
+  if (usageError) {
+    throw usageError;
+  }
+
+  if ((movementCount ?? 0) > 0 || (usageCount ?? 0) > 0) {
+    throw new Error(
+      "This item has stock movement or usage history and cannot be deleted. Deactivate it instead to hide it from new consumption/orders."
+    );
+  }
 
   const { error } =
     await supabase

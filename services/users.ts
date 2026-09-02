@@ -130,6 +130,33 @@ export async function activateUser(id: string) {
   }
 }
 
+/**
+ * Full-app audit fix H17: lets ANY staff member update their own
+ * full_name/phone, regardless of whether they hold the "users"
+ * permission - deliberately not gated by assertPermission() here, since
+ * the point is that this must work for people who don't have "users".
+ * Safe because update_own_profile() (0126) is a SECURITY DEFINER RPC
+ * that only ever touches row(s) owned by the caller's own auth.uid(),
+ * never a client-supplied id, and only those two named columns.
+ */
+export async function updateOwnProfile(
+  fullName: string,
+  phone: string
+): Promise<ClinicUser[]> {
+  const { data, error } = await supabase.rpc("update_own_profile", {
+    p_full_name: fullName,
+    p_phone: phone,
+  });
+
+  if (error) {
+    logError("[users] updateOwnProfile failed:", error);
+
+    throw toError(error);
+  }
+
+  return (data ?? []) as ClinicUser[];
+}
+
 export async function deleteUser(id: string) {
   await assertPermission("users");
 

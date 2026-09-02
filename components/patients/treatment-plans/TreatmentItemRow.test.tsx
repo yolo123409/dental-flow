@@ -28,6 +28,7 @@ function makeItem(
     status: "Planned",
     sort_order: 0,
     charge_id: null,
+    deposit_charge_id: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -84,7 +85,7 @@ describe("TreatmentItemRow", () => {
   });
 
   it("shows a Billed indicator once the item's charge is actually Invoiced", () => {
-    renderRow({ charge_id: "charge-1", clinic_charges: { status: "Invoiced" } });
+    renderRow({ charge_id: "charge-1", clinic_charges: { status: "Invoiced", amount: 5000 } });
 
     expect(screen.getByText("Billed")).toBeInTheDocument();
   });
@@ -99,7 +100,7 @@ describe("TreatmentItemRow", () => {
   // creation, while the charge is still Pending - the row must not show
   // "Billed" until the linked charge's real status says Invoiced.
   it("does NOT show a Billed indicator while the linked charge is still Pending", () => {
-    renderRow({ charge_id: "charge-1", clinic_charges: { status: "Pending" } });
+    renderRow({ charge_id: "charge-1", clinic_charges: { status: "Pending", amount: 5000 } });
 
     expect(screen.queryByText("Billed")).not.toBeInTheDocument();
     expect(screen.getByText("Not invoiced")).toBeInTheDocument();

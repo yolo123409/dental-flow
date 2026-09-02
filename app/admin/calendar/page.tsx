@@ -39,6 +39,7 @@ import AddAppointmentModal from "@/components/appointments/AddAppointmentModal";
 import EditAppointmentModal from "@/components/appointments/EditAppointmentModal";
 
 import type { Appointment } from "@/types/appointment";
+import { localDateString } from "@/lib/dateUtils";
 
 import type {
   PatientOption,
@@ -110,12 +111,8 @@ function CalendarPageContent() {
 
       const appointments =
         await getCalendarAppointments(
-          start
-            .toISOString()
-            .split("T")[0],
-          end
-            .toISOString()
-            .split("T")[0]
+          localDateString(start),
+          localDateString(end)
         );
 
       const mappedEvents: EventInput[] =
@@ -284,9 +281,7 @@ function CalendarPageContent() {
     }
   ) {
     setSelectedDate(
-      selection.start
-        .toISOString()
-        .split("T")[0]
+      localDateString(selection.start)
     );
 
     setSelectedTime(

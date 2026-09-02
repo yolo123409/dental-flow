@@ -19,7 +19,14 @@ import {
   ArSummary,
   getArSummary,
 } from "@/services/billing";
-import { getSafeErrorMessage } from "@/lib/logError";
+import { getClinicSettings } from "@/services/settings";
+import { recordReminderOpened } from "@/services/billingReminders";
+import {
+  buildBalanceReminderMessage,
+  buildWhatsAppLink,
+  normalizeKenyanPhone,
+} from "@/lib/whatsapp";
+import { getSafeErrorMessage, logError } from "@/lib/logError";
 
 interface Props {
   currency: string;
@@ -45,10 +52,13 @@ function escapeCsvCell(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+// ageDays is days PAST DUE (billing audit fix #2), floored at 0 - so 0
+// means "not yet overdue" (could be due today or not due for weeks), not
+// "issued today".
 function formatAge(ageDays: number): string {
-  if (ageDays === 0) return "Today";
-  if (ageDays === 1) return "1 day";
-  return `${ageDays} days`;
+  if (ageDays === 0) return "Not yet due";
+  if (ageDays === 1) return "1 day overdue";
+  return `${ageDays} days overdue`;
 }
 
 export default function ArAgingCenter({ currency, onPaymentRecorded }: Props) {
@@ -62,13 +72,22 @@ export default function ArAgingCenter({ currency, onPaymentRecorded }: Props) {
   const [paymentTarget, setPaymentTarget] =
     useState<ArOutstandingInvoice | null>(null);
 
+  const [clinicInfo, setClinicInfo] = useState<{
+    name: string;
+    phone: string | null;
+  } | null>(null);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
 
-      const data = await getArSummary();
+      const [data, settings] = await Promise.all([
+        getArSummary(),
+        getClinicSettings(),
+      ]);
 
       setSummary(data);
+      setClinicInfo({ name: settings.clinic_name ?? "", phone: settings.phone });
     } catch (error) {
       toast.error(
         getSafeErrorMessage(error, "Failed to load Accounts Receivable.")
@@ -81,6 +100,41 @@ export default function ArAgingCenter({ currency, onPaymentRecorded }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Billing audit fix #2: reuses the exact click-to-chat pattern already
+  // built for appointment reminders (WhatsAppReminderModal) - opens a
+  // prefilled WhatsApp chat, then logs only that the link was opened
+  // (never that the patient actually received or read it).
+  async function handleSendReminder(invoice: ArOutstandingInvoice) {
+    const normalized = normalizeKenyanPhone(invoice.patientPhone);
+
+    if (!normalized) {
+      toast.error("This patient has no valid phone number on file.");
+      return;
+    }
+
+    const message = buildBalanceReminderMessage({
+      patientFirstName: invoice.patientName.split(" ")[0] || invoice.patientName,
+      clinicName: clinicInfo?.name || "the clinic",
+      invoiceNumber: invoice.invoiceNumber,
+      balance: formatMoney(invoice.balance),
+      dueDate: invoice.dueDate,
+      clinicPhone: clinicInfo?.phone,
+    });
+
+    window.open(buildWhatsAppLink(normalized, message), "_blank", "noopener,noreferrer");
+
+    try {
+      await recordReminderOpened({
+        patientId: invoice.patientId,
+        invoiceId: invoice.invoiceId,
+      });
+    } catch (error) {
+      // Non-blocking: the reminder was already opened for the patient -
+      // failing to log that fact shouldn't look like the reminder failed.
+      logError("[ArAgingCenter] Failed to record reminder opened:", error);
+    }
+  }
 
   const formatMoney = useMemo(
     () => (amount: number) =>
@@ -481,13 +535,24 @@ export default function ArAgingCenter({ currency, onPaymentRecorded }: Props) {
                           </Badge>
                         </td>
                         <td className="px-4 py-4 text-right">
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs"
-                            onClick={() => setPaymentTarget(invoice)}
-                          >
-                            Record Payment
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            {invoice.ageDays > 0 && (
+                              <Button
+                                variant="secondary"
+                                className="px-3 py-1.5 text-xs"
+                                onClick={() => handleSendReminder(invoice)}
+                              >
+                                Send Reminder
+                              </Button>
+                            )}
+                            <Button
+                              variant="secondary"
+                              className="px-3 py-1.5 text-xs"
+                              onClick={() => setPaymentTarget(invoice)}
+                            >
+                              Record Payment
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}

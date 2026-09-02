@@ -5,6 +5,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 import { getCurrentClinicId } from "@/services/clinic";
 
 import { monthLabel, shortDate } from "@/lib/reports/period";
+import { localDateString } from "@/lib/dateUtils";
 
 import { ACQUISITION_SOURCES, AcquisitionSource, REFERRAL_SOURCES, ReferralSource } from "@/types/patient";
 
@@ -18,13 +19,14 @@ import {
 } from "@/types/visitAnalytics";
 
 /**
- * Same "date-only" conversion services/appointments.ts already uses for
- * appointment_date comparisons (e.g. getTodaysAppointments) - kept
- * consistent with that existing convention rather than introducing a
- * different one for this feature.
+ * Same local-calendar-date conversion services/appointments.ts uses for
+ * appointment_date comparisons (full-app audit fix C4) - never
+ * date.toISOString(), which round-trips through UTC and can shift onto
+ * the wrong calendar day for any timezone ahead of UTC (Africa/Nairobi,
+ * this app's own default, always is).
  */
 function toDateOnly(date: Date): string {
-  return date.toISOString().split("T")[0];
+  return localDateString(date);
 }
 
 function addDaysToDateOnly(dateOnly: string, days: number): string {

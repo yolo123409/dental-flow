@@ -9,12 +9,14 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import useRealtimeTables from "@/hooks/useRealtimeTables";
 import { logError } from "@/lib/logError";
 import { useAuth } from "@/contexts/AuthContext";
+import usePermissions from "@/hooks/usePermissions";
 
 import {
   StaffHeader,
   StaffInfoCard,
   StaffActivityCard,
   StaffPermissionsCard,
+  OwnProfileCard,
 } from "@/components/users";
 
 import { ClinicUser } from "@/types";
@@ -32,11 +34,19 @@ function StaffProfilePageContent() {
   const params = useParams();
   const router = useRouter();
 
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
+  const { hasPermission } = usePermissions();
 
   const id = params.id as string;
 
   const isSelf = profile?.id === id;
+  const canManageUsers = hasPermission("users");
+
+  // Full-app audit fix H17: someone viewing their OWN profile without
+  // the "users" permission (every Dentist/Receptionist, via the account
+  // menu's "My Profile" link) gets a reduced, self-service view instead
+  // of the full staff-management page.
+  const reducedSelfView = isSelf && !canManageUsers;
 
   const [user, setUser] = useState<ClinicUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,9 +55,17 @@ function StaffProfilePageContent() {
     try {
       setLoading(true);
 
-      const data = await getUser(id);
+      if (reducedSelfView) {
+        // getUser() requires the "users" permission this branch is
+        // specifically for people without - profile from useAuth() is
+        // already loaded with no such gate (it's how the app knows
+        // who's logged in at all).
+        setUser(profile);
+      } else {
+        const data = await getUser(id);
 
-      setUser(data);
+        setUser(data);
+      }
     } catch (error: unknown) {
       logError("[Staff profile] loadUser failed:", error);
 
@@ -55,7 +73,7 @@ function StaffProfilePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, reducedSelfView, profile]);
 
   useEffect(() => {
     loadUser();
@@ -141,31 +159,48 @@ function StaffProfilePageContent() {
         onDelete={removeUser}
       />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      {reducedSelfView ? (
 
-        <div className="space-y-6 lg:col-span-2">
+        <div className="mt-6">
 
-          <StaffInfoCard user={user} />
-
-          <StaffActivityCard />
+          <OwnProfileCard user={user} onSaved={refreshProfile} />
 
         </div>
 
-        <div>
+      ) : (
 
-          <StaffPermissionsCard />
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+
+          <div className="space-y-6 lg:col-span-2">
+
+            <StaffInfoCard user={user} />
+
+            <StaffActivityCard />
+
+          </div>
+
+          <div>
+
+            <StaffPermissionsCard />
+
+          </div>
 
         </div>
 
-      </div>
+      )}
 
     </PageContainer>
   );
 }
 
 export default function StaffProfilePage() {
+  const params = useParams();
+  const { profile } = useAuth();
+
+  const isSelf = profile?.id === (params.id as string);
+
   return (
-    <PermissionGuard permission="users">
+    <PermissionGuard permission="users" bypass={isSelf}>
       <StaffProfilePageContent />
     </PermissionGuard>
   );

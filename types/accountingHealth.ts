@@ -38,6 +38,16 @@ export interface ArReconciliationCheck extends HealthCheckBase {
  * Never rendered directly by a UI component from a hardcoded list - the
  * UI only ever reads this typed, service-computed shape. */
 export interface KnownPaymentException {
+  /**
+   * Full-app audit fix H11: invoice numbers restart at 1 per clinic
+   * (generateInvoiceNumber(), services/billing.ts), so matching by
+   * invoiceNumber alone could silently downgrade a genuinely new
+   * exception on an unrelated clinic that happens to reach the same
+   * invoice number with a coincidentally matching amount. Every entry is
+   * scoped to the one specific clinic it was written for and can never
+   * match anywhere else.
+   */
+  clinicId: string;
   invoiceNumber: string;
   amount: number;
   reason: string;

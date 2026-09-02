@@ -8,7 +8,9 @@ import { Appointment } from "@/types/appointment";
 import {
   getAppointments,
   getAppointmentCount,
+  getAppointmentStats,
   deleteAppointment,
+  AppointmentStats as AppointmentStatsData,
 } from "@/services/appointments";
 
 import {
@@ -51,6 +53,19 @@ function AppointmentsPageContent() {
   const [totalAppointments, setTotalAppointments] =
     useState(0);
 
+  // Full-app audit fix H4: these used to be computed by filtering the
+  // current 50-row page - correct for "Total" (a real COUNT), wrong for
+  // every other tile (they silently reflected only whatever happened to
+  // be on the visible page, changing as you paginate, never summing to
+  // the total for any clinic with more than 50 appointments).
+  // getAppointmentStats() already existed, already correct, and was
+  // simply never wired to this page.
+  const [stats, setStats] = useState<AppointmentStatsData>({
+    scheduled: 0,
+    completed: 0,
+    cancelled: 0,
+  });
+
   const [currentPage, setCurrentPage] =
     useState(1);
 
@@ -86,10 +101,12 @@ function AppointmentsPageContent() {
         patientData,
         dentistData,
         appointmentCount,
+        appointmentStats,
       ] = await Promise.all([
         getPatientOptions(),
         getDentistOptions(),
         getAppointmentCount(),
+        getAppointmentStats(),
       ]);
 
       setPatients(patientData);
@@ -97,6 +114,7 @@ function AppointmentsPageContent() {
       setTotalAppointments(
         appointmentCount
       );
+      setStats(appointmentStats);
 
     } catch (error) {
       console.error(
@@ -202,27 +220,6 @@ function AppointmentsPageContent() {
     );
   }
 
-  const scheduled =
-    appointments.filter(
-      (appointment) =>
-        appointment.status ===
-        "Scheduled"
-    ).length;
-
-  const completed =
-    appointments.filter(
-      (appointment) =>
-        appointment.status ===
-        "Completed"
-    ).length;
-
-  const cancelled =
-    appointments.filter(
-      (appointment) =>
-        appointment.status ===
-        "Cancelled"
-    ).length;
-
   const totalPages = Math.max(
     1,
     Math.ceil(
@@ -252,9 +249,9 @@ function AppointmentsPageContent() {
 
       <AppointmentStats
         total={totalAppointments}
-        scheduled={scheduled}
-        completed={completed}
-        cancelled={cancelled}
+        scheduled={stats.scheduled}
+        completed={stats.completed}
+        cancelled={stats.cancelled}
       />
 
       {appointments.length ===
@@ -372,6 +369,7 @@ function AppointmentsPageContent() {
           setSelectedAppointment(null);
         }}
         onSuccess={async () => {
+          await loadLookupData();
           await loadAppointments(currentPage);
           setShowEditModal(false);
           setSelectedAppointment(null);

@@ -33,7 +33,13 @@ import {
 } from "@/types/clinicalCodes";
 
 import { isValidTooth } from "@/components/patients/dental/toothSelection";
-import { getItemTeeth, isItemInvoiced } from "@/services/treatmentPlans";
+import {
+  addTreatmentDeposit,
+  getItemTeeth,
+  isItemInvoiced,
+  removeTreatmentDeposit,
+} from "@/services/treatmentPlans";
+import { getSafeErrorMessage } from "@/lib/logError";
 
 import {
   TreatmentItemPriority,
@@ -422,6 +428,173 @@ function TreatmentItemCoding({
   );
 }
 
+/**
+ * Billing audit fix #3: splits a treatment's single Pending charge into a
+ * deposit + balance, reusing the exact existing charge -> invoice
+ * pipeline. Self-contained and writes immediately, the same established
+ * pattern as TreatmentMaterialsUsed/TreatmentItemCoding above - not part
+ * of the surrounding form's own Save flow, since a deposit is a distinct
+ * financial action, not a clinical/pricing edit.
+ *
+ * Only offered for a treatment that has a real charge and hasn't been
+ * invoiced yet - once any part of it is billed, the amounts are
+ * financial history and add_treatment_deposit()/remove_treatment_
+ * deposit() (migration 0112) reject exactly that.
+ */
+function TreatmentDepositSplit({
+  item,
+  currency,
+  onChanged,
+}: {
+  item: TreatmentPlanItem;
+  currency: string;
+  onChanged: (updated: TreatmentPlanItem) => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const formatMoney = (amount: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+
+  async function handleAddDeposit() {
+    const amount = Number(depositAmount);
+
+    if (!(amount > 0)) {
+      toast.error("Enter a deposit amount greater than zero.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const updated = await addTreatmentDeposit(item.id, amount);
+
+      onChanged(updated);
+      setShowForm(false);
+      setDepositAmount("");
+      toast.success("Split into a deposit and balance.");
+    } catch (error) {
+      toast.error(getSafeErrorMessage(error, "Failed to add a deposit."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveDeposit() {
+    try {
+      setSaving(true);
+
+      const updated = await removeTreatmentDeposit(item.id);
+
+      onChanged(updated);
+      toast.success("Deposit and balance merged back into one charge.");
+    } catch (error) {
+      toast.error(getSafeErrorMessage(error, "Failed to undo the split."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (item.deposit_charge_id) {
+    const depositStatus = item.deposit_charge?.status ?? "Pending";
+    const balanceStatus = item.clinic_charges?.status ?? "Pending";
+    const canUndo = depositStatus === "Pending" && balanceStatus === "Pending";
+
+    return (
+      <div className="space-y-2 border-t pt-4">
+        <label className="mb-1 block font-medium">Payment Plan</label>
+
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-sm">
+          <span>
+            Deposit{" "}
+            {item.deposit_charge && (
+              <span className="text-slate-500">
+                ({formatMoney(Number(item.deposit_charge.amount))})
+              </span>
+            )}
+          </span>
+          <span className="font-medium text-slate-600">{depositStatus}</span>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-sm">
+          <span>
+            Balance{" "}
+            {item.clinic_charges && (
+              <span className="text-slate-500">
+                ({formatMoney(Number(item.clinic_charges.amount))})
+              </span>
+            )}
+          </span>
+          <span className="font-medium text-slate-600">{balanceStatus}</span>
+        </div>
+
+        {canUndo && (
+          <button
+            type="button"
+            onClick={handleRemoveDeposit}
+            disabled={saving}
+            className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline"
+          >
+            {saving ? "Please wait..." : "Undo split"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <label className="mb-1 block font-medium">
+        Payment Plan <span className="font-normal text-slate-400">(optional)</span>
+      </label>
+
+      {showForm ? (
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <FormInput
+              label="Deposit amount"
+              type="number"
+              value={depositAmount}
+              onChange={setDepositAmount}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddDeposit}
+            disabled={saving}
+            className="h-11.5 shrink-0 rounded-xl border border-slate-300 px-4 text-sm font-medium text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
+          >
+            {saving ? "Saving..." : "Split"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowForm(false)}
+            disabled={saving}
+            className="h-11.5 shrink-0 px-2 text-sm text-slate-400 hover:text-slate-600"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline"
+        >
+          + Split into deposit &amp; balance
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function TreatmentItemModal({
   open,
   item,
@@ -447,6 +620,14 @@ export default function TreatmentItemModal({
   const [form, setForm] =
     useState<SaveTreatmentItemInput>(EMPTY_FORM);
 
+  // Mirrors `item`, but updated locally the moment a deposit is
+  // added/removed (TreatmentDepositSplit writes immediately, outside the
+  // form's own Save flow) - so the split state shown here doesn't go
+  // stale until the modal happens to be reopened.
+  const [liveItem, setLiveItem] = useState<TreatmentPlanItem | null>(
+    item ?? null
+  );
+
   // Phase E section 1/D: explicit catalogue-vs-custom toggle, matching
   // the pattern already proven in BulkTreatmentModal/TreatmentForm -
   // fixes the Phase D gap where typing a name that didn't match a
@@ -457,6 +638,7 @@ export default function TreatmentItemModal({
     if (!open) return;
 
     setCustomTreatment(false);
+    setLiveItem(item ?? null);
 
     if (item) {
       setForm({
@@ -572,6 +754,7 @@ export default function TreatmentItemModal({
             label="Quantity"
             type="number"
             value={form.quantity}
+            disabled={teethLocked}
             onChange={(value) =>
               update(
                 "quantity",
@@ -585,6 +768,7 @@ export default function TreatmentItemModal({
           label="Estimated Price"
           type="number"
           value={form.estimated_price}
+          disabled={teethLocked}
           onChange={(value) =>
             update(
               "estimated_price",
@@ -593,6 +777,20 @@ export default function TreatmentItemModal({
           }
         />
       </div>
+
+      {/* Full-app audit fix H1: price/quantity had no lock at all once a
+          treatment was invoiced, unlike the teeth editor right next to it
+          (its own "already been invoiced" message is above) - editing
+          either afterward silently desynced them from the real, frozen
+          clinic_charges.amount, and TreatmentPlanDetail's own "Invoiced"
+          stat used to read straight from these editable fields as a
+          result (also fixed - it now sums the real charge amounts). */}
+      {teethLocked && (
+        <p className="text-xs text-slate-400">
+          This treatment has already been invoiced, so its price and
+          quantity can no longer be changed.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -651,6 +849,17 @@ export default function TreatmentItemModal({
 
       {editing && item ? (
         <>
+          {liveItem &&
+            liveItem.charge_id &&
+            liveItem.status !== "Cancelled" &&
+            (liveItem.deposit_charge_id || !isItemInvoiced(liveItem)) && (
+              <TreatmentDepositSplit
+                item={liveItem}
+                currency={currency}
+                onChanged={setLiveItem}
+              />
+            )}
+
           <TreatmentMaterialsUsed
             treatmentPlanItemId={item.id}
             currency={currency}
